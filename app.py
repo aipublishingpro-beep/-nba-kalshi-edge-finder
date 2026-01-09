@@ -387,11 +387,11 @@ with tab1:
             st.subheader("🏥 Set Injury Impact")
             
             home_inj = st.select_slider(f"🏠 {home} Injuries", options=[0, 1, 2, 3], value=0, 
-                format_func=lambda x: ["None", "Role player", "Star GTD", "Star OUT"][x], key=f"{gkey}_h")
+                format_func=lambda x: ["0: None", "1: Bench", "2: Star ?", "3: Star OUT"][x], key=f"{gkey}_h")
             st.caption(f"📋 Ref: {INJURY_REFERENCE.get(home, 'None listed')}")
             
             away_inj = st.select_slider(f"✈️ {away} Injuries", options=[0, 1, 2, 3], value=0,
-                format_func=lambda x: ["None", "Role player", "Star GTD", "Star OUT"][x], key=f"{gkey}_a")
+                format_func=lambda x: ["0: None", "1: Bench", "2: Star ?", "3: Star OUT"][x], key=f"{gkey}_a")
             st.caption(f"📋 Ref: {INJURY_REFERENCE.get(away, 'None listed')}")
             
             st.markdown("---")
@@ -452,11 +452,11 @@ with tab2:
             st.subheader("🏥 Set Injury Impact")
             
             home_inj = st.select_slider(f"🏠 {home} Injuries", options=[0, 1, 2, 3], value=0,
-                format_func=lambda x: ["None", "Role player", "Star GTD", "Star OUT"][x], key=f"{gkey}_h")
+                format_func=lambda x: ["0: None", "1: Bench", "2: Star ?", "3: Star OUT"][x], key=f"{gkey}_h")
             st.caption(f"📋 Ref: {INJURY_REFERENCE.get(home, 'None listed')}")
             
             away_inj = st.select_slider(f"✈️ {away} Injuries", options=[0, 1, 2, 3], value=0,
-                format_func=lambda x: ["None", "Role player", "Star GTD", "Star OUT"][x], key=f"{gkey}_a")
+                format_func=lambda x: ["0: None", "1: Bench", "2: Star ?", "3: Star OUT"][x], key=f"{gkey}_a")
             st.caption(f"📋 Ref: {INJURY_REFERENCE.get(away, 'None listed')}")
             
             st.markdown("---")
@@ -510,11 +510,11 @@ with tab3:
             st.subheader("🏥 Set Injury Impact")
             
             home_inj = st.select_slider(f"🏠 {home} Injuries", options=[0, 1, 2, 3], value=0,
-                format_func=lambda x: ["None", "Role player", "Star GTD", "Star OUT"][x], key=f"{gkey}_h")
+                format_func=lambda x: ["0: None", "1: Bench", "2: Star ?", "3: Star OUT"][x], key=f"{gkey}_h")
             st.caption(f"📋 Ref: {INJURY_REFERENCE.get(home, 'None listed')}")
             
             away_inj = st.select_slider(f"✈️ {away} Injuries", options=[0, 1, 2, 3], value=0,
-                format_func=lambda x: ["None", "Role player", "Star GTD", "Star OUT"][x], key=f"{gkey}_a")
+                format_func=lambda x: ["0: None", "1: Bench", "2: Star ?", "3: Star OUT"][x], key=f"{gkey}_a")
             st.caption(f"📋 Ref: {INJURY_REFERENCE.get(away, 'None listed')}")
             
             st.markdown("---")
