@@ -275,9 +275,8 @@ def calculate_kelly(win_prob, price, bankroll, fraction):
 st.title("🏀 NBA Edge Finder")
 st.caption("12-Factor Prediction Model • For Analysis Only • Not Financial Advice")
 
-# Initialize session state for clicked game
-if 'clicked_game' not in st.session_state:
-    st.session_state.clicked_game = None
+# Get clicked game from query params
+clicked_game = st.query_params.get("game", None)
 
 # Custom CSS for orange edge highlight
 st.markdown("""
@@ -308,11 +307,6 @@ st.markdown("""
         color: rgba(250, 250, 250, 0.7);
         font-size: 0.95rem;
         margin-top: 4px;
-    }
-    .click-hint {
-        font-size: 0.75rem;
-        color: rgba(255, 107, 53, 0.8);
-        margin-top: 8px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -348,7 +342,7 @@ with st.sidebar.expander("📐 Position Sizing (Info Only)"):
 
 if st.sidebar.button("🔄 Refresh"):
     st.cache_data.clear()
-    st.session_state.clicked_game = None
+    st.query_params.clear()
     st.rerun()
 
 # Load data
@@ -407,9 +401,9 @@ if all_edges[:3]:
                 <div class="prediction-details">{e["date"]} • {e["game"]} • {e["conf"]}</div>
             </div>
             ''', unsafe_allow_html=True)
-            if st.button(f"🔗 View 12-Factor Breakdown", key=f"top3_btn_{i}", use_container_width=True):
-                st.session_state.clicked_game = e['game']
-                st.rerun()
+            # Simple link using query param
+            game_encoded = e['game'].replace(' ', '_').replace('@', 'at')
+            st.markdown(f'<a href="?game={game_encoded}" target="_self"><button style="width:100%; padding:10px; background:#FF6B35; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">🔗 View 12-Factor Breakdown</button></a>', unsafe_allow_html=True)
 else:
     st.info("No edges above threshold for TODAY's games.")
 
@@ -418,6 +412,11 @@ tab_ml, tab_tot, tab_spr = st.tabs(["🏀 Winner", "📊 Totals", "📏 Spreads"
 
 with tab_ml:
     st.subheader("Game Winner Predictions")
+    
+    # If a game was clicked, show which one is expanded
+    if clicked_game:
+        game_display = clicked_game.replace('_', ' ').replace('at', '@')
+        st.success(f"📍 Showing: **{game_display}** - See expanded section below")
     
     if not markets['moneyline']:
         st.warning("No games found for today.")
@@ -449,11 +448,10 @@ with tab_ml:
             indicator = "⚪"
             rec_text = "NO EDGE"
         
-        # Add anchor for linking from top 3
-        game_key = f"{away} @ {home}"
-        
         # Check if this game was clicked from top 3
-        should_expand = (st.session_state.clicked_game == game_key)
+        game_key = f"{away} @ {home}"
+        game_encoded = game_key.replace(' ', '_').replace('@', 'at')
+        should_expand = (clicked_game == game_encoded)
         
         with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | {preview_analysis['edge']:+.1f}% | {rec_text}", expanded=should_expand):
             # Manual injury inputs
