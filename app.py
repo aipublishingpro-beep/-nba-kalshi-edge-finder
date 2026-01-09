@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import math
 
 st.set_page_config(page_title="NBA Kalshi Edge Finder", page_icon="🏀", layout="wide")
@@ -70,50 +70,72 @@ def calculate_travel_distance(away_team, home_team):
     return round(R * 2 * math.asin(math.sqrt(a)))
 
 def parse_teams(ticker):
-    """Extract home and away teams from ticker like KXNBAGAME-26JAN09BOSTOR"""
+    """Extract home team, away team, and game date from ticker like KXNBAGAME-26JAN09BOSTOR"""
     try:
         code = ticker.split('-')[1]
         away_abbr = code[-6:-3].upper()
         home_abbr = code[-3:].upper()
-        return KALSHI_ABBREV_MAP.get(home_abbr), KALSHI_ABBREV_MAP.get(away_abbr)
+        
+        # Parse date from ticker: 26JAN09 = Jan 09, 2026
+        date_part = code[:-6]  # e.g., "26JAN09"
+        year = int("20" + date_part[:2])
+        month_str = date_part[2:5].upper()
+        day = int(date_part[5:7])
+        
+        month_map = {'JAN': 1, 'FEB': 2, 'MAR': 3, 'APR': 4, 'MAY': 5, 'JUN': 6,
+                     'JUL': 7, 'AUG': 8, 'SEP': 9, 'OCT': 10, 'NOV': 11, 'DEC': 12}
+        month = month_map.get(month_str, 1)
+        
+        game_date = datetime(year, month, day)
+        
+        return KALSHI_ABBREV_MAP.get(home_abbr), KALSHI_ABBREV_MAP.get(away_abbr), game_date
     except:
-        return None, None
+        return None, None, None
 
 @st.cache_data(ttl=300)
 def fetch_markets():
-    """Fetch NBA markets from Kalshi API - TODAY's games only"""
+    """Fetch NBA markets from Kalshi API - TODAY's games first"""
     markets = {'moneyline': [], 'totals': [], 'spreads': []}
-    today = datetime.now().date()
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     
     for mtype, series in [('moneyline', 'KXNBAGAME'), ('totals', 'KXNBATOTAL'), ('spreads', 'KXNBASPREAD')]:
         try:
             resp = requests.get(f"https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker={series}&status=open", timeout=10)
             for m in resp.json().get('markets', []):
                 ticker = m.get('ticker', '')
-                home, away = parse_teams(ticker)
-                if not home or not away:
+                home, away, game_date = parse_teams(ticker)
+                if not home or not away or not game_date:
                     continue
                 
-                close_time = m.get('close_time', '')
-                try:
-                    game_dt = datetime.fromisoformat(close_time.replace('Z', '+00:00')).replace(tzinfo=None)
-                    if game_dt.date() < today:
-                        continue
-                    game_date = game_dt.strftime('%b %d')
-                except:
+                # Skip past games
+                if game_date.date() < today.date():
                     continue
                 
                 yes_bid = m.get('yes_bid', 0) or 0
                 yes_ask = m.get('yes_ask', 0) or 0
                 yes_price = (yes_bid + yes_ask) / 2 if yes_bid and yes_ask else yes_ask or yes_bid or 50
                 
-                info = {'ticker': ticker, 'home': home, 'away': away, 'yes_price': yes_price, 'game_date': game_date, 'close_time': close_time}
+                # Format date display
+                if game_date.date() == today.date():
+                    date_display = "TODAY"
+                elif game_date.date() == (today + timedelta(days=1)).date():
+                    date_display = "TOMORROW"
+                else:
+                    date_display = game_date.strftime('%b %d')
+                
+                info = {
+                    'ticker': ticker, 
+                    'home': home, 
+                    'away': away, 
+                    'yes_price': yes_price, 
+                    'game_date': date_display,
+                    'game_dt': game_date,  # For sorting
+                }
                 
                 if mtype == 'totals':
                     info['line'] = m.get('floor_strike', 220)
                 elif mtype == 'spreads':
                     info['line'] = m.get('floor_strike', 5)
-                    # Extract spread team from ticker
                     try:
                         spread_abbr = ticker.split('-')[-1][:3].upper()
                         info['spread_team'] = KALSHI_ABBREV_MAP.get(spread_abbr, home)
@@ -124,8 +146,9 @@ def fetch_markets():
         except Exception as e:
             st.sidebar.warning(f"{series} fetch error: {e}")
     
+    # Sort by date - TODAY first, then future dates
     for k in markets:
-        markets[k].sort(key=lambda x: x.get('close_time', ''))
+        markets[k].sort(key=lambda x: x.get('game_dt', datetime.max))
     
     return markets
 
@@ -138,13 +161,12 @@ def fetch_rest_days():
         resp = requests.get("https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXNBAGAME&status=settled&limit=200", timeout=10)
         for m in resp.json().get('markets', []):
             ticker = m.get('ticker', '')
-            close_time = m.get('close_time', '')
-            if not close_time or '-' not in ticker:
+            home, away, game_date = parse_teams(ticker)
+            if not home or not away or not game_date:
                 continue
             try:
-                days = (now - datetime.fromisoformat(close_time.replace('Z', '+00:00')).replace(tzinfo=None)).days
+                days = (now - game_date).days
                 if 0 <= days <= 5:
-                    home, away = parse_teams(ticker)
                     if home and days < rest.get(home, 99):
                         rest[home] = days
                     if away and days < rest.get(away, 99):
@@ -262,6 +284,11 @@ st.markdown("""
         border-radius: 8px;
         padding: 16px 20px;
         margin: 10px 0;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .prediction-banner:hover {
+        transform: scale(1.02);
+        box-shadow: 0 4px 20px rgba(255, 107, 53, 0.3);
     }
     .prediction-team {
         font-size: 1.8rem;
@@ -277,6 +304,11 @@ st.markdown("""
         color: rgba(250, 250, 250, 0.7);
         font-size: 0.95rem;
         margin-top: 4px;
+    }
+    .click-hint {
+        font-size: 0.75rem;
+        color: rgba(255, 107, 53, 0.8);
+        margin-top: 8px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -335,7 +367,16 @@ for g in markets['moneyline']:
     if abs(analysis['edge']) >= min_edge:
         pred_team = home if analysis['rec'] == 'FAVORS HOME' else away
         kelly = calculate_kelly(analysis['prob'] if analysis['rec'] == 'FAVORS HOME' else 100 - analysis['prob'], g['yes_price'] if analysis['rec'] == 'FAVORS HOME' else 100 - g['yes_price'], bankroll, kelly_frac)
-        all_edges.append({"game": f"{away} @ {home}", "pred": pred_team, "edge": abs(analysis['edge']), "kelly": kelly['bet'], "rec": analysis['rec'], "conf": analysis['conf']})
+        all_edges.append({
+            "game": f"{away} @ {home}", 
+            "pred": pred_team, 
+            "edge": abs(analysis['edge']), 
+            "kelly": kelly['bet'], 
+            "rec": analysis['rec'], 
+            "conf": analysis['conf'],
+            "ticker": g['ticker'],
+            "date": g['game_date']
+        })
 
 all_edges.sort(key=lambda x: x['edge'], reverse=True)
 
@@ -343,12 +384,16 @@ if all_edges[:3]:
     cols = st.columns(3)
     for i, e in enumerate(all_edges[:3]):
         with cols[i]:
+            kalshi_url = f"https://kalshi.com/markets/{e['ticker'].lower()}"
             st.markdown(f'''
-            <div class="prediction-banner">
-                <span class="prediction-team">{e["pred"]}</span><br>
-                <span class="prediction-edge">+{e["edge"]:.1f}%</span>
-                <div class="prediction-details">{e["game"]} • {e["conf"]}</div>
-            </div>
+            <a href="{kalshi_url}" target="_blank" style="text-decoration: none;">
+                <div class="prediction-banner" style="cursor: pointer;">
+                    <span class="prediction-team">{e["pred"]}</span><br>
+                    <span class="prediction-edge">+{e["edge"]:.1f}%</span>
+                    <div class="prediction-details">{e["date"]} • {e["game"]} • {e["conf"]}</div>
+                    <div class="click-hint">🔗 Click to view on Kalshi</div>
+                </div>
+            </a>
             ''', unsafe_allow_html=True)
 else:
     st.info("No edges above threshold.")
@@ -367,7 +412,21 @@ with tab_ml:
         travel = calculate_travel_distance(away, home)
         h_rest, a_rest = rest_days.get(home, 2), rest_days.get(away, 2)
         
-        with st.expander(f"{g['game_date']} | {away} @ {home}"):
+        # Pre-calculate edge for expander title
+        preview_analysis = calculate_edge(home, away, g['yes_price'], h_rest, a_rest, 0, 0, travel, default_ref_bias, weights)
+        preview_team = home if preview_analysis['rec'] == 'FAVORS HOME' else away
+        
+        if preview_analysis['rec'] == 'FAVORS HOME':
+            indicator = "🟢"
+            rec_text = f"YES {home}"
+        elif preview_analysis['rec'] == 'FAVORS AWAY':
+            indicator = "🔴"
+            rec_text = f"NO → {away}"
+        else:
+            indicator = "⚪"
+            rec_text = "NO EDGE"
+        
+        with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | {preview_analysis['edge']:+.1f}% | {rec_text}"):
             # Manual injury inputs
             ic1, ic2 = st.columns(2)
             with ic1:
@@ -443,9 +502,15 @@ with tab_tot:
         edge = projected - line
         
         rec = "OVER" if edge > 2 else ("UNDER" if edge < -2 else "NO EDGE")
-        color = "🟢" if rec == "OVER" else ("🔴" if rec == "UNDER" else "⚪")
         
-        with st.expander(f"{color} {g['game_date']} | {away} @ {home} | Line: {line}"):
+        if rec == "OVER":
+            indicator = "🟢"
+        elif rec == "UNDER":
+            indicator = "🔴"
+        else:
+            indicator = "⚪"
+        
+        with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | O/U {line} | {edge:+.1f} | {rec}"):
             c1, c2, c3 = st.columns(3)
             c1.metric("Kalshi Line", f"{line}")
             c2.metric("Model Projects", f"{projected:.1f}")
@@ -473,9 +538,15 @@ with tab_spr:
         edge = predicted - line
         
         rec = "COVERS" if edge > 2 else ("MISSES" if edge < -2 else "NO EDGE")
-        color = "🟢" if rec == "COVERS" else ("🔴" if rec == "MISSES" else "⚪")
         
-        with st.expander(f"{color} {g['game_date']} | {away} @ {home} | {spread_team} -{line}"):
+        if rec == "COVERS":
+            indicator = "🟢"
+        elif rec == "MISSES":
+            indicator = "🔴"
+        else:
+            indicator = "⚪"
+        
+        with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | {spread_team} -{line} | {edge:+.1f} | {rec}"):
             c1, c2, c3 = st.columns(3)
             c1.metric("Kalshi Line", f"{spread_team} -{line}")
             c2.metric("Model Spread", f"{predicted:+.1f}")
