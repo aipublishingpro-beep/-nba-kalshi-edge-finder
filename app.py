@@ -319,9 +319,16 @@ min_edge = st.sidebar.slider("Min Edge %", 0, 25, 5)
 st.sidebar.markdown("---")
 st.sidebar.header("💰 Kelly Settings")
 bankroll = st.sidebar.number_input("Bankroll ($)", 100, 100000, 1000, 100)
-kelly_fraction = st.sidebar.slider("Kelly Fraction %", 1, 100, 10, 1, help="Lower = safer. Pros use 10-25%. Start with 10%.")
+kelly_fraction = st.sidebar.slider("Kelly Fraction %", 1, 100, 10, 1)
 kelly_fraction = kelly_fraction / 100  # Convert to decimal
-st.sidebar.caption(f"Using {int(kelly_fraction*100)}% Kelly → Max ~{kelly_fraction*50:.0f}% of bankroll per bet")
+st.sidebar.markdown(f"""
+**How Kelly Works:**
+1. Model finds edge (e.g. 67%)
+2. Full Kelly says "bet $930"
+3. Your {int(kelly_fraction*100)}% Kelly = $930 × {int(kelly_fraction*100)}% = **$93**
+
+*Bigger edge = bigger bet. Smaller edge = smaller bet.*
+""")
 
 if st.sidebar.button("🔄 Refresh Data"): st.cache_data.clear(); st.rerun()
 
@@ -334,7 +341,7 @@ st.sidebar.write(f"Spreads: {len(markets['spreads'])}")
 
 # ========== TOP 3 EDGES SECTION ==========
 st.markdown("### 🔥 Top 3 Edges Today")
-st.caption(f"💰 **Kelly Criterion** automatically sizes bets based on edge size & your ${bankroll:,} bankroll. Bigger edge = bigger bet. Using {int(kelly_fraction*100)}% Kelly (conservative).")
+st.caption(f"💰 **Kelly Criterion:** Bigger edge = bigger bet. Your {int(kelly_fraction*100)}% Kelly setting reduces full bet for safety. Adjust in sidebar.")
 
 top_edges = []
 
