@@ -310,6 +310,18 @@ st.markdown("""
         color: rgba(255, 107, 53, 0.8);
         margin-top: 8px;
     }
+    .game-anchor {
+        scroll-margin-top: 100px;
+        padding-top: 10px;
+    }
+    a.card-link {
+        text-decoration: none !important;
+        color: inherit !important;
+        display: block;
+    }
+    a.card-link:hover {
+        text-decoration: none !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -388,12 +400,12 @@ if all_edges[:3]:
     for i, e in enumerate(all_edges[:3]):
         with cols[i]:
             st.markdown(f'''
-            <a href="#{e["anchor"]}" style="text-decoration: none;">
+            <a class="card-link" href="#{e["anchor"]}">
                 <div class="prediction-banner" style="cursor: pointer;">
                     <span class="prediction-team">{e["pred"]}</span><br>
                     <span class="prediction-edge">+{e["edge"]:.1f}%</span>
                     <div class="prediction-details">{e["date"]} • {e["game"]} • {e["conf"]}</div>
-                    <div class="click-hint">👇 Click for 12-factor breakdown</div>
+                    <div class="click-hint">🔗 Click to see 12-factor breakdown</div>
                 </div>
             </a>
             ''', unsafe_allow_html=True)
@@ -430,9 +442,9 @@ with tab_ml:
         
         # Add anchor for linking from top 3
         anchor_id = f"{away.lower().replace(' ', '-')}-{home.lower().replace(' ', '-')}"
-        st.markdown(f'<div id="{anchor_id}"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div id="{anchor_id}" class="game-anchor"></div>', unsafe_allow_html=True)
         
-        with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | {preview_analysis['edge']:+.1f}% | {rec_text}"):
+        with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | {preview_analysis['edge']:+.1f}% | {rec_text}", expanded=False):
             # Manual injury inputs
             ic1, ic2 = st.columns(2)
             with ic1:
@@ -526,7 +538,7 @@ with tab_tot:
             tc1, tc2, tc3 = st.columns(3)
             tc1.metric("📊 Combined PPG", f"{combined_ppg:.1f}")
             tc2.metric("🛡️ Def Adjustment", f"{def_adj:+.1f}")
-            tc3.metric("Prediction", f"{color} {rec}")
+            tc3.metric("Prediction", f"{indicator} {rec}")
 
 with tab_spr:
     st.subheader("Spread Predictions")
@@ -562,7 +574,7 @@ with tab_spr:
             tc1, tc2, tc3 = st.columns(3)
             tc1.metric("📊 Net Rating Diff", f"{net_diff:+.1f}")
             tc2.metric("🏠 Home Court", "+3.5")
-            tc3.metric("Prediction", f"{color} {rec}")
+            tc3.metric("Prediction", f"{indicator} {rec}")
 
 st.markdown("---")
 st.caption("⚠️ **DISCLAIMER:** This tool provides statistical analysis for educational purposes only. This is NOT financial advice. Predictions are based on historical data and may be incorrect. Past performance does not guarantee future results. If you choose to wager, only use funds you can afford to lose. The creators assume no liability for any decisions made based on this analysis.")
