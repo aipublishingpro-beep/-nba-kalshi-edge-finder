@@ -109,7 +109,14 @@ def fetch_kalshi_nba_games():
                 'ticker': ticker, 'away_team': away_team, 'home_team': home_team,
                 'yes_price': yes_price, 'volume': market.get('volume', 0), 'game_date': game_date_str
             })
-        return games
+        
+        # Deduplicate: keep highest volume market per matchup
+        seen = {}
+        for g in games:
+            key = f"{g['away_team']}@{g['home_team']}_{g['game_date']}"
+            if key not in seen or g['volume'] > seen[key]['volume']:
+                seen[key] = g
+        return list(seen.values())
     except: return []
 
 @st.cache_data(ttl=14400)
