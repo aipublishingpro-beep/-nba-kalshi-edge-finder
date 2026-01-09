@@ -681,21 +681,9 @@ st.markdown("---")
 st.subheader("📋 Edge Summary")
 
 summary_data = []
-for game in games:
+for game, analysis, home_injury_list, away_injury_list, auto_home_rest, auto_away_rest, away_travel in games_with_analysis:
     home = game['home_team']
     away = game['away_team']
-    home_injury_count = len(injuries.get(home, []))
-    away_injury_count = len(injuries.get(away, []))
-    away_travel = calculate_travel_distance(away, home)
-    auto_home_rest = get_team_rest_days(home, rest_days_data, default_home_rest)
-    auto_away_rest = get_team_rest_days(away, rest_days_data, default_away_rest)
-    
-    analysis = calculate_edge(
-        home, away, game['yes_price'],
-        auto_home_rest, auto_away_rest,
-        home_injury_count, away_injury_count,
-        away_travel, weights
-    )
     
     summary_data.append({
         'Matchup': f"{away} @ {home}",
