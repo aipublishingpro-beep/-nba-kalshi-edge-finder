@@ -384,16 +384,13 @@ if all_edges[:3]:
     cols = st.columns(3)
     for i, e in enumerate(all_edges[:3]):
         with cols[i]:
-            kalshi_url = f"https://kalshi.com/markets/{e['ticker'].lower()}"
             st.markdown(f'''
-            <a href="{kalshi_url}" target="_blank" style="text-decoration: none;">
-                <div class="prediction-banner" style="cursor: pointer;">
-                    <span class="prediction-team">{e["pred"]}</span><br>
-                    <span class="prediction-edge">+{e["edge"]:.1f}%</span>
-                    <div class="prediction-details">{e["date"]} • {e["game"]} • {e["conf"]}</div>
-                    <div class="click-hint">🔗 Click to view on Kalshi</div>
-                </div>
-            </a>
+            <div class="prediction-banner">
+                <span class="prediction-team">{e["pred"]}</span><br>
+                <span class="prediction-edge">+{e["edge"]:.1f}%</span>
+                <div class="prediction-details">{e["date"]} • {e["game"]} • {e["conf"]}</div>
+                <div class="click-hint">👇 See 12-factor breakdown below</div>
+            </div>
             ''', unsafe_allow_html=True)
 else:
     st.info("No edges above threshold.")
