@@ -54,6 +54,53 @@ team_mapping = {
     "Washington Wizards": {"abbrev": "WAS", "espn_id": 27}
 }
 
+# TIERED player database - different point values for different importance
+# Tier 1: MVP/Superstar (6 pts OUT, 3 pts questionable)
+# Tier 2: All-Star caliber (4 pts OUT, 2 pts questionable)  
+# Tier 3: Quality starter (2 pts OUT, 1 pt questionable)
+player_tiers = {
+    # TIER 1 - MVP/SUPERSTAR LEVEL (6 pts if OUT)
+    "LeBron James": 1, "Stephen Curry": 1, "Kevin Durant": 1, "Giannis Antetokounmpo": 1,
+    "Nikola Jokic": 1, "Joel Embiid": 1, "Luka Doncic": 1, "Jayson Tatum": 1,
+    "Shai Gilgeous-Alexander": 1, "Anthony Davis": 1, "Damian Lillard": 1,
+    "Kawhi Leonard": 1, "Jimmy Butler": 1, "Donovan Mitchell": 1, "Ja Morant": 1,
+    "Anthony Edwards": 1, "Devin Booker": 1, "Tyrese Haliburton": 1,
+    
+    # TIER 2 - ALL-STAR CALIBER (4 pts if OUT)
+    "Jaylen Brown": 2, "Paul George": 2, "Kyrie Irving": 2, "Zion Williamson": 2,
+    "Trae Young": 2, "Bam Adebayo": 2, "Jamal Murray": 2, "Darius Garland": 2,
+    "De'Aaron Fox": 2, "Jalen Brunson": 2, "LaMelo Ball": 2, "Chet Holmgren": 2,
+    "Paolo Banchero": 2, "Evan Mobley": 2, "Scottie Barnes": 2, "Tyrese Maxey": 2,
+    "Brandon Ingram": 2, "Pascal Siakam": 2, "Khris Middleton": 2, "Zach LaVine": 2,
+    "Karl-Anthony Towns": 2, "Rudy Gobert": 2, "Julius Randle": 2, "Lauri Markkanen": 2,
+    "Cade Cunningham": 2, "Franz Wagner": 2, "Jalen Williams": 2, "Victor Wembanyama": 2,
+    "James Harden": 2, "Kristaps Porzingis": 2, "Dejounte Murray": 2, "CJ McCollum": 2,
+    "Tyler Herro": 2, "Desmond Bane": 2, "Domantas Sabonis": 2, "Jarrett Allen": 2,
+    
+    # TIER 3 - QUALITY STARTER (2 pts if OUT)
+    "Derrick White": 3, "Jrue Holiday": 3, "Mikal Bridges": 3, "Michael Porter Jr.": 3,
+    "Aaron Gordon": 3, "Myles Turner": 3, "Brook Lopez": 3, "Draymond Green": 3,
+    "Andrew Wiggins": 3, "Klay Thompson": 3, "D'Angelo Russell": 3, "Austin Reaves": 3,
+    "Tobias Harris": 3, "Bradley Beal": 3, "Devin Vassell": 3, "Anfernee Simons": 3,
+    "Jerami Grant": 3, "RJ Barrett": 3, "OG Anunoby": 3, "Immanuel Quickley": 3,
+    "Alperen Sengun": 3, "Jabari Smith Jr.": 3, "Jalen Green": 3, "Coby White": 3,
+    "DeMar DeRozan": 3, "Nikola Vucevic": 3, "Wendell Carter Jr.": 3, "Jalen Suggs": 3,
+    "Marcus Smart": 3, "Jaren Jackson Jr.": 3, "Josh Giddey": 3, "Bennedict Mathurin": 3,
+    "Cameron Johnson": 3, "Nic Claxton": 3, "Brandon Miller": 3, "Mark Williams": 3,
+    "Herb Jones": 3, "Jaden McDaniels": 3, "Kyle Kuzma": 3, "Jordan Poole": 3,
+    "Malik Monk": 3, "Keegan Murray": 3, "Jordan Clarkson": 3, "Collin Sexton": 3,
+    "John Collins": 3, "Jakob Poeltl": 3, "Jaden Ivey": 3, "Ausar Thompson": 3,
+    "Donte DiVincenzo": 3, "Keldon Johnson": 3, "Scoot Henderson": 3, "Jalen Johnson": 3
+}
+
+# Point values by tier and status
+INJURY_POINTS = {
+    1: {"out": 6.0, "questionable": 3.0, "day-to-day": 2.5},  # Superstar
+    2: {"out": 4.0, "questionable": 2.0, "day-to-day": 1.5},  # All-Star
+    3: {"out": 2.0, "questionable": 1.0, "day-to-day": 0.75}, # Starter
+    4: {"out": 0.5, "questionable": 0.25, "day-to-day": 0.1}  # Role player
+}
+
 team_locations = {
     "Atlanta Hawks": {"lat": 33.757, "lon": -84.396, "altitude": 1050, "tz": 0},
     "Boston Celtics": {"lat": 42.366, "lon": -71.062, "altitude": 20, "tz": 0},
@@ -129,32 +176,74 @@ def fetch_team_injuries(team_name):
     except Exception as e:
         return []
 
-def calculate_injury_level(injuries):
+def get_player_tier(player_name):
+    """Get player tier (1=superstar, 2=all-star, 3=starter, 4=role player)"""
+    for known_player, tier in player_tiers.items():
+        if known_player.lower() in player_name.lower() or player_name.lower() in known_player.lower():
+            return tier
+    return 4  # Default to role player
+
+def get_status_type(status):
+    """Convert status string to category"""
+    status_lower = status.lower()
+    if 'out' in status_lower:
+        return 'out'
+    elif 'questionable' in status_lower or 'doubtful' in status_lower:
+        return 'questionable'
+    elif 'day-to-day' in status_lower or 'day to day' in status_lower:
+        return 'day-to-day'
+    return 'day-to-day'  # Default
+
+def calculate_injury_impact(injuries):
+    """
+    Calculate TOTAL injury impact in points.
+    Returns: (total_points, list of injury details)
+    """
     if not injuries:
-        return 0
-    out_count = sum(1 for i in injuries if i['status'].lower() == 'out')
-    questionable_count = sum(1 for i in injuries if 'questionable' in i['status'].lower() or 'doubtful' in i['status'].lower())
-    if out_count >= 2:
-        return 3
-    elif out_count >= 1:
-        return 2
-    elif questionable_count >= 1:
-        return 1
-    return 0
+        return 0.0, []
+    
+    total_points = 0.0
+    injury_details = []
+    
+    for injury in injuries:
+        player = injury.get('player', 'Unknown')
+        status = injury.get('status', 'Unknown')
+        
+        tier = get_player_tier(player)
+        status_type = get_status_type(status)
+        points = INJURY_POINTS.get(tier, INJURY_POINTS[4]).get(status_type, 0.5)
+        
+        total_points += points
+        
+        tier_label = {1: "⭐⭐⭐ MVP", 2: "⭐⭐ All-Star", 3: "⭐ Starter", 4: "Bench"}[tier]
+        injury_details.append({
+            'player': player,
+            'status': status,
+            'tier': tier,
+            'tier_label': tier_label,
+            'points': points
+        })
+    
+    # Sort by impact (highest first)
+    injury_details.sort(key=lambda x: x['points'], reverse=True)
+    
+    return total_points, injury_details
+
+def get_injury_severity_label(total_points):
+    """Convert total injury points to a severity label"""
+    if total_points >= 6:
+        return "🔴 CRITICAL", "critical"
+    elif total_points >= 4:
+        return "🟠 SEVERE", "severe"
+    elif total_points >= 2:
+        return "🟡 MODERATE", "moderate"
+    elif total_points > 0:
+        return "🟢 MINOR", "minor"
+    return "✅ HEALTHY", "healthy"
 
 @st.cache_data(ttl=1800)
 def get_cached_injuries(team_name):
     return fetch_team_injuries(team_name)
-
-INJURY_LEVELS = {
-    0: "No key injuries",
-    1: "Rotation player out",
-    2: "Star questionable / limited",
-    3: "Star confirmed OUT"
-}
-
-def injury_points(level):
-    return {0: 0.0, 1: 1.0, 2: 2.5, 3: 4.0}.get(level, 0.0)
 
 def calculate_distance(team1, team2):
     loc1 = team_locations.get(team1)
@@ -346,7 +435,7 @@ team_stats = {
 }
 
 def calculate_kalshi_edge(home_team, away_team, market_spread, home_rest, away_rest, 
-                          home_injury_level, away_injury_level, kalshi_yes_price,
+                          home_injury_points, away_injury_points, kalshi_yes_price,
                           home_b2b, away_b2b):
     home_stats = team_stats.get(home_team, {"net_rating": 0, "def_rank": 15, "pace": 95})
     away_stats = team_stats.get(away_team, {"net_rating": 0, "def_rank": 15, "pace": 95})
@@ -358,9 +447,8 @@ def calculate_kalshi_edge(home_team, away_team, market_spread, home_rest, away_r
     defense_advantage = (away_stats["def_rank"] - home_stats["def_rank"]) * 0.2 * st.session_state.get('defense_weight', 1.0)
     pace_advantage = (home_stats["pace"] - away_stats["pace"]) * 0.015 * st.session_state.get('pace_weight', 0.6)
     
-    home_injury_impact = injury_points(home_injury_level)
-    away_injury_impact = injury_points(away_injury_level)
-    net_injury_impact = (away_injury_impact - home_injury_impact) * st.session_state.get('injury_weight', 1.25)
+    # INJURY IMPACT - now using actual point values directly!
+    net_injury_impact = (away_injury_points - home_injury_points) * st.session_state.get('injury_weight', 1.0)
     
     net_rating_advantage = (home_stats["net_rating"] - away_stats["net_rating"]) * 0.1
     altitude_advantage = get_altitude_advantage(home_team) * st.session_state.get('altitude_weight', 1.0)
@@ -436,7 +524,7 @@ st.session_state.min_edge = st.sidebar.slider("Minimum Edge", 0.5, 5.0, 1.0)
 st.sidebar.header("🧠 Original Weights")
 st.session_state.rest_weight = st.sidebar.slider("Rest Advantage", 0.0, 2.0, 0.75)
 st.session_state.defense_weight = st.sidebar.slider("Defense Mismatch", 0.0, 2.0, 1.0)
-st.session_state.injury_weight = st.sidebar.slider("Injury Impact", 0.0, 3.0, 1.25)
+st.session_state.injury_weight = st.sidebar.slider("Injury Impact", 0.0, 2.0, 1.0)
 st.session_state.pace_weight = st.sidebar.slider("Pace Impact", 0.0, 2.0, 0.6)
 
 st.sidebar.header("🆕 New Factor Weights")
@@ -473,7 +561,7 @@ else:
 
 # Manual Analysis
 st.header("🔍 Game Analysis")
-st.write("**Select teams • Rest days auto-detected • Injuries auto-detected**")
+st.write("**Select teams • Everything auto-detected • No manual input needed**")
 
 if 'selected_game' in dir() and selected_game:
     try:
@@ -498,22 +586,20 @@ with col1:
     manual_home_rest = st.number_input("Home Rest Days", 0, 7, min(auto_home_rest, 7), 
                                         help=f"Auto-detected: {auto_home_rest} days")
     
-    # FIXED: Now using team name directly
+    # FULLY AUTOMATIC INJURY DETECTION
     home_injuries = get_cached_injuries(manual_home)
-    auto_home_injury = calculate_injury_level(home_injuries)
+    home_injury_points, home_injury_details = calculate_injury_impact(home_injuries)
+    home_severity_label, home_severity_class = get_injury_severity_label(home_injury_points)
     
-    home_injury_level = st.selectbox(
-        "Home Injury Status",
-        options=list(INJURY_LEVELS.keys()),
-        format_func=lambda x: INJURY_LEVELS[x],
-        index=auto_home_injury,
-        key="home_injury"
-    )
+    # Display injury status automatically - NO DROPDOWN
+    st.markdown(f"**Injury Status:** {home_severity_label} ({home_injury_points:.1f} pts)")
     
-    if home_injuries:
-        with st.expander(f"🏥 {len(home_injuries)} injuries detected"):
-            for inj in home_injuries[:5]:
-                st.write(f"• {inj['player']}: {inj['status']}")
+    if home_injury_details:
+        with st.expander(f"🏥 {len(home_injury_details)} injuries detected - Click for details"):
+            for inj in home_injury_details:
+                st.write(f"• {inj['tier_label']} **{inj['player']}**: {inj['status']} (-{inj['points']:.1f} pts)")
+    else:
+        st.write("✅ No injuries reported")
     
     home_b2b = manual_home_rest == 0
     if home_b2b:
@@ -527,22 +613,20 @@ with col2:
     manual_away_rest = st.number_input("Away Rest Days", 0, 7, min(auto_away_rest, 7),
                                         help=f"Auto-detected: {auto_away_rest} days")
     
-    # FIXED: Now using team name directly
+    # FULLY AUTOMATIC INJURY DETECTION
     away_injuries = get_cached_injuries(manual_away)
-    auto_away_injury = calculate_injury_level(away_injuries)
+    away_injury_points, away_injury_details = calculate_injury_impact(away_injuries)
+    away_severity_label, away_severity_class = get_injury_severity_label(away_injury_points)
     
-    away_injury_level = st.selectbox(
-        "Away Injury Status",
-        options=list(INJURY_LEVELS.keys()),
-        format_func=lambda x: INJURY_LEVELS[x],
-        index=auto_away_injury,
-        key="away_injury"
-    )
+    # Display injury status automatically - NO DROPDOWN
+    st.markdown(f"**Injury Status:** {away_severity_label} ({away_injury_points:.1f} pts)")
     
-    if away_injuries:
-        with st.expander(f"🏥 {len(away_injuries)} injuries detected"):
-            for inj in away_injuries[:5]:
-                st.write(f"• {inj['player']}: {inj['status']}")
+    if away_injury_details:
+        with st.expander(f"🏥 {len(away_injury_details)} injuries detected - Click for details"):
+            for inj in away_injury_details:
+                st.write(f"• {inj['tier_label']} **{inj['player']}**: {inj['status']} (-{inj['points']:.1f} pts)")
+    else:
+        st.write("✅ No injuries reported")
     
     away_b2b = manual_away_rest == 0
     if away_b2b:
@@ -562,7 +646,7 @@ with col4:
 if st.button("📈 Analyze Game", type="primary"):
     result = calculate_kalshi_edge(
         manual_home, manual_away, manual_spread, manual_home_rest, manual_away_rest,
-        home_injury_level, away_injury_level, manual_yes_price, home_b2b, away_b2b
+        home_injury_points, away_injury_points, manual_yes_price, home_b2b, away_b2b
     )
     
     st.subheader("📊 Analysis Results")
@@ -597,7 +681,7 @@ if st.button("📈 Analyze Game", type="primary"):
         st.write(f"• Rest Advantage: {factors['rest']:+.2f}")
         st.write(f"• Defense Advantage: {factors['defense']:+.2f}")
         st.write(f"• Pace Advantage: {factors['pace']:+.2f}")
-        st.write(f"• Injury Impact: {factors['injury']:+.2f}")
+        st.write(f"• 🏥 Injury Impact: {factors['injury']:+.2f} pts (Home: -{home_injury_points:.1f}, Away: -{away_injury_points:.1f})")
         st.write(f"• Net Rating Advantage: {factors['net_rating']:+.2f}")
         st.write("**New Factors:**")
         st.write(f"• 🏔️ Altitude Advantage: {factors['altitude']:+.2f}")
@@ -611,11 +695,11 @@ st.sidebar.write("• EV > 5¢ = Good trade")
 st.sidebar.write("• Confidence > 65% = High conviction")
 st.sidebar.write("• Edge > 1.0 = Mispricing detected")
 
-st.sidebar.header("🏥 Injury Levels")
-st.sidebar.write("• 0 = Full strength")
-st.sidebar.write("• 1 = Role player out")
-st.sidebar.write("• 2 = Star questionable")
-st.sidebar.write("• 3 = Star OUT")
+st.sidebar.header("🏥 Injury Point Values")
+st.sidebar.write("**⭐⭐⭐ MVP OUT:** 6.0 pts")
+st.sidebar.write("**⭐⭐ All-Star OUT:** 4.0 pts")
+st.sidebar.write("**⭐ Starter OUT:** 2.0 pts")
+st.sidebar.write("**Bench OUT:** 0.5 pts")
 
 st.sidebar.header("📡 Status")
 st.sidebar.write(f"• Games today: {len(todays_games)}")
