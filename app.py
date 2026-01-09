@@ -426,7 +426,7 @@ if top_edges:
         with col1:
             st.markdown(f"**#{i} {edge['color']} [{edge['type']}] {edge['date']} | {edge['game']}** → **{edge['rec']}** ({edge['edge']:.1f}% edge) • {edge['confidence']}")
         with col2:
-            st.link_button(f"BET ${edge['bet_amount']:.0f} ({edge['kelly_pct']}%)", edge['url'], use_container_width=True)
+            st.link_button(f"{edge['rec']} ${edge['bet_amount']:.0f}", edge['url'], use_container_width=True)
     st.markdown("---")
 else:
     st.info("No high-confidence edges found. Adjust Min Edge % in sidebar.")
