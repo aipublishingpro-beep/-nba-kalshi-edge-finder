@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 
 # Page config
@@ -153,43 +153,94 @@ def fetch_nba_injuries():
     except Exception as e:
         return {}
 
-def calculate_edge(home_team, away_team, kalshi_home_price, home_injuries=0, away_injuries=0):
-    """Calculate edge based on team stats vs Kalshi price"""
+def calculate_edge(home_team, away_team, kalshi_home_price, home_rest, away_rest, home_injuries, away_injuries, weights):
+    """Calculate edge based on 5 factors with adjustable weights"""
     
     home_stats = TEAM_STATS.get(home_team, {"net_rating": 0, "def_rank": 15, "pace": 99})
     away_stats = TEAM_STATS.get(away_team, {"net_rating": 0, "def_rank": 15, "pace": 99})
     
-    # Net rating difference (most important factor)
+    # ===== FACTOR 1: REST ADVANTAGE =====
+    rest_diff = home_rest - away_rest
+    if rest_diff > 0:
+        rest_score = min(rest_diff * 2, 6)  # Max 6 points for rest advantage
+    elif rest_diff < 0:
+        rest_score = max(rest_diff * 2, -6)
+    else:
+        rest_score = 0
+    
+    # ===== FACTOR 2: DEFENSE MISMATCH =====
+    # Lower rank = better defense. If home has better D (lower rank), positive score
+    def_diff = away_stats['def_rank'] - home_stats['def_rank']
+    def_score = def_diff * 0.15  # Scale factor
+    
+    # ===== FACTOR 3: INJURY IMPACT =====
+    injury_diff = away_injuries - home_injuries
+    injury_score = injury_diff * 1.5  # Each injury worth ~1.5 points
+    
+    # ===== FACTOR 4: PACE DIFFERENTIAL =====
+    pace_diff = home_stats['pace'] - away_stats['pace']
+    # Higher pace can benefit better offensive teams
+    if home_stats['net_rating'] > away_stats['net_rating']:
+        pace_score = pace_diff * 0.1
+    else:
+        pace_score = -pace_diff * 0.1
+    
+    # ===== FACTOR 5: NET RATING =====
     net_diff = home_stats['net_rating'] - away_stats['net_rating']
+    net_score = net_diff * 0.8  # Primary factor
     
-    # Home court advantage (~3 points historically)
-    home_advantage = 3.0
+    # ===== HOME COURT ADVANTAGE (baseline) =====
+    home_court = 3.0
     
-    # Defense matchup
-    def_advantage = (away_stats['def_rank'] - home_stats['def_rank']) * 0.1
+    # ===== WEIGHTED COMBINATION =====
+    weighted_spread = (
+        home_court +
+        rest_score * weights['rest'] +
+        def_score * weights['defense'] +
+        injury_score * weights['injury'] +
+        pace_score * weights['pace'] +
+        net_score * weights['net_rating']
+    )
     
-    # Injury impact (rough estimate)
-    injury_impact = (away_injuries - home_injuries) * 1.5
-    
-    # Calculate expected point spread
-    expected_spread = net_diff + home_advantage + def_advantage + injury_impact
-    
-    # Convert spread to win probability (using standard conversion)
-    # Each point of spread ≈ 2.5-3% win probability
+    # Convert spread to win probability
     spread_to_prob = 0.025
-    home_win_prob = 50 + (expected_spread * spread_to_prob * 100)
-    home_win_prob = max(5, min(95, home_win_prob))  # Cap between 5-95%
+    home_win_prob = 50 + (weighted_spread * spread_to_prob * 100)
+    home_win_prob = max(5, min(95, home_win_prob))
     
     # Calculate edge vs Kalshi price
     edge = home_win_prob - kalshi_home_price
+    
+    # Expected value calculation
+    if edge > 0:
+        ev = (home_win_prob / 100) * (100 - kalshi_home_price) - ((100 - home_win_prob) / 100) * kalshi_home_price
+    else:
+        ev = ((100 - home_win_prob) / 100) * kalshi_home_price - (home_win_prob / 100) * (100 - kalshi_home_price)
     
     return {
         'home_win_prob': round(home_win_prob, 1),
         'kalshi_price': kalshi_home_price,
         'edge': round(edge, 1),
-        'expected_spread': round(expected_spread, 1),
+        'expected_spread': round(weighted_spread, 1),
+        'expected_value': round(ev, 2),
         'recommendation': 'BUY YES' if edge > 5 else ('BUY NO' if edge < -5 else 'NO EDGE'),
-        'confidence': 'HIGH' if abs(edge) > 10 else ('MEDIUM' if abs(edge) > 5 else 'LOW')
+        'confidence': 'HIGH' if abs(edge) > 10 else ('MEDIUM' if abs(edge) > 5 else 'LOW'),
+        # Individual factor scores for breakdown
+        'factors': {
+            'rest': round(rest_score * weights['rest'], 2),
+            'defense': round(def_score * weights['defense'], 2),
+            'injury': round(injury_score * weights['injury'], 2),
+            'pace': round(pace_score * weights['pace'], 2),
+            'net_rating': round(net_score * weights['net_rating'], 2),
+            'home_court': home_court
+        },
+        # Raw values for display
+        'raw': {
+            'rest_diff': rest_diff,
+            'def_diff': def_diff,
+            'injury_diff': injury_diff,
+            'pace_diff': round(pace_diff, 1),
+            'net_diff': round(net_diff, 1)
+        }
     }
 
 # ========== MAIN APP ==========
@@ -197,17 +248,35 @@ def calculate_edge(home_team, away_team, kalshi_home_price, home_injuries=0, awa
 st.title("🏀 NBA Kalshi Edge Finder")
 st.markdown("**Powered by Kalshi API** - Real-time prices direct from Kalshi")
 
-# Sidebar settings
-st.sidebar.header("⚙️ Settings")
-min_edge = st.sidebar.slider("Minimum Edge to Show", 0, 20, 5, help="Only show games with this much edge or more")
-show_all = st.sidebar.checkbox("Show all games (including no-edge)", value=True)
+# ========== SIDEBAR ==========
+st.sidebar.header("⚙️ Factor Weights")
+st.sidebar.caption("Adjust how much each factor influences the edge calculation")
+
+weights = {
+    'rest': st.sidebar.slider("🛏️ Rest Advantage", 0.0, 2.0, 1.0, 0.1),
+    'defense': st.sidebar.slider("🛡️ Defense Mismatch", 0.0, 2.0, 1.0, 0.1),
+    'injury': st.sidebar.slider("🏥 Injury Impact", 0.0, 2.0, 1.0, 0.1),
+    'pace': st.sidebar.slider("⚡ Pace Differential", 0.0, 2.0, 1.0, 0.1),
+    'net_rating': st.sidebar.slider("📊 Net Rating", 0.0, 2.0, 1.0, 0.1),
+}
+
+st.sidebar.markdown("---")
+st.sidebar.header("🎯 Display Settings")
+min_edge = st.sidebar.slider("Minimum Edge to Highlight", 0, 20, 5)
+show_all = st.sidebar.checkbox("Show all games", value=True)
+
+st.sidebar.markdown("---")
+st.sidebar.header("📅 Rest Days (Manual)")
+st.sidebar.caption("Set rest days for each team if known")
+default_home_rest = st.sidebar.number_input("Default Home Rest Days", 1, 7, 2)
+default_away_rest = st.sidebar.number_input("Default Away Rest Days", 1, 7, 2)
 
 # Refresh button
 if st.sidebar.button("🔄 Refresh Data"):
     st.cache_data.clear()
     st.rerun()
 
-# Fetch data
+# ========== FETCH DATA ==========
 with st.spinner("Fetching Kalshi NBA markets..."):
     games = fetch_kalshi_nba_games()
     injuries = fetch_nba_injuries()
@@ -225,11 +294,20 @@ else:
         kalshi_price = game['yes_price']
         
         # Count injuries
-        home_injuries = len(injuries.get(home, []))
-        away_injuries = len(injuries.get(away, []))
+        home_injury_list = injuries.get(home, [])
+        away_injury_list = injuries.get(away, [])
+        home_injury_count = len(home_injury_list)
+        away_injury_count = len(away_injury_list)
         
-        # Calculate edge
-        analysis = calculate_edge(home, away, kalshi_price, home_injuries, away_injuries)
+        # Calculate edge with all 5 factors
+        analysis = calculate_edge(
+            home, away, kalshi_price,
+            home_rest=default_home_rest,
+            away_rest=default_away_rest,
+            home_injuries=home_injury_count,
+            away_injuries=away_injury_count,
+            weights=weights
+        )
         
         # Skip if below minimum edge and not showing all
         if not show_all and abs(analysis['edge']) < min_edge:
@@ -243,24 +321,27 @@ else:
         else:
             rec_color = "⚪"
         
-        with st.expander(f"{rec_color} {away} @ {home} | Edge: {analysis['edge']:+.1f}%", expanded=False):
+        with st.expander(f"{rec_color} {away} @ {home} | Edge: {analysis['edge']:+.1f}% | {analysis['recommendation']}", expanded=False):
+            
+            # Row 1: Kalshi Prices | Our Model | Recommendation
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.markdown("**📊 Kalshi Prices**")
+                st.markdown("### 📊 Kalshi Prices")
                 st.metric(f"{home} (YES)", f"{kalshi_price:.0f}¢")
                 st.metric(f"{away} (NO)", f"{100-kalshi_price:.0f}¢")
                 st.caption(f"Volume: {game['volume']:,} contracts")
             
             with col2:
-                st.markdown("**🎯 Our Model**")
+                st.markdown("### 🎯 Our Model")
                 st.metric(f"{home} Win Prob", f"{analysis['home_win_prob']:.1f}%")
                 st.metric("Expected Spread", f"{home} {analysis['expected_spread']:+.1f}")
             
             with col3:
-                st.markdown("**💰 Edge Analysis**")
+                st.markdown("### 💰 Recommendation")
                 edge_val = analysis['edge']
                 st.metric("Edge", f"{edge_val:+.1f}%", delta=f"{analysis['confidence']} confidence")
+                st.metric("Expected Value", f"{analysis['expected_value']:+.2f}¢")
                 
                 if analysis['recommendation'] == 'BUY YES':
                     st.success(f"**{analysis['recommendation']}** on {home}")
@@ -269,23 +350,72 @@ else:
                 else:
                     st.info("No significant edge")
             
-            # Injury report
+            # Row 2: Factor Breakdown
             st.markdown("---")
+            st.markdown("### 📈 Factor Breakdown")
+            
+            factor_col1, factor_col2, factor_col3, factor_col4, factor_col5 = st.columns(5)
+            
+            factors = analysis['factors']
+            raw = analysis['raw']
+            
+            with factor_col1:
+                st.markdown("**🛏️ Rest**")
+                st.metric("Impact", f"{factors['rest']:+.2f}")
+                st.caption(f"Diff: {raw['rest_diff']:+d} days")
+            
+            with factor_col2:
+                st.markdown("**🛡️ Defense**")
+                st.metric("Impact", f"{factors['defense']:+.2f}")
+                st.caption(f"Rank diff: {raw['def_diff']:+d}")
+            
+            with factor_col3:
+                st.markdown("**🏥 Injuries**")
+                st.metric("Impact", f"{factors['injury']:+.2f}")
+                st.caption(f"Diff: {raw['injury_diff']:+d}")
+            
+            with factor_col4:
+                st.markdown("**⚡ Pace**")
+                st.metric("Impact", f"{factors['pace']:+.2f}")
+                st.caption(f"Diff: {raw['pace_diff']:+.1f}")
+            
+            with factor_col5:
+                st.markdown("**📊 Net Rating**")
+                st.metric("Impact", f"{factors['net_rating']:+.2f}")
+                st.caption(f"Diff: {raw['net_diff']:+.1f}")
+            
+            st.caption(f"🏠 Home Court Baseline: +{factors['home_court']:.1f}")
+            
+            # Row 3: Injury Details
+            st.markdown("---")
+            st.markdown("### 🏥 Injury Report")
             inj_col1, inj_col2 = st.columns(2)
+            
             with inj_col1:
-                st.markdown(f"**🏥 {away} Injuries ({away_injuries})**")
-                away_inj = injuries.get(away, [])
-                st.caption(", ".join(away_inj[:5]) if away_inj else "None reported")
+                st.markdown(f"**{away} ({away_injury_count} injuries)**")
+                if away_injury_list:
+                    for inj in away_injury_list[:5]:
+                        st.caption(f"• {inj}")
+                    if len(away_injury_list) > 5:
+                        st.caption(f"... and {len(away_injury_list) - 5} more")
+                else:
+                    st.caption("None reported")
             
             with inj_col2:
-                st.markdown(f"**🏥 {home} Injuries ({home_injuries})**")
-                home_inj = injuries.get(home, [])
-                st.caption(", ".join(home_inj[:5]) if home_inj else "None reported")
+                st.markdown(f"**{home} ({home_injury_count} injuries)**")
+                if home_injury_list:
+                    for inj in home_injury_list[:5]:
+                        st.caption(f"• {inj}")
+                    if len(home_injury_list) > 5:
+                        st.caption(f"... and {len(home_injury_list) - 5} more")
+                else:
+                    st.caption("None reported")
             
-            # Direct link to Kalshi market
-            st.markdown(f"[📈 Trade on Kalshi](https://kalshi.com/markets/kxnbagame/professional-basketball-game/{game['ticker'].lower()})")
+            # Trade link
+            st.markdown("---")
+            st.markdown(f"[📈 **Trade this game on Kalshi**](https://kalshi.com/markets/kxnbagame/professional-basketball-game/{game['ticker'].lower()})")
 
-# Summary table
+# ========== SUMMARY TABLE ==========
 st.markdown("---")
 st.subheader("📋 Edge Summary")
 
@@ -293,15 +423,21 @@ summary_data = []
 for game in games:
     home = game['home_team']
     away = game['away_team']
-    home_injuries = len(injuries.get(home, []))
-    away_injuries = len(injuries.get(away, []))
-    analysis = calculate_edge(home, away, game['yes_price'], home_injuries, away_injuries)
+    home_injury_count = len(injuries.get(home, []))
+    away_injury_count = len(injuries.get(away, []))
+    
+    analysis = calculate_edge(
+        home, away, game['yes_price'],
+        default_home_rest, default_away_rest,
+        home_injury_count, away_injury_count, weights
+    )
     
     summary_data.append({
         'Matchup': f"{away} @ {home}",
         'Kalshi YES': f"{game['yes_price']:.0f}¢",
         'Model Prob': f"{analysis['home_win_prob']:.1f}%",
         'Edge': f"{analysis['edge']:+.1f}%",
+        'EV': f"{analysis['expected_value']:+.2f}¢",
         'Signal': analysis['recommendation'],
         'Confidence': analysis['confidence']
     })
@@ -310,7 +446,7 @@ if summary_data:
     df = pd.DataFrame(summary_data)
     st.dataframe(df, use_container_width=True, hide_index=True)
 
-# Footer
+# ========== FOOTER ==========
 st.markdown("---")
 st.caption("⚠️ **Disclaimer:** For educational and entertainment purposes only. Not financial advice. Past performance does not guarantee future results. Only trade what you can afford to lose.")
 st.caption("Data: Kalshi API (prices), ESPN (injuries) | Refresh rate: 5 minutes")
