@@ -51,6 +51,57 @@ TEAM_STATS = {
     "Washington": {"abbrev": "WAS", "net_rating": -9.2, "def_rank": 30, "pace": 101.2},
 }
 
+# Team city coordinates for travel distance (lat, lon)
+TEAM_LOCATIONS = {
+    "Atlanta": (33.757, -84.396),
+    "Boston": (42.366, -71.062),
+    "Brooklyn": (40.683, -73.976),
+    "Charlotte": (35.225, -80.839),
+    "Chicago": (41.881, -87.674),
+    "Cleveland": (41.496, -81.688),
+    "Dallas": (32.790, -96.810),
+    "Denver": (39.749, -105.010),
+    "Detroit": (42.341, -83.055),
+    "Golden State": (37.768, -122.388),
+    "Houston": (29.751, -95.362),
+    "Indiana": (39.764, -86.156),
+    "LA Clippers": (34.043, -118.267),
+    "LA Lakers": (34.043, -118.267),
+    "Memphis": (35.138, -90.051),
+    "Miami": (25.781, -80.188),
+    "Milwaukee": (43.045, -87.917),
+    "Minnesota": (44.979, -93.276),
+    "New Orleans": (29.949, -90.082),
+    "New York": (40.751, -73.994),
+    "Oklahoma City": (35.463, -97.515),
+    "Orlando": (28.539, -81.384),
+    "Philadelphia": (39.901, -75.172),
+    "Phoenix": (33.446, -112.071),
+    "Portland": (45.532, -122.667),
+    "Sacramento": (38.580, -121.500),
+    "San Antonio": (29.427, -98.438),
+    "Toronto": (43.643, -79.379),
+    "Utah": (40.768, -111.901),
+    "Washington": (38.898, -77.021),
+}
+
+def calculate_travel_distance(team1, team2):
+    """Calculate approximate travel distance in miles between two teams"""
+    import math
+    loc1 = TEAM_LOCATIONS.get(team1)
+    loc2 = TEAM_LOCATIONS.get(team2)
+    if not loc1 or not loc2:
+        return 0
+    # Haversine formula
+    lat1, lon1 = math.radians(loc1[0]), math.radians(loc1[1])
+    lat2, lon2 = math.radians(loc2[0]), math.radians(loc2[1])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+    c = 2 * math.asin(math.sqrt(a))
+    miles = 3956 * c  # Earth radius in miles
+    return round(miles)
+
 # Kalshi abbreviation to full name mapping
 KALSHI_ABBREV_MAP = {
     "ATL": "Atlanta", "BOS": "Boston", "BKN": "Brooklyn", "CHA": "Charlotte",
@@ -153,8 +204,127 @@ def fetch_nba_injuries():
     except Exception as e:
         return {}
 
-def calculate_edge(home_team, away_team, kalshi_home_price, home_rest, away_rest, home_injuries, away_injuries, weights):
-    """Calculate edge based on 5 factors with adjustable weights"""
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def fetch_team_last_games():
+    """Fetch recent NBA schedule to calculate rest days for each team"""
+    try:
+        # Get games from the last 7 days
+        team_last_game = {}
+        today = datetime.now()
+        
+        # NBA API for scoreboard - check last 7 days
+        for days_ago in range(1, 8):
+            check_date = today - timedelta(days=days_ago)
+            date_str = check_date.strftime("%Y-%m-%d")
+            
+            url = f"https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json"
+            # Use the historical endpoint
+            hist_url = f"https://stats.nba.com/stats/scoreboardv2?GameDate={date_str}&LeagueID=00"
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0',
+                'Referer': 'https://www.nba.com/',
+                'Accept': 'application/json'
+            }
+            
+            try:
+                resp = requests.get(hist_url, headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    game_header = data.get('resultSets', [{}])[0]
+                    headers_list = game_header.get('headers', [])
+                    rows = game_header.get('rowSet', [])
+                    
+                    if 'HOME_TEAM_ID' in headers_list and 'VISITOR_TEAM_ID' in headers_list:
+                        home_idx = headers_list.index('HOME_TEAM_ID')
+                        away_idx = headers_list.index('VISITOR_TEAM_ID')
+                        
+                        for row in rows:
+                            # Map team IDs to names and store last game date
+                            pass  # Complex mapping needed
+            except:
+                pass
+        
+        return team_last_game
+    except Exception as e:
+        return {}
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour  
+def fetch_rest_days_espn():
+    """Fetch rest days from ESPN schedule"""
+    try:
+        team_rest = {}
+        today = datetime.now()
+        
+        # Scrape ESPN schedule for last 5 days
+        for days_ago in range(1, 6):
+            check_date = today - timedelta(days=days_ago)
+            date_str = check_date.strftime("%Y%m%d")
+            
+            url = f"https://www.espn.com/nba/schedule/_/date/{date_str}"
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            
+            try:
+                resp = requests.get(url, headers=headers, timeout=10)
+                soup = BeautifulSoup(resp.content, 'lxml')
+                
+                # Find all team links in the schedule
+                team_links = soup.find_all('a', class_='AnchorLink')
+                for link in team_links:
+                    href = link.get('href', '')
+                    if '/nba/team/' in href:
+                        team_name = link.text.strip()
+                        # Map ESPN names to our names
+                        team_mapped = map_espn_team_name(team_name)
+                        if team_mapped and team_mapped not in team_rest:
+                            team_rest[team_mapped] = days_ago
+            except:
+                continue
+        
+        return team_rest
+    except:
+        return {}
+
+def map_espn_team_name(espn_name):
+    """Map ESPN team names to our standard names"""
+    espn_map = {
+        "Hawks": "Atlanta", "Celtics": "Boston", "Nets": "Brooklyn",
+        "Hornets": "Charlotte", "Bulls": "Chicago", "Cavaliers": "Cleveland",
+        "Mavericks": "Dallas", "Nuggets": "Denver", "Pistons": "Detroit",
+        "Warriors": "Golden State", "Rockets": "Houston", "Pacers": "Indiana",
+        "Clippers": "LA Clippers", "Lakers": "LA Lakers", "Grizzlies": "Memphis",
+        "Heat": "Miami", "Bucks": "Milwaukee", "Timberwolves": "Minnesota",
+        "Pelicans": "New Orleans", "Knicks": "New York", "Thunder": "Oklahoma City",
+        "Magic": "Orlando", "76ers": "Philadelphia", "Suns": "Phoenix",
+        "Trail Blazers": "Portland", "Blazers": "Portland", "Kings": "Sacramento",
+        "Spurs": "San Antonio", "Raptors": "Toronto", "Jazz": "Utah",
+        "Wizards": "Washington",
+        # Full names
+        "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston",
+        "Brooklyn Nets": "Brooklyn", "Charlotte Hornets": "Charlotte",
+        "Chicago Bulls": "Chicago", "Cleveland Cavaliers": "Cleveland",
+        "Dallas Mavericks": "Dallas", "Denver Nuggets": "Denver",
+        "Detroit Pistons": "Detroit", "Golden State Warriors": "Golden State",
+        "Houston Rockets": "Houston", "Indiana Pacers": "Indiana",
+        "LA Clippers": "LA Clippers", "Los Angeles Clippers": "LA Clippers",
+        "LA Lakers": "LA Lakers", "Los Angeles Lakers": "LA Lakers",
+        "Memphis Grizzlies": "Memphis", "Miami Heat": "Miami",
+        "Milwaukee Bucks": "Milwaukee", "Minnesota Timberwolves": "Minnesota",
+        "New Orleans Pelicans": "New Orleans", "New York Knicks": "New York",
+        "Oklahoma City Thunder": "Oklahoma City", "Orlando Magic": "Orlando",
+        "Philadelphia 76ers": "Philadelphia", "Phoenix Suns": "Phoenix",
+        "Portland Trail Blazers": "Portland", "Sacramento Kings": "Sacramento",
+        "San Antonio Spurs": "San Antonio", "Toronto Raptors": "Toronto",
+        "Utah Jazz": "Utah", "Washington Wizards": "Washington"
+    }
+    return espn_map.get(espn_name, None)
+
+def get_team_rest_days(team_name, rest_data, default=2):
+    """Get rest days for a team, with fallback to default"""
+    return rest_data.get(team_name, default)
+
+def calculate_edge(home_team, away_team, kalshi_home_price, home_rest, away_rest, home_injuries, away_injuries, away_travel_miles, weights):
+    """Calculate edge based on 6 factors with adjustable weights"""
     
     home_stats = TEAM_STATS.get(home_team, {"net_rating": 0, "def_rank": 15, "pace": 99})
     away_stats = TEAM_STATS.get(away_team, {"net_rating": 0, "def_rank": 15, "pace": 99})
@@ -189,6 +359,18 @@ def calculate_edge(home_team, away_team, kalshi_home_price, home_rest, away_rest
     net_diff = home_stats['net_rating'] - away_stats['net_rating']
     net_score = net_diff * 0.8  # Primary factor
     
+    # ===== FACTOR 6: TRAVEL FATIGUE =====
+    # Away team traveling long distance = advantage for home
+    # 0-500 miles = no impact, 500-1500 = small impact, 1500+ = bigger impact
+    if away_travel_miles > 1500:
+        travel_score = 2.5
+    elif away_travel_miles > 1000:
+        travel_score = 1.5
+    elif away_travel_miles > 500:
+        travel_score = 0.75
+    else:
+        travel_score = 0
+    
     # ===== HOME COURT ADVANTAGE (baseline) =====
     home_court = 3.0
     
@@ -199,7 +381,8 @@ def calculate_edge(home_team, away_team, kalshi_home_price, home_rest, away_rest
         def_score * weights['defense'] +
         injury_score * weights['injury'] +
         pace_score * weights['pace'] +
-        net_score * weights['net_rating']
+        net_score * weights['net_rating'] +
+        travel_score * weights['travel']
     )
     
     # Convert spread to win probability
@@ -231,6 +414,7 @@ def calculate_edge(home_team, away_team, kalshi_home_price, home_rest, away_rest
             'injury': round(injury_score * weights['injury'], 2),
             'pace': round(pace_score * weights['pace'], 2),
             'net_rating': round(net_score * weights['net_rating'], 2),
+            'travel': round(travel_score * weights['travel'], 2),
             'home_court': home_court
         },
         # Raw values for display
@@ -239,7 +423,8 @@ def calculate_edge(home_team, away_team, kalshi_home_price, home_rest, away_rest
             'def_diff': def_diff,
             'injury_diff': injury_diff,
             'pace_diff': round(pace_diff, 1),
-            'net_diff': round(net_diff, 1)
+            'net_diff': round(net_diff, 1),
+            'travel_miles': away_travel_miles
         }
     }
 
@@ -258,6 +443,7 @@ weights = {
     'injury': st.sidebar.slider("🏥 Injury Impact", 0.0, 2.0, 1.0, 0.1),
     'pace': st.sidebar.slider("⚡ Pace Differential", 0.0, 2.0, 1.0, 0.1),
     'net_rating': st.sidebar.slider("📊 Net Rating", 0.0, 2.0, 1.0, 0.1),
+    'travel': st.sidebar.slider("✈️ Travel Fatigue", 0.0, 2.0, 1.0, 0.1),
 }
 
 st.sidebar.markdown("---")
@@ -266,10 +452,10 @@ min_edge = st.sidebar.slider("Minimum Edge to Highlight", 0, 20, 5)
 show_all = st.sidebar.checkbox("Show all games", value=True)
 
 st.sidebar.markdown("---")
-st.sidebar.header("📅 Rest Days (Manual)")
-st.sidebar.caption("Set rest days for each team if known")
-default_home_rest = st.sidebar.number_input("Default Home Rest Days", 1, 7, 2)
-default_away_rest = st.sidebar.number_input("Default Away Rest Days", 1, 7, 2)
+st.sidebar.header("📅 Default Rest Days")
+st.sidebar.caption("Fallback if auto-detection fails")
+default_home_rest = st.sidebar.number_input("Default Home Rest", 1, 7, 2)
+default_away_rest = st.sidebar.number_input("Default Away Rest", 1, 7, 2)
 
 # Refresh button
 if st.sidebar.button("🔄 Refresh Data"):
@@ -280,6 +466,15 @@ if st.sidebar.button("🔄 Refresh Data"):
 with st.spinner("Fetching Kalshi NBA markets..."):
     games = fetch_kalshi_nba_games()
     injuries = fetch_nba_injuries()
+    rest_days_data = fetch_rest_days_espn()
+
+if rest_days_data:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🛏️ Auto Rest Days")
+    st.sidebar.caption(f"Found rest data for {len(rest_days_data)} teams")
+    st.sidebar.caption("(Days since last game)")
+else:
+    st.sidebar.caption("Rest days: using defaults")
 
 if not games:
     st.warning("No NBA games found on Kalshi right now. Games appear closer to game time.")
@@ -299,13 +494,21 @@ else:
         home_injury_count = len(home_injury_list)
         away_injury_count = len(away_injury_list)
         
-        # Calculate edge with all 5 factors
+        # Calculate travel distance for away team
+        away_travel = calculate_travel_distance(away, home)
+        
+        # Get auto rest days (fallback to sidebar default)
+        auto_home_rest = get_team_rest_days(home, rest_days_data, default_home_rest)
+        auto_away_rest = get_team_rest_days(away, rest_days_data, default_away_rest)
+        
+        # Calculate edge with all 6 factors
         analysis = calculate_edge(
             home, away, kalshi_price,
-            home_rest=default_home_rest,
-            away_rest=default_away_rest,
+            home_rest=auto_home_rest,
+            away_rest=auto_away_rest,
             home_injuries=home_injury_count,
             away_injuries=away_injury_count,
+            away_travel_miles=away_travel,
             weights=weights
         )
         
@@ -332,8 +535,26 @@ else:
         
         with st.expander(f"{rec_color} {game_date_str} | {away} @ {home} | Edge: {analysis['edge']:+.1f}% | {analysis['recommendation']}", expanded=False):
             
-            # Row 1: Kalshi Prices | Our Model | Recommendation
-            col1, col2, col3 = st.columns(3)
+            # Rest days inputs for this specific game (auto-filled, can override)
+            st.markdown("### 🛏️ Rest Days (Auto-detected, adjust if needed)")
+            rest_col1, rest_col2 = st.columns(2)
+            with rest_col1:
+                game_away_rest = st.number_input(f"{away} rest days", 0, 7, auto_away_rest, key=f"away_rest_{game['ticker']}")
+            with rest_col2:
+                game_home_rest = st.number_input(f"{home} rest days", 0, 7, auto_home_rest, key=f"home_rest_{game['ticker']}")
+            
+            # Recalculate with user-input rest days
+            analysis = calculate_edge(
+                home, away, kalshi_price,
+                home_rest=game_home_rest,
+                away_rest=game_away_rest,
+                home_injuries=home_injury_count,
+                away_injuries=away_injury_count,
+                away_travel_miles=away_travel,
+                weights=weights
+            )
+            
+            st.markdown("---
             
             with col1:
                 st.markdown("### 📊 Kalshi Prices")
@@ -366,7 +587,7 @@ else:
             st.markdown("---")
             st.markdown("### 📈 Factor Breakdown")
             
-            factor_col1, factor_col2, factor_col3, factor_col4, factor_col5 = st.columns(5)
+            factor_col1, factor_col2, factor_col3, factor_col4, factor_col5, factor_col6 = st.columns(6)
             
             factors = analysis['factors']
             raw = analysis['raw']
@@ -395,6 +616,11 @@ else:
                 st.markdown("**📊 Net Rating**")
                 st.metric("Impact", f"{factors['net_rating']:+.2f}")
                 st.caption(f"Diff: {raw['net_diff']:+.1f}")
+            
+            with factor_col6:
+                st.markdown("**✈️ Travel**")
+                st.metric("Impact", f"{factors['travel']:+.2f}")
+                st.caption(f"{raw['travel_miles']:,} miles")
             
             st.caption(f"🏠 Home Court Baseline: +{factors['home_court']:.1f}")
             
@@ -437,11 +663,15 @@ for game in games:
     away = game['away_team']
     home_injury_count = len(injuries.get(home, []))
     away_injury_count = len(injuries.get(away, []))
+    away_travel = calculate_travel_distance(away, home)
+    auto_home_rest = get_team_rest_days(home, rest_days_data, default_home_rest)
+    auto_away_rest = get_team_rest_days(away, rest_days_data, default_away_rest)
     
     analysis = calculate_edge(
         home, away, game['yes_price'],
-        default_home_rest, default_away_rest,
-        home_injury_count, away_injury_count, weights
+        auto_home_rest, auto_away_rest,
+        home_injury_count, away_injury_count,
+        away_travel, weights
     )
     
     summary_data.append({
