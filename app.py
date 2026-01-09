@@ -74,36 +74,17 @@ def calculate_travel_distance(team1, team2):
     a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
     return round(3956 * 2 * math.asin(math.sqrt(a)))
 
-# ========== KELLY CRITERION CALCULATOR ==========
 def calculate_kelly(win_prob, kalshi_price, bankroll=1000, fraction=0.25):
-    """
-    Kelly Criterion for Kalshi betting
-    win_prob: your estimated probability (0-100)
-    kalshi_price: price in cents (0-100)
-    fraction: Kelly fraction (0.25 = quarter Kelly, safer)
-    """
-    p = win_prob / 100  # Convert to decimal
+    p = win_prob / 100
     q = 1 - p
-    
-    # For YES bet at kalshi_price cents
-    # Win: gain (100 - kalshi_price) cents
-    # Lose: lose kalshi_price cents
-    b = (100 - kalshi_price) / kalshi_price if kalshi_price > 0 else 0  # Odds ratio
-    
+    b = (100 - kalshi_price) / kalshi_price if kalshi_price > 0 else 0
     kelly_pct = (b * p - q) / b if b > 0 else 0
-    kelly_pct = max(0, kelly_pct)  # Can't bet negative
-    
-    # Apply fraction (quarter Kelly default)
+    kelly_pct = max(0, kelly_pct)
     adj_kelly = kelly_pct * fraction
-    
     bet_amount = bankroll * adj_kelly
-    
-    # Expected Value per $1 bet
-    # EV = (win_prob × profit) - (lose_prob × cost)
-    profit_if_win = (100 - kalshi_price) / kalshi_price if kalshi_price > 0 else 0  # Per $1 bet
-    ev_per_dollar = (p * profit_if_win) - (q * 1)  # Win pays profit, lose costs $1
-    ev_on_bet = ev_per_dollar * bet_amount  # EV on recommended bet
-    
+    profit_if_win = (100 - kalshi_price) / kalshi_price if kalshi_price > 0 else 0
+    ev_per_dollar = (p * profit_if_win) - (q * 1)
+    ev_on_bet = ev_per_dollar * bet_amount
     return {
         'full_kelly_pct': round(kelly_pct * 100, 1),
         'adj_kelly_pct': round(adj_kelly * 100, 1),
@@ -113,178 +94,100 @@ def calculate_kelly(win_prob, kalshi_price, bankroll=1000, fraction=0.25):
         'ev_on_bet': round(ev_on_bet, 2)
     }
 
-# ========== TOTAL POINTS CALCULATOR ==========
 def calculate_total_points(home_team, away_team, home_rest, away_rest, home_injuries, away_injuries, travel_miles):
     home = TEAM_STATS.get(home_team, {"ppg": 112, "opp_ppg": 112, "pace": 99, "off_rating": 112, "def_rating": 112, "three_pa": 36, "three_pct": 0.35, "oreb_pct": 27, "tov_pct": 13})
     away = TEAM_STATS.get(away_team, {"ppg": 112, "opp_ppg": 112, "pace": 99, "off_rating": 112, "def_rating": 112, "three_pa": 36, "three_pct": 0.35, "oreb_pct": 27, "tov_pct": 13})
     
-    # === FACTOR 1: BASE TOTAL ===
-    # Average of what each team scores vs what opponent allows
     home_expected = (home['ppg'] + away['opp_ppg']) / 2
     away_expected = (away['ppg'] + home['opp_ppg']) / 2
     base_total = home_expected + away_expected
     
-    # === FACTOR 2: PACE ===
     avg_pace = (home['pace'] + away['pace']) / 2
-    league_avg_pace = 99.5
-    pace_adj = (avg_pace - league_avg_pace) * 0.5
+    pace_adj = (avg_pace - 99.5) * 0.5
     
-    # === FACTOR 3: REST (CORRECTED - tired = LOWER scores) ===
     home_b2b = home_rest == 0 or home_rest == 1
     away_b2b = away_rest == 0 or away_rest == 1
-    home_rested = home_rest >= 2
-    away_rested = away_rest >= 2
+    if home_b2b and away_b2b: rest_adj = -5
+    elif home_b2b: rest_adj = -2.5
+    elif away_b2b: rest_adj = -2.5
+    elif home_rest >= 2 and away_rest >= 2: rest_adj = 3
+    else: rest_adj = 0
     
-    if home_b2b and away_b2b:
-        rest_adj = -5  # Both tired = sluggish low-scoring game
-    elif home_b2b:
-        rest_adj = -2.5  # Home tired
-    elif away_b2b:
-        rest_adj = -2.5  # Away tired
-    elif home_rested and away_rested:
-        rest_adj = 3  # Both fresh = run and gun
-    else:
-        rest_adj = 0
-    
-    # === FACTOR 4: 3-POINT SHOOTING ===
     combined_3pa = home.get('three_pa', 36) + away.get('three_pa', 36)
-    league_avg_3pa = 72  # ~36 per team
-    three_volume_adj = (combined_3pa - league_avg_3pa) * 0.12
-    
+    three_volume_adj = (combined_3pa - 72) * 0.12
     avg_3pct = (home.get('three_pct', 0.35) + away.get('three_pct', 0.35)) / 2
-    if avg_3pct > 0.37:
-        three_pct_adj = 2
-    elif avg_3pct < 0.34:
-        three_pct_adj = -2
-    else:
-        three_pct_adj = 0
-    
+    three_pct_adj = 2 if avg_3pct > 0.37 else (-2 if avg_3pct < 0.34 else 0)
     three_adj = three_volume_adj + three_pct_adj
     
-    # === FACTOR 5: DEFENSE ===
     avg_def_rating = (home['def_rating'] + away['def_rating']) / 2
-    league_avg_def = 112
-    defense_adj = (avg_def_rating - league_avg_def) * 0.4  # Bad D = more points
+    defense_adj = (avg_def_rating - 112) * 0.4
     
-    # === FACTOR 6: TRAVEL ===
-    if travel_miles > 2000:
-        travel_adj = -3  # Very long = exhausted = lower
-    elif travel_miles > 1500:
-        travel_adj = -2
-    elif travel_miles > 1000:
-        travel_adj = -1
-    else:
-        travel_adj = 0
-    
-    # === FACTOR 7: INJURIES ===
+    travel_adj = -3 if travel_miles > 2000 else (-2 if travel_miles > 1500 else (-1 if travel_miles > 1000 else 0))
     injury_adj = -(home_injuries + away_injuries) * 1.5
     
-    # === FACTOR 8: OFFENSIVE REBOUNDING ===
     avg_oreb = (home.get('oreb_pct', 27) + away.get('oreb_pct', 27)) / 2
-    league_avg_oreb = 27
-    oreb_adj = (avg_oreb - league_avg_oreb) * 0.3  # More OREBs = 2nd chance pts
+    oreb_adj = (avg_oreb - 27) * 0.3
     
-    # === FACTOR 9: TURNOVERS ===
     avg_tov = (home.get('tov_pct', 13) + away.get('tov_pct', 13)) / 2
-    league_avg_tov = 13
-    tov_adj = -(avg_tov - league_avg_tov) * 0.4  # More TOs = fewer possessions = lower
+    tov_adj = -(avg_tov - 13) * 0.4
     
-    # === FACTOR 10: ALTITUDE (Denver, Utah) ===
-    altitude_adj = 0
-    if home_team == "Denver":
-        altitude_adj = 2.5  # Visiting teams struggle, but ball travels = more points
-    elif home_team == "Utah":
-        altitude_adj = 1.5
+    altitude_adj = 2.5 if home_team == "Denver" else (1.5 if home_team == "Utah" else 0)
     
-    # === FACTOR 11: OVERTIME PROBABILITY ===
     spread_diff = abs(home['net_rating'] - away['net_rating'])
-    if spread_diff < 3:
-        ot_adj = 1.5  # Close game, higher OT chance
-    elif spread_diff < 6:
-        ot_adj = 0.75
-    else:
-        ot_adj = 0
+    ot_adj = 1.5 if spread_diff < 3 else (0.75 if spread_diff < 6 else 0)
     
-    # === FINAL TOTAL ===
-    predicted_total = (base_total + pace_adj + rest_adj + three_adj + defense_adj + 
-                       travel_adj + injury_adj + oreb_adj + tov_adj + altitude_adj + ot_adj)
+    predicted_total = base_total + pace_adj + rest_adj + three_adj + defense_adj + travel_adj + injury_adj + oreb_adj + tov_adj + altitude_adj + ot_adj
     
     return {
         'predicted_total': round(predicted_total, 1),
         'factors': {
-            'base_total': round(base_total, 1),
-            'pace': round(pace_adj, 1),
-            'rest': round(rest_adj, 1),
-            '3pt': round(three_adj, 1),
-            'defense': round(defense_adj, 1),
-            'travel': round(travel_adj, 1),
-            'injury': round(injury_adj, 1),
-            'oreb': round(oreb_adj, 1),
-            'turnover': round(tov_adj, 1),
-            'altitude': round(altitude_adj, 1),
-            'ot_prob': round(ot_adj, 1)
+            'base_total': round(base_total, 1), 'pace': round(pace_adj, 1), 'rest': round(rest_adj, 1),
+            '3pt': round(three_adj, 1), 'defense': round(defense_adj, 1), 'travel': round(travel_adj, 1),
+            'injury': round(injury_adj, 1), 'oreb': round(oreb_adj, 1), 'turnover': round(tov_adj, 1),
+            'altitude': round(altitude_adj, 1), 'ot_prob': round(ot_adj, 1)
         }
     }
 
-# ========== SPREAD CALCULATOR ==========
 def calculate_spread(home_team, away_team, home_rest, away_rest, home_injuries, away_injuries, travel_miles):
     home = TEAM_STATS.get(home_team, {"net_rating": 0, "home_win_pct": 0.5})
     away = TEAM_STATS.get(away_team, {"net_rating": 0, "away_win_pct": 0.5})
     
     net_diff = home['net_rating'] - away['net_rating']
     home_court = 3.5
-    rest_diff = home_rest - away_rest
-    rest_adj = rest_diff * 1.5
+    rest_adj = (home_rest - away_rest) * 1.5
     injury_adj = (away_injuries - home_injuries) * 1.5
-    
-    if travel_miles > 1500: travel_adj = 2.5
-    elif travel_miles > 1000: travel_adj = 1.5
-    elif travel_miles > 500: travel_adj = 0.75
-    else: travel_adj = 0
-    
-    home_boost = (home['home_win_pct'] - 0.5) * 5
-    away_penalty = (0.5 - away['away_win_pct']) * 5
-    split_adj = home_boost + away_penalty
+    travel_adj = 2.5 if travel_miles > 1500 else (1.5 if travel_miles > 1000 else (0.75 if travel_miles > 500 else 0))
+    split_adj = (home['home_win_pct'] - 0.5) * 5 + (0.5 - away['away_win_pct']) * 5
     
     predicted_spread = net_diff + home_court + rest_adj + injury_adj + travel_adj + split_adj
     
     return {
         'predicted_spread': round(predicted_spread, 1),
         'factors': {
-            'net_rating': round(net_diff, 1),
-            'home_court': home_court,
-            'rest': round(rest_adj, 1),
-            'injury': round(injury_adj, 1),
-            'travel': round(travel_adj, 1),
-            'splits': round(split_adj, 1)
+            'net_rating': round(net_diff, 1), 'home_court': home_court, 'rest': round(rest_adj, 1),
+            'injury': round(injury_adj, 1), 'travel': round(travel_adj, 1), 'splits': round(split_adj, 1)
         }
     }
 
-# ========== MONEYLINE CALCULATOR ==========
 def calculate_moneyline(home_team, away_team, kalshi_price, home_rest, away_rest, home_injuries, away_injuries, travel_miles):
     spread_data = calculate_spread(home_team, away_team, home_rest, away_rest, home_injuries, away_injuries, travel_miles)
     spread = spread_data['predicted_spread']
     home_win_prob = max(5, min(95, 50 + spread * 2.5))
     edge = home_win_prob - kalshi_price
-    
     return {
-        'home_win_prob': round(home_win_prob, 1),
-        'edge': round(edge, 1),
-        'spread': round(spread, 1),
+        'home_win_prob': round(home_win_prob, 1), 'edge': round(edge, 1), 'spread': round(spread, 1),
         'recommendation': 'BUY YES' if edge > 5 else ('BUY NO' if edge < -5 else 'NO EDGE'),
         'confidence': 'HIGH' if abs(edge) > 10 else ('MEDIUM' if abs(edge) > 5 else 'LOW')
     }
 
 def parse_game_code(game_code):
-    """Parse game code to extract date, away team, home team"""
+    """Parse moneyline game code like '26JAN09NOPWAS'"""
     if len(game_code) < 6:
         return None, None, None
-    
     away_abbrev = game_code[-6:-3].upper()
     home_abbrev = game_code[-3:].upper()
     away_team = KALSHI_ABBREV_MAP.get(away_abbrev, away_abbrev)
     home_team = KALSHI_ABBREV_MAP.get(home_abbrev, home_abbrev)
-    
     game_date_str = ""
     try:
         date_part = game_code[:-6]
@@ -293,13 +196,31 @@ def parse_game_code(game_code):
                          'JUL': 'Jul', 'AUG': 'Aug', 'SEP': 'Sep', 'OCT': 'Oct', 'NOV': 'Nov', 'DEC': 'Dec'}
             game_date_str = f"{month_map.get(date_part[2:5].upper(), date_part[2:5])} {date_part[5:7]}"
     except: pass
-    
     return game_date_str, away_team, home_team
 
-def extract_line_from_title(title):
-    """Extract numeric line from title like 'Over 242.5 points' or 'wins by over 10.5'"""
-    match = re.search(r'(\d+\.?\d*)', title)
-    return float(match.group(1)) if match else 0
+def parse_event_ticker(event_ticker):
+    """Parse event_ticker like 'KXNBATOTAL-26JAN09NOPWAS' to get date and teams"""
+    try:
+        parts = event_ticker.split('-')
+        if len(parts) < 2:
+            return "", None, None
+        game_code = parts[1]  # "26JAN09NOPWAS"
+        month_map = {'JAN': 'Jan', 'FEB': 'Feb', 'MAR': 'Mar', 'APR': 'Apr', 
+                    'MAY': 'May', 'JUN': 'Jun', 'JUL': 'Jul', 'AUG': 'Aug', 
+                    'SEP': 'Sep', 'OCT': 'Oct', 'NOV': 'Nov', 'DEC': 'Dec'}
+        month_str = game_code[2:5].upper()
+        day_str = game_code[5:7]
+        game_date = f"{month_map.get(month_str, month_str)} {day_str}"
+        teams_part = game_code[7:]  # "NOPWAS"
+        if len(teams_part) >= 6:
+            away_abbrev = teams_part[:3].upper()
+            home_abbrev = teams_part[3:6].upper()
+            away_team = KALSHI_ABBREV_MAP.get(away_abbrev, away_abbrev)
+            home_team = KALSHI_ABBREV_MAP.get(home_abbrev, home_abbrev)
+            return game_date, away_team, home_team
+        return game_date, None, None
+    except:
+        return "", None, None
 
 @st.cache_data(ttl=300)
 def fetch_kalshi_nba_markets():
@@ -323,222 +244,82 @@ def fetch_kalshi_nba_markets():
             game_code = ticker.split('-')[1] if len(ticker.split('-')) > 1 else ''
             game_date, away_team, home_team = parse_game_code(game_code)
             if not home_team: continue
+            yes_bid = m.get('yes_bid', 0) or 0
+            yes_ask = m.get('yes_ask', 0) or 0
+            yes_price = (yes_bid + yes_ask) / 2 if yes_bid and yes_ask else yes_ask or yes_bid
+            markets['moneyline'].append({
+                'ticker': ticker, 'away_team': away_team, 'home_team': home_team,
+                'yes_price': yes_price, 'volume': m.get('volume', 0), 'game_date': game_date
+            })
+    except Exception as e:
+        st.sidebar.error(f"Moneyline error: {e}")
+    
+    # === TOTALS - FIXED PARSING ===
+    try:
+        url = "https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXNBATOTAL&status=open&limit=200"
+        resp = requests.get(url, timeout=10)
+        for m in resp.json().get('markets', []):
+            event_ticker = m.get('event_ticker', '')
+            ticker = m.get('ticker', '')
+            game_date, away_team, home_team = parse_event_ticker(event_ticker)
+            if not home_team: continue
+            
+            # USE floor_strike FOR THE LINE (not regex from title!)
+            line = m.get('floor_strike', 0)
             
             yes_bid = m.get('yes_bid', 0) or 0
             yes_ask = m.get('yes_ask', 0) or 0
             yes_price = (yes_bid + yes_ask) / 2 if yes_bid and yes_ask else yes_ask or yes_bid
             
-            markets['moneyline'].append({
-                'ticker': ticker, 'away_team': away_team, 'home_team': home_team,
-                'yes_price': yes_price, 'volume': m.get('volume', 0), 'game_date': game_date
+            markets['totals'].append({
+                'ticker': ticker, 'event_ticker': event_ticker,
+                'title': m.get('title', ''), 'subtitle': m.get('yes_sub_title', ''),
+                'away_team': away_team, 'home_team': home_team,
+                'line': line, 'yes_price': yes_price, 'volume': m.get('volume', 0), 'game_date': game_date
             })
-    except: pass
+    except Exception as e:
+        st.sidebar.error(f"Totals error: {e}")
     
-    # === TOTALS (Over/Under) - Try multiple approaches ===
-    totals_found = False
-    
-    # Approach 1: Try known series tickers
-    for series in ['KXNBATOTAL', 'kxnbatotal', 'KXNBATOTALPTS', 'KXPROBBALL']:
-        if totals_found:
-            break
-        try:
-            url = f"https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker={series}&status=open&limit=200"
-            resp = requests.get(url, timeout=10)
-            data = resp.json()
-            if data.get('markets'):
-                totals_found = True
-                for m in data.get('markets', []):
-                    ticker = m.get('ticker', '')
-                    title = m.get('title', '')
-                    subtitle = m.get('subtitle', '')
-                    
-                    away_team, home_team, game_date = None, None, ""
-                    
-                    if '-' in ticker:
-                        game_code = ticker.split('-')[1] if len(ticker.split('-')) > 1 else ''
-                        game_date, away_team, home_team = parse_game_code(game_code)
-                    
-                    if not home_team and ' at ' in subtitle:
-                        try:
-                            parts = subtitle.split(':')[0]
-                            teams = parts.split(' at ')
-                            if len(teams) == 2:
-                                away_team = teams[0].strip()
-                                home_team = teams[1].strip()
-                        except: pass
-                    
-                    if not home_team:
-                        continue
-                    
-                    yes_bid = m.get('yes_bid', 0) or 0
-                    yes_ask = m.get('yes_ask', 0) or 0
-                    yes_price = (yes_bid + yes_ask) / 2 if yes_bid and yes_ask else yes_ask or yes_bid
-                    
-                    line = extract_line_from_title(title)
-                    
-                    markets['totals'].append({
-                        'ticker': ticker, 'title': title, 'subtitle': subtitle,
-                        'away_team': away_team, 'home_team': home_team,
-                        'line': line, 'yes_price': yes_price, 'volume': m.get('volume', 0),
-                        'game_date': game_date
-                    })
-        except:
-            continue
-    
-    # Approach 2: Get all markets and filter for "Total Points" + NBA teams
-    if not totals_found:
-        try:
-            url = "https://api.elections.kalshi.com/trade-api/v2/markets?status=open&limit=500"
-            resp = requests.get(url, timeout=10)
-            data = resp.json()
-            for m in data.get('markets', []):
-                title = m.get('title', '').lower()
-                subtitle = m.get('subtitle', '').lower()
-                ticker = m.get('ticker', '')
-                
-                # Check if it's a basketball total points market
-                if ('total points' in title or 'total points' in subtitle or 'over' in title) and \
-                   ('basketball' in subtitle or 'nba' in subtitle or any(team.lower() in subtitle for team in KALSHI_ABBREV_MAP.values())):
-                    
-                    away_team, home_team, game_date = None, None, ""
-                    
-                    # Parse teams from subtitle
-                    if ' at ' in m.get('subtitle', ''):
-                        try:
-                            parts = m.get('subtitle', '').split(':')[0]
-                            teams = parts.split(' at ')
-                            if len(teams) == 2:
-                                away_team = teams[0].strip()
-                                home_team = teams[1].strip()
-                        except: pass
-                    
-                    if not home_team:
-                        continue
-                    
-                    yes_bid = m.get('yes_bid', 0) or 0
-                    yes_ask = m.get('yes_ask', 0) or 0
-                    yes_price = (yes_bid + yes_ask) / 2 if yes_bid and yes_ask else yes_ask or yes_bid
-                    
-                    line = extract_line_from_title(m.get('title', ''))
-                    
-                    markets['totals'].append({
-                        'ticker': ticker, 'title': m.get('title', ''), 'subtitle': m.get('subtitle', ''),
-                        'away_team': away_team, 'home_team': home_team,
-                        'line': line, 'yes_price': yes_price, 'volume': m.get('volume', 0),
-                        'game_date': game_date
-                    })
-        except:
-            pass
-    
-    # === SPREADS - Try multiple approaches ===
-    spreads_found = False
-    
-    for series in ['KXNBASPREAD', 'kxnbaspread']:
-        if spreads_found:
-            break
-        try:
-            url = f"https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker={series}&status=open&limit=200"
-            resp = requests.get(url, timeout=10)
-            data = resp.json()
-            if data.get('markets'):
-                spreads_found = True
-                for m in data.get('markets', []):
-                    ticker = m.get('ticker', '')
-                    title = m.get('title', '')
-                    subtitle = m.get('subtitle', '')
-                    
-                    away_team, home_team, game_date = None, None, ""
-                    
-                    if '-' in ticker:
-                        game_code = ticker.split('-')[1] if len(ticker.split('-')) > 1 else ''
-                        game_date, away_team, home_team = parse_game_code(game_code)
-                    
-                    if not home_team and ' at ' in subtitle:
-                        try:
-                            parts = subtitle.split(':')[0]
-                            teams = parts.split(' at ')
-                            if len(teams) == 2:
-                                away_team = teams[0].strip()
-                                home_team = teams[1].strip()
-                        except: pass
-                    
-                    if not home_team:
-                        continue
-                    
-                    yes_bid = m.get('yes_bid', 0) or 0
-                    yes_ask = m.get('yes_ask', 0) or 0
-                    yes_price = (yes_bid + yes_ask) / 2 if yes_bid and yes_ask else yes_ask or yes_bid
-                    
-                    line = extract_line_from_title(title)
-                    
-                    spread_team = None
-                    for team in [home_team, away_team]:
-                        if team and team.lower() in title.lower():
-                            spread_team = team
-                            break
-                    if not spread_team:
-                        spread_team = home_team
-                    
-                    markets['spreads'].append({
-                        'ticker': ticker, 'title': title, 'subtitle': subtitle,
-                        'away_team': away_team, 'home_team': home_team, 'spread_team': spread_team,
-                        'line': line, 'yes_price': yes_price, 'volume': m.get('volume', 0),
-                        'game_date': game_date
-                    })
-        except:
-            continue
-    
-    # Approach 2: Get all markets and filter for spreads
-    if not spreads_found:
-        try:
-            url = "https://api.elections.kalshi.com/trade-api/v2/markets?status=open&limit=500"
-            resp = requests.get(url, timeout=10)
-            data = resp.json()
-            for m in data.get('markets', []):
-                title = m.get('title', '').lower()
-                subtitle = m.get('subtitle', '').lower()
-                ticker = m.get('ticker', '')
-                
-                # Check if it's a basketball spread market
-                if ('wins by' in title or 'spread' in subtitle) and \
-                   ('basketball' in subtitle or 'nba' in subtitle or any(team.lower() in subtitle for team in KALSHI_ABBREV_MAP.values())):
-                    
-                    away_team, home_team, game_date = None, None, ""
-                    
-                    if ' at ' in m.get('subtitle', ''):
-                        try:
-                            parts = m.get('subtitle', '').split(':')[0]
-                            teams = parts.split(' at ')
-                            if len(teams) == 2:
-                                away_team = teams[0].strip()
-                                home_team = teams[1].strip()
-                        except: pass
-                    
-                    if not home_team:
-                        continue
-                    
-                    yes_bid = m.get('yes_bid', 0) or 0
-                    yes_ask = m.get('yes_ask', 0) or 0
-                    yes_price = (yes_bid + yes_ask) / 2 if yes_bid and yes_ask else yes_ask or yes_bid
-                    
-                    line = extract_line_from_title(m.get('title', ''))
-                    
-                    spread_team = None
-                    for team in [home_team, away_team]:
-                        if team and team.lower() in m.get('title', '').lower():
-                            spread_team = team
-                            break
-                    if not spread_team:
-                        spread_team = home_team
-                    
-                    markets['spreads'].append({
-                        'ticker': ticker, 'title': m.get('title', ''), 'subtitle': m.get('subtitle', ''),
-                        'away_team': away_team, 'home_team': home_team, 'spread_team': spread_team,
-                        'line': line, 'yes_price': yes_price, 'volume': m.get('volume', 0),
-                        'game_date': game_date
-                    })
-        except:
-            pass
+    # === SPREADS - FIXED PARSING ===
+    try:
+        url = "https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXNBASPREAD&status=open&limit=200"
+        resp = requests.get(url, timeout=10)
+        for m in resp.json().get('markets', []):
+            event_ticker = m.get('event_ticker', '')
+            ticker = m.get('ticker', '')
+            title = m.get('title', '')
+            game_date, away_team, home_team = parse_event_ticker(event_ticker)
+            if not home_team: continue
+            
+            # USE floor_strike FOR THE SPREAD
+            line = m.get('floor_strike', 0)
+            
+            yes_bid = m.get('yes_bid', 0) or 0
+            yes_ask = m.get('yes_ask', 0) or 0
+            yes_price = (yes_bid + yes_ask) / 2 if yes_bid and yes_ask else yes_ask or yes_bid
+            
+            # Parse spread team from ticker: "KXNBASPREAD-26JAN09NOPWAS-WAS7"
+            spread_team = None
+            ticker_parts = ticker.split('-')
+            if len(ticker_parts) >= 3:
+                team_part = ticker_parts[-1][:3].upper()  # "WAS" from "WAS7"
+                spread_team = KALSHI_ABBREV_MAP.get(team_part)
+            if not spread_team:
+                for team in [home_team, away_team]:
+                    if team and team.lower() in title.lower():
+                        spread_team = team
+                        break
+            if not spread_team:
+                spread_team = home_team
+            
+            markets['spreads'].append({
+                'ticker': ticker, 'event_ticker': event_ticker,
+                'title': title, 'subtitle': m.get('yes_sub_title', ''),
+                'away_team': away_team, 'home_team': home_team, 'spread_team': spread_team,
+                'line': line, 'yes_price': yes_price, 'volume': m.get('volume', 0), 'game_date': game_date
+            })
+    except Exception as e:
+        st.sidebar.error(f"Spreads error: {e}")
     
     # Deduplicate moneyline
     seen = {}
@@ -547,8 +328,6 @@ def fetch_kalshi_nba_markets():
         if key not in seen or g['volume'] > seen[key]['volume']:
             seen[key] = g
     markets['moneyline'] = sorted(seen.values(), key=date_sort_key)
-    
-    # Sort totals and spreads by date
     markets['totals'] = sorted(markets['totals'], key=date_sort_key)
     markets['spreads'] = sorted(markets['spreads'], key=date_sort_key)
     
@@ -605,10 +384,8 @@ now = datetime.now()
 st.caption(f"📅 {now.strftime('%A, %B %d, %Y')} | ⏰ {now.strftime('%I:%M %p')}")
 st.caption("🟢 = BUY YES (home wins / over / covers) | 🔴 = BUY NO (away wins / under / doesn't cover)")
 
-# Tabs
 tab1, tab2, tab3 = st.tabs(["🎯 Moneyline", "📊 Over/Under Totals", "📏 Spreads"])
 
-# Fetch data
 markets = fetch_kalshi_nba_markets()
 injuries = fetch_nba_injuries()
 rest_days = fetch_rest_days()
@@ -616,30 +393,30 @@ all_teams = sorted(list(TEAM_STATS.keys()))
 
 # Sidebar
 st.sidebar.header("⚙️ Settings")
-
-st.sidebar.markdown("### 🎨 Color Key")
-st.sidebar.markdown("🟢 = **BUY YES**")
-st.sidebar.markdown("🔴 = **BUY NO**")
+st.sidebar.markdown("🟢 = **BUY YES** | 🔴 = **BUY NO**")
 st.sidebar.markdown("---")
-
 default_home_rest = st.sidebar.number_input("Default Home Rest", 0, 7, 2)
 default_away_rest = st.sidebar.number_input("Default Away Rest", 0, 7, 2)
 min_edge = st.sidebar.slider("Min Edge %", 0, 25, 5)
-
 st.sidebar.markdown("---")
 st.sidebar.header("💰 Kelly Settings")
 bankroll = st.sidebar.number_input("Bankroll ($)", 100, 100000, 1000, 100)
 kelly_fraction = st.sidebar.select_slider("Kelly Fraction", options=[0.1, 0.25, 0.5, 1.0], value=0.25,
-                                          format_func=lambda x: {0.1: "1/10 Kelly", 0.25: "1/4 Kelly", 0.5: "1/2 Kelly", 1.0: "Full Kelly"}[x])
-
+                                          format_func=lambda x: {0.1: "1/10", 0.25: "1/4", 0.5: "1/2", 1.0: "Full"}[x])
 if st.sidebar.button("🔄 Refresh"):
     st.cache_data.clear()
     st.rerun()
 
-# ========== TAB 1: MONEYLINE ==========
+# Show API status in sidebar
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📊 API Status")
+st.sidebar.write(f"Moneyline: {len(markets['moneyline'])}")
+st.sidebar.write(f"Totals: {len(markets['totals'])}")
+st.sidebar.write(f"Spreads: {len(markets['spreads'])}")
+
+# TAB 1: MONEYLINE
 with tab1:
     st.markdown("### 🎯 Moneyline Analysis")
-    
     games = markets['moneyline']
     if not games:
         st.warning("No moneyline markets found")
@@ -651,319 +428,128 @@ with tab1:
             travel = calculate_travel_distance(away, home)
             home_rest = rest_days.get(home, default_home_rest)
             away_rest = rest_days.get(away, default_away_rest)
-            
             analysis = calculate_moneyline(home, away, game['yes_price'], home_rest, away_rest, home_inj, away_inj, travel)
-            
-            if abs(analysis['edge']) < min_edge:
-                continue
-            
+            if abs(analysis['edge']) < min_edge: continue
             color = "🟢" if analysis['recommendation'] == 'BUY YES' else ("🔴" if analysis['recommendation'] == 'BUY NO' else "⚪")
-            
             with st.expander(f"{color} {game['game_date']} | {away} @ {home} | Edge: {analysis['edge']:+.1f}%"):
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Kalshi Price", f"{game['yes_price']:.0f}¢ {home}")
                 c2.metric("Model Win%", f"{analysis['home_win_prob']:.1f}%")
                 c3.metric("Edge", f"{analysis['edge']:+.1f}%", analysis['confidence'])
-                
-                # Kelly Calculator
                 if analysis['recommendation'] == 'BUY YES':
                     kelly = calculate_kelly(analysis['home_win_prob'], game['yes_price'], bankroll, kelly_fraction)
                 else:
                     kelly = calculate_kelly(100 - analysis['home_win_prob'], 100 - game['yes_price'], bankroll, kelly_fraction)
-                
                 st.markdown("---")
-                st.markdown("**💰 Kelly + EV (Expected Value)**")
                 kc1, kc2, kc3, kc4 = st.columns(4)
                 kc1.metric("Bet Size", f"${kelly['bet_amount']:.2f}")
                 kc2.metric("Kelly %", f"{kelly['adj_kelly_pct']}%")
                 kc3.metric("EV/Dollar", f"${kelly['ev_per_dollar']:.3f}")
                 kc4.metric("EV on Bet", f"${kelly['ev_on_bet']:+.2f}")
-                
                 url = f"https://kalshi.com/markets/kxnbagame/{game['ticker'].lower()}"
                 if analysis['recommendation'] == 'BUY YES':
-                    st.link_button(f"🟢 {home} to WIN (YES) - Bet ${kelly['bet_amount']:.2f}", url, use_container_width=True)
+                    st.link_button(f"🟢 {home} to WIN - ${kelly['bet_amount']:.2f}", url, use_container_width=True)
                 elif analysis['recommendation'] == 'BUY NO':
-                    st.link_button(f"🔴 {away} to WIN (NO) - Bet ${kelly['bet_amount']:.2f}", url, use_container_width=True)
+                    st.link_button(f"🔴 {away} to WIN - ${kelly['bet_amount']:.2f}", url, use_container_width=True)
 
-# ========== TAB 2: TOTALS ==========
+# TAB 2: TOTALS
 with tab2:
     st.markdown("### 📊 Over/Under Totals")
-    st.caption("11 Factors: Base, Pace, Rest, 3PT, Defense, Travel, Injury, OREB, Turnovers, Altitude, OT Prob")
-    
     totals_markets = markets['totals']
-    
-    # Debug info
-    with st.expander("🔧 Debug: API Status", expanded=False):
-        st.write(f"✅ Moneyline markets: {len(markets['moneyline'])}")
-        st.write(f"📊 Totals markets: {len(markets['totals'])}")
-        st.write(f"📏 Spread markets: {len(markets['spreads'])}")
-        
-        # Test API directly
-        st.markdown("**API Test:**")
-        try:
-            test_url = "https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXNBATOTAL&status=open&limit=5"
-            test_resp = requests.get(test_url, timeout=5)
-            test_data = test_resp.json()
-            st.write(f"KXNBATOTAL response: {len(test_data.get('markets', []))} markets")
-            if test_data.get('markets'):
-                st.json(test_data['markets'][0])
-        except Exception as e:
-            st.write(f"KXNBATOTAL error: {e}")
-        
-        try:
-            test_url2 = "https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXNBASPREAD&status=open&limit=5"
-            test_resp2 = requests.get(test_url2, timeout=5)
-            test_data2 = test_resp2.json()
-            st.write(f"KXNBASPREAD response: {len(test_data2.get('markets', []))} markets")
-            if test_data2.get('markets'):
-                st.json(test_data2['markets'][0])
-        except Exception as e:
-            st.write(f"KXNBASPREAD error: {e}")
-    
     if totals_markets:
-        st.success(f"✅ Found **{len(totals_markets)} totals markets** from Kalshi API")
-        
+        st.success(f"✅ Found **{len(totals_markets)} totals markets**")
         for tm in totals_markets:
             home, away = tm['home_team'], tm['away_team']
             line = tm['line']
             yes_price = tm['yes_price']
-            
             home_inj = len(injuries.get(home, []))
             away_inj = len(injuries.get(away, []))
             travel = calculate_travel_distance(away, home)
             home_rest = rest_days.get(home, default_home_rest)
             away_rest = rest_days.get(away, default_away_rest)
-            
             totals = calculate_total_points(home, away, home_rest, away_rest, home_inj, away_inj, travel)
             predicted = totals['predicted_total']
             diff = predicted - line
-            
-            if diff > 3:
-                rec, rec_color = "OVER", "🟢"
-                win_prob = min(85, 50 + diff * 5)
-            elif diff < -3:
-                rec, rec_color = "UNDER", "🔴"
-                win_prob = min(85, 50 + abs(diff) * 5)
-            else:
-                rec, rec_color = "NO EDGE", "⚪"
-                win_prob = 50
-            
-            # Only show if there's edge or showing all
-            if rec == "NO EDGE" and min_edge > 0:
-                continue
-            
+            if diff > 3: rec, rec_color, win_prob = "OVER", "🟢", min(85, 50 + diff * 5)
+            elif diff < -3: rec, rec_color, win_prob = "UNDER", "🔴", min(85, 50 + abs(diff) * 5)
+            else: rec, rec_color, win_prob = "NO EDGE", "⚪", 50
+            if rec == "NO EDGE" and min_edge > 0: continue
             with st.expander(f"{rec_color} {tm['game_date']} | {away} @ {home} | Line: {line} | {rec} ({diff:+.1f}pts)"):
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Predicted Total", f"{predicted}")
-                c2.metric("Kalshi Line", f"{line}")
+                c1.metric("Predicted", f"{predicted}")
+                c2.metric("Line", f"{line}")
                 c3.metric("Edge", f"{diff:+.1f} pts")
-                
-                c4, c5, c6 = st.columns(3)
-                c4.metric("OVER Price", f"{yes_price:.0f}¢")
-                c5.metric("UNDER Price", f"{100-yes_price:.0f}¢")
-                c6.metric("Volume", f"{tm['volume']:,}")
-                
-                # Kelly
-                if rec == "OVER":
-                    kelly = calculate_kelly(win_prob, yes_price, bankroll, kelly_fraction)
-                elif rec == "UNDER":
-                    kelly = calculate_kelly(win_prob, 100 - yes_price, bankroll, kelly_fraction)
-                else:
-                    kelly = {'bet_amount': 0, 'adj_kelly_pct': 0, 'ev_per_dollar': 0, 'ev_on_bet': 0}
-                
+                if rec == "OVER": kelly = calculate_kelly(win_prob, yes_price, bankroll, kelly_fraction)
+                elif rec == "UNDER": kelly = calculate_kelly(win_prob, 100 - yes_price, bankroll, kelly_fraction)
+                else: kelly = {'bet_amount': 0, 'adj_kelly_pct': 0, 'ev_per_dollar': 0, 'ev_on_bet': 0}
                 st.markdown("---")
-                st.markdown("**💰 Kelly + EV (Expected Value)**")
                 kc1, kc2, kc3, kc4 = st.columns(4)
-                kc1.metric("Bet Size", f"${kelly['bet_amount']:.2f}")
-                kc2.metric("Kelly %", f"{kelly['adj_kelly_pct']}%")
-                kc3.metric("EV/Dollar", f"${kelly['ev_per_dollar']:.3f}")
-                kc4.metric("EV on Bet", f"${kelly['ev_on_bet']:+.2f}")
-                
-                # Factor breakdown
-                st.markdown("---")
-                st.markdown("**📈 11-Factor Breakdown**")
+                kc1.metric("Bet", f"${kelly['bet_amount']:.2f}")
+                kc2.metric("Kelly", f"{kelly['adj_kelly_pct']}%")
+                kc3.metric("EV/$", f"${kelly['ev_per_dollar']:.3f}")
+                kc4.metric("EV", f"${kelly['ev_on_bet']:+.2f}")
                 f = totals['factors']
-                fc1, fc2, fc3, fc4 = st.columns(4)
-                fc1.metric("Base", f"{f['base_total']}")
-                fc2.metric("Pace", f"{f['pace']:+.1f}")
-                fc3.metric("Rest", f"{f['rest']:+.1f}")
-                fc4.metric("3PT", f"{f['3pt']:+.1f}")
-                
-                fc5, fc6, fc7, fc8 = st.columns(4)
-                fc5.metric("Defense", f"{f['defense']:+.1f}")
-                fc6.metric("Travel", f"{f['travel']:+.1f}")
-                fc7.metric("Injury", f"{f['injury']:+.1f}")
-                fc8.metric("OREB", f"{f['oreb']:+.1f}")
-                
-                fc9, fc10, fc11, _ = st.columns(4)
-                fc9.metric("TOV", f"{f['turnover']:+.1f}")
-                fc10.metric("Altitude", f"{f['altitude']:+.1f}")
-                fc11.metric("OT Prob", f"{f['ot_prob']:+.1f}")
-                
+                st.markdown("**Factors:** " + " | ".join([f"Base:{f['base_total']}", f"Pace:{f['pace']:+.1f}", f"Rest:{f['rest']:+.1f}", f"3PT:{f['3pt']:+.1f}", f"Def:{f['defense']:+.1f}"]))
                 url = f"https://kalshi.com/markets/kxnbatotal/{tm['ticker'].lower()}"
-                if rec == "OVER":
-                    st.link_button(f"🟢 BUY OVER {line} - ${kelly['bet_amount']:.2f}", url, use_container_width=True)
-                elif rec == "UNDER":
-                    st.link_button(f"🔴 BUY UNDER {line} - ${kelly['bet_amount']:.2f}", url, use_container_width=True)
+                if rec == "OVER": st.link_button(f"🟢 OVER {line} - ${kelly['bet_amount']:.2f}", url, use_container_width=True)
+                elif rec == "UNDER": st.link_button(f"🔴 UNDER {line} - ${kelly['bet_amount']:.2f}", url, use_container_width=True)
     else:
-        st.warning("No totals markets found. Try manual analysis below.")
-        
-        # Manual fallback
-        all_teams = sorted(list(TEAM_STATS.keys()))
-        col1, col2 = st.columns(2)
-        away_team = col1.selectbox("Away Team", all_teams, index=all_teams.index("LA Lakers"))
-        home_team = col2.selectbox("Home Team", all_teams, index=all_teams.index("Boston"))
-        
-        col3, col4 = st.columns(2)
-        kalshi_line = col3.number_input("Kalshi Line", 180.0, 280.0, 230.5, 0.5)
-        kalshi_over_price = col4.number_input("OVER Price (¢)", 1, 99, 50)
-        
-        if st.button("🔍 Analyze Totals", use_container_width=True):
-            home_inj = len(injuries.get(home_team, []))
-            away_inj = len(injuries.get(away_team, []))
-            travel = calculate_travel_distance(away_team, home_team)
-            t_home_rest = rest_days.get(home_team, default_home_rest)
-            t_away_rest = rest_days.get(away_team, default_away_rest)
-            
-            totals = calculate_total_points(home_team, away_team, t_home_rest, t_away_rest, home_inj, away_inj, travel)
-            predicted = totals['predicted_total']
-            diff = predicted - kalshi_line
-            
-            st.metric("Predicted Total", f"{predicted}")
-            st.metric("Difference", f"{diff:+.1f} pts", "OVER" if diff > 0 else "UNDER")
+        st.warning("No totals markets found")
 
-# ========== TAB 3: SPREADS ==========
+# TAB 3: SPREADS
 with tab3:
     st.markdown("### 📏 Spread Analysis")
-    st.caption("Predict if team will cover the spread")
-    
     spread_markets = markets['spreads']
-    
     if spread_markets:
-        st.success(f"✅ Found **{len(spread_markets)} spread markets** from Kalshi API")
-        
+        st.success(f"✅ Found **{len(spread_markets)} spread markets**")
         for sm in spread_markets:
             home, away = sm['home_team'], sm['away_team']
             line = sm['line']
             yes_price = sm['yes_price']
             spread_team = sm['spread_team']
-            
             home_inj = len(injuries.get(home, []))
             away_inj = len(injuries.get(away, []))
             travel = calculate_travel_distance(away, home)
             home_rest = rest_days.get(home, default_home_rest)
             away_rest = rest_days.get(away, default_away_rest)
-            
             spread = calculate_spread(home, away, home_rest, away_rest, home_inj, away_inj, travel)
             predicted = spread['predicted_spread']
-            
-            # Compare: Is the Kalshi spread for home or away team?
             if spread_team == home:
-                # Kalshi asking if HOME wins by X+
-                # Our predicted spread is from home perspective (positive = home favored)
                 spread_diff = predicted - line
-                if spread_diff > 3:
-                    rec = f"{home} COVERS"
-                    rec_color = "🟢"
-                    win_prob = min(80, 50 + spread_diff * 4)
-                    kelly = calculate_kelly(win_prob, yes_price, bankroll, kelly_fraction)
-                elif spread_diff < -3:
-                    rec = f"{home} DOESN'T COVER"
-                    rec_color = "🔴"
-                    win_prob = min(80, 50 + abs(spread_diff) * 4)
-                    kelly = calculate_kelly(win_prob, 100 - yes_price, bankroll, kelly_fraction)
-                else:
-                    rec = "NO EDGE"
-                    rec_color = "⚪"
-                    win_prob = 50
-                    kelly = {'bet_amount': 0, 'adj_kelly_pct': 0, 'ev_per_dollar': 0, 'ev_on_bet': 0}
+                if spread_diff > 3: rec, rec_color, win_prob = f"{home} COVERS", "🟢", min(80, 50 + spread_diff * 4)
+                elif spread_diff < -3: rec, rec_color, win_prob = f"{home} DOESN'T COVER", "🔴", min(80, 50 + abs(spread_diff) * 4)
+                else: rec, rec_color, win_prob = "NO EDGE", "⚪", 50
             else:
-                # Kalshi asking if AWAY wins by X+
-                # Need to flip perspective
-                away_predicted = -predicted  # Flip for away perspective
-                spread_diff = away_predicted - line
-                if spread_diff > 3:
-                    rec = f"{away} COVERS"
-                    rec_color = "🟢"
-                    win_prob = min(80, 50 + spread_diff * 4)
-                    kelly = calculate_kelly(win_prob, yes_price, bankroll, kelly_fraction)
-                elif spread_diff < -3:
-                    rec = f"{away} DOESN'T COVER"
-                    rec_color = "🔴"
-                    win_prob = min(80, 50 + abs(spread_diff) * 4)
-                    kelly = calculate_kelly(win_prob, 100 - yes_price, bankroll, kelly_fraction)
-                else:
-                    rec = "NO EDGE"
-                    rec_color = "⚪"
-                    win_prob = 50
-                    kelly = {'bet_amount': 0, 'adj_kelly_pct': 0, 'ev_per_dollar': 0, 'ev_on_bet': 0}
-            
-            # Only show if there's edge
-            if rec == "NO EDGE" and min_edge > 0:
-                continue
-            
+                spread_diff = -predicted - line
+                if spread_diff > 3: rec, rec_color, win_prob = f"{away} COVERS", "🟢", min(80, 50 + spread_diff * 4)
+                elif spread_diff < -3: rec, rec_color, win_prob = f"{away} DOESN'T COVER", "🔴", min(80, 50 + abs(spread_diff) * 4)
+                else: rec, rec_color, win_prob = "NO EDGE", "⚪", 50
+            if rec == "NO EDGE" and min_edge > 0: continue
             with st.expander(f"{rec_color} {sm['game_date']} | {away} @ {home} | {spread_team} -{line} | {rec}"):
                 st.caption(f"**Kalshi:** {sm['title']}")
-                
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Model Spread", f"{home} {predicted:+.1f}")
-                c2.metric("Kalshi Line", f"{spread_team} -{line}")
+                c1.metric("Model", f"{home} {predicted:+.1f}")
+                c2.metric("Line", f"{spread_team} -{line}")
                 c3.metric("Edge", f"{spread_diff:+.1f} pts")
-                
-                c4, c5, c6 = st.columns(3)
-                c4.metric("YES Price", f"{yes_price:.0f}¢")
-                c5.metric("NO Price", f"{100-yes_price:.0f}¢")
-                c6.metric("Volume", f"{sm['volume']:,}")
-                
+                if "COVERS" in rec and "DOESN'T" not in rec:
+                    kelly = calculate_kelly(win_prob, yes_price, bankroll, kelly_fraction)
+                elif "DOESN'T" in rec:
+                    kelly = calculate_kelly(win_prob, 100 - yes_price, bankroll, kelly_fraction)
+                else:
+                    kelly = {'bet_amount': 0, 'adj_kelly_pct': 0, 'ev_per_dollar': 0, 'ev_on_bet': 0}
                 st.markdown("---")
-                st.markdown("**💰 Kelly + EV (Expected Value)**")
                 kc1, kc2, kc3, kc4 = st.columns(4)
-                kc1.metric("Bet Size", f"${kelly['bet_amount']:.2f}")
-                kc2.metric("Kelly %", f"{kelly['adj_kelly_pct']}%")
-                kc3.metric("EV/Dollar", f"${kelly['ev_per_dollar']:.3f}")
-                kc4.metric("EV on Bet", f"${kelly['ev_on_bet']:+.2f}")
-                
-                # Factor breakdown
-                st.markdown("---")
-                st.markdown("**📈 Factor Breakdown**")
-                f = spread['factors']
-                fc1, fc2, fc3 = st.columns(3)
-                fc1.metric("Net Rating", f"{f['net_rating']:+.1f}")
-                fc2.metric("Home Court", f"+{f['home_court']}")
-                fc3.metric("Rest", f"{f['rest']:+.1f}")
-                
-                fc4, fc5, fc6 = st.columns(3)
-                fc4.metric("Injury", f"{f['injury']:+.1f}")
-                fc5.metric("Travel", f"+{f['travel']}")
-                fc6.metric("Splits", f"{f['splits']:+.1f}")
-                
+                kc1.metric("Bet", f"${kelly['bet_amount']:.2f}")
+                kc2.metric("Kelly", f"{kelly['adj_kelly_pct']}%")
+                kc3.metric("EV/$", f"${kelly['ev_per_dollar']:.3f}")
+                kc4.metric("EV", f"${kelly['ev_on_bet']:+.2f}")
                 url = f"https://kalshi.com/markets/kxnbaspread/{sm['ticker'].lower()}"
                 if "COVERS" in rec and "DOESN'T" not in rec:
-                    st.link_button(f"🟢 BUY YES - ${kelly['bet_amount']:.2f}", url, use_container_width=True)
+                    st.link_button(f"🟢 YES - ${kelly['bet_amount']:.2f}", url, use_container_width=True)
                 elif "DOESN'T" in rec:
-                    st.link_button(f"🔴 BUY NO - ${kelly['bet_amount']:.2f}", url, use_container_width=True)
+                    st.link_button(f"🔴 NO - ${kelly['bet_amount']:.2f}", url, use_container_width=True)
     else:
-        st.warning("No spread markets found. Try manual analysis below.")
-        
-        # Manual fallback
-        all_teams = sorted(list(TEAM_STATS.keys()))
-        col1, col2 = st.columns(2)
-        s_away_team = col1.selectbox("Away Team", all_teams, index=0, key="s_away")
-        s_home_team = col2.selectbox("Home Team", all_teams, index=1, key="s_home")
-        
-        col3, col4 = st.columns(2)
-        kalshi_spread = col3.number_input("Spread Line", 0.5, 30.0, 5.5, 0.5)
-        kalshi_cover_price = col4.number_input("YES Price (¢)", 1, 99, 50, key="sp")
-        
-        if st.button("🔍 Analyze Spread", use_container_width=True):
-            s_home_inj = len(injuries.get(s_home_team, []))
-            s_away_inj = len(injuries.get(s_away_team, []))
-            s_travel = calculate_travel_distance(s_away_team, s_home_team)
-            s_home_rest = rest_days.get(s_home_team, default_home_rest)
-            s_away_rest = rest_days.get(s_away_team, default_away_rest)
-            
-            spread = calculate_spread(s_home_team, s_away_team, s_home_rest, s_away_rest, s_home_inj, s_away_inj, s_travel)
-            st.metric("Predicted Spread", f"{s_home_team} {spread['predicted_spread']:+.1f}")
+        st.warning("No spread markets found")
 
 st.markdown("---")
-st.caption("⚠️ **Disclaimer:** Entertainment only. Not financial advice. Trade responsibly.")
+st.caption("⚠️ **Disclaimer:** Entertainment only. Not financial advice.")
