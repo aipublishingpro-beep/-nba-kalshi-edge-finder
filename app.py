@@ -67,44 +67,33 @@ team_locations = {
 }
 
 def fetch_team_injuries(team_abbrev):
-    """Fetch injuries for a specific team from ESPN"""
     try:
         url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries?team={team_abbrev}"
         response = requests.get(url, timeout=10)
-        
         if response.status_code == 200:
             data = response.json()
             injuries = []
-            
             for team in data.get('injuries', []):
                 for injury in team.get('injuries', []):
                     player = injury.get('athlete', {}).get('displayName', 'Unknown')
                     status = injury.get('status', 'Unknown')
-                    injuries.append({
-                        'player': player,
-                        'status': status
-                    })
-            
+                    injuries.append({'player': player, 'status': status})
             return injuries
         return []
     except:
         return []
 
 def calculate_injury_level(injuries):
-    """Auto-calculate injury level based on injuries list"""
     if not injuries:
         return 0
-    
-    # Check for star players out (simplified - just count severity)
     out_count = sum(1 for i in injuries if i['status'].lower() == 'out')
     questionable_count = sum(1 for i in injuries if 'questionable' in i['status'].lower() or 'doubtful' in i['status'].lower())
-    
     if out_count >= 2:
-        return 3  # Star confirmed OUT
+        return 3
     elif out_count >= 1:
-        return 2  # Star questionable / limited
+        return 2
     elif questionable_count >= 1:
-        return 1  # Rotation player out
+        return 1
     return 0
 
 @st.cache_data(ttl=1800)
@@ -146,27 +135,14 @@ def get_altitude_advantage(home_team):
         return 0.75
     return 0
 
-def get_timezone_disadvantage(home_team, away_team):
-    home_loc = team_locations.get(home_team)
-    away_loc = team_locations.get(away_team)
-    if not home_loc or not away_loc:
-        return 0
-    tz_diff = abs(home_loc["tz"] - away_loc["tz"])
-    if away_loc["tz"] < home_loc["tz"]:
-        return tz_diff * 0.3
-    return 0
-
 def fetch_todays_games():
-    """Fetch today's games from ESPN API"""
     try:
         today = datetime.now().strftime('%Y%m%d')
         url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={today}"
-        
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
             games = []
-            
             espn_teams = {
                 "ATL": "Atlanta Hawks", "BOS": "Boston Celtics", "BKN": "Brooklyn Nets",
                 "CHA": "Charlotte Hornets", "CHI": "Chicago Bulls", "CLE": "Cleveland Cavaliers",
@@ -183,32 +159,25 @@ def fetch_todays_games():
                 "TOR": "Toronto Raptors", "UTA": "Utah Jazz", "UTAH": "Utah Jazz",
                 "WAS": "Washington Wizards", "WSH": "Washington Wizards"
             }
-            
             for event in data.get('events', []):
                 competition = event.get('competitions', [{}])[0]
                 competitors = competition.get('competitors', [])
-                
                 if len(competitors) == 2:
                     home_team = None
                     away_team = None
-                    
                     for comp in competitors:
                         abbrev = comp.get('team', {}).get('abbreviation', '')
                         full_name = espn_teams.get(abbrev, comp.get('team', {}).get('displayName', ''))
-                        
                         if comp.get('homeAway') == 'home':
                             home_team = full_name
                         else:
                             away_team = full_name
-                    
-                    # Get game time
                     game_time = event.get('date', '')
                     try:
                         game_dt = datetime.fromisoformat(game_time.replace('Z', '+00:00'))
                         game_time_local = game_dt.astimezone().strftime('%I:%M %p')
                     except:
                         game_time_local = event.get('status', {}).get('type', {}).get('shortDetail', 'TBD')
-                    
                     if home_team and away_team:
                         games.append({
                             'home_team': home_team,
@@ -216,21 +185,15 @@ def fetch_todays_games():
                             'game_time': game_time_local,
                             'game_id': event.get('id', '')
                         })
-            
             return games
-        else:
-            return []
+        return []
     except Exception as e:
-        st.error(f"❌ Failed to fetch games: {e}")
         return []
 
 def fetch_team_rest_days():
-    """Check last 5 days of ESPN scoreboards to find when each team last played"""
     try:
         today = datetime.now().date()
         last_game = {}
-        
-        # ESPN team abbreviation to full name mapping
         espn_teams = {
             "ATL": "Atlanta Hawks", "BOS": "Boston Celtics", "BKN": "Brooklyn Nets",
             "CHA": "Charlotte Hornets", "CHI": "Chicago Bulls", "CLE": "Cleveland Cavaliers",
@@ -247,39 +210,30 @@ def fetch_team_rest_days():
             "TOR": "Toronto Raptors", "UTA": "Utah Jazz", "UTAH": "Utah Jazz",
             "WAS": "Washington Wizards", "WSH": "Washington Wizards"
         }
-        
-        # Check last 5 days
         for days_ago in range(1, 6):
             check_date = today - timedelta(days=days_ago)
             date_str = check_date.strftime('%Y%m%d')
-            
             url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={date_str}"
-            
             try:
                 response = requests.get(url, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
-                    
                     for event in data.get('events', []):
-                        for comp in event.get('competitions', []):
+                        for comp in event.get('competitions', [{}]):
                             for team in comp.get('competitors', []):
                                 abbrev = team.get('team', {}).get('abbreviation', '')
                                 full_name = espn_teams.get(abbrev)
-                                
                                 if full_name and full_name not in last_game:
                                     last_game[full_name] = check_date
             except:
                 continue
-        
-        # Calculate rest days: played yesterday = 0 rest, played 2 days ago = 1 rest
         rest_days = {}
         for team, last_date in last_game.items():
             days_since = (today - last_date).days
             rest = max(0, days_since - 1)
             rest_days[team] = rest
-        
         return rest_days
-    except Exception as e:
+    except:
         return {}
 
 @st.cache_data(ttl=300)
@@ -289,10 +243,7 @@ def get_cached_rest_days():
 def fetch_team_record():
     try:
         url = "https://cdn.nba.com/static/json/liveData/standings/standings_00.json"
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Referer': 'https://www.nba.com/'
-        }
+        headers = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.nba.com/'}
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             data = response.json()
@@ -353,7 +304,6 @@ def calculate_kalshi_edge(home_team, away_team, market_spread, home_rest, away_r
                           home_b2b, away_b2b):
     home_stats = team_stats.get(home_team, {"net_rating": 0, "def_rank": 15, "pace": 95})
     away_stats = team_stats.get(away_team, {"net_rating": 0, "def_rank": 15, "pace": 95})
-    
     standings = get_cached_standings()
     home_form = standings.get(home_team, {'l10_wins': 5, 'streak': 0})
     away_form = standings.get(away_team, {'l10_wins': 5, 'streak': 0})
@@ -367,7 +317,6 @@ def calculate_kalshi_edge(home_team, away_team, market_spread, home_rest, away_r
     net_injury_impact = (away_injury_impact - home_injury_impact) * st.session_state.get('injury_weight', 1.25)
     
     net_rating_advantage = (home_stats["net_rating"] - away_stats["net_rating"]) * 0.1
-    
     altitude_advantage = get_altitude_advantage(home_team) * st.session_state.get('altitude_weight', 1.0)
     
     b2b_impact = 0
@@ -411,15 +360,9 @@ def calculate_kalshi_edge(home_team, away_team, market_spread, home_rest, away_r
             reasoning = f"{home_team} likely to cover +{abs(market_spread):.1f}"
     
     factors = {
-        "rest": rest_advantage,
-        "defense": defense_advantage,
-        "pace": pace_advantage,
-        "injury": net_injury_impact,
-        "net_rating": net_rating_advantage,
-        "altitude": altitude_advantage,
-        "b2b": b2b_impact,
-        "travel": travel_impact,
-        "form": form_impact
+        "rest": rest_advantage, "defense": defense_advantage, "pace": pace_advantage,
+        "injury": net_injury_impact, "net_rating": net_rating_advantage,
+        "altitude": altitude_advantage, "b2b": b2b_impact, "travel": travel_impact, "form": form_impact
     }
     factor_agreement = len([v for v in factors.values() if abs(v) > 0.3])
     confidence_score = min(100, int(edge_size * 15 + factor_agreement * 10))
@@ -433,14 +376,10 @@ def calculate_kalshi_edge(home_team, away_team, market_spread, home_rest, away_r
         ev = (win_prob * kalshi_no_price) - ((1 - win_prob) * 100)
     
     return {
-        "kalshi_recommendation": kalshi_recommendation,
-        "reasoning": reasoning,
-        "confidence_score": confidence_score,
-        "edge_size": edge_size,
-        "adjusted_spread": adjusted_spread,
-        "expected_value": ev,
-        "factors": factors,
-        "distance": distance
+        "kalshi_recommendation": kalshi_recommendation, "reasoning": reasoning,
+        "confidence_score": confidence_score, "edge_size": edge_size,
+        "adjusted_spread": adjusted_spread, "expected_value": ev,
+        "factors": factors, "distance": distance
     }
 
 # Sidebar
@@ -460,10 +399,8 @@ st.session_state.b2b_weight = st.sidebar.slider("Back-to-Back", 0.0, 2.0, 1.0)
 st.session_state.travel_weight = st.sidebar.slider("Travel Distance", 0.0, 2.0, 0.8)
 st.session_state.form_weight = st.sidebar.slider("Recent Form (L10)", 0.0, 2.0, 0.7)
 
-# Get auto rest days (fresh on each session start)
+# Get auto rest days
 rest_data = get_cached_rest_days()
-
-# If rest data is empty, try fetching fresh
 if not rest_data:
     st.cache_data.clear()
     rest_data = fetch_team_rest_days()
@@ -477,13 +414,10 @@ if not todays_games:
     selected_game = None
 else:
     st.success(f"🎯 Found {len(todays_games)} game(s) today - Click to analyze!")
-    
-    # Create buttons for each game
     game_options = ["Select a game..."] + [f"{g['away_team']} @ {g['home_team']} - {g['game_time']}" for g in todays_games]
     selected_game_str = st.selectbox("🏀 Pick a game to analyze", game_options)
-    
     if selected_game_str != "Select a game...":
-        # Find the selected game
+        selected_game = None
         for g in todays_games:
             if f"{g['away_team']} @ {g['home_team']}" in selected_game_str:
                 selected_game = g
@@ -495,32 +429,29 @@ else:
 st.header("🔍 Game Analysis")
 st.write("**Select teams • Rest days auto-detected • Injuries auto-detected**")
 
-col1, col2 = st.columns(2)
-
-# Pre-select teams if game was picked
-if selected_game:
+if 'selected_game' in dir() and selected_game:
     try:
         home_index = list(team_mapping.keys()).index(selected_game['home_team'])
     except:
-        home_index = 13
+        home_index = 1
     try:
         away_index = list(team_mapping.keys()).index(selected_game['away_team'])
     except:
-        away_index = 9
+        away_index = 0
 else:
-    home_index = 17
-    away_index = 5
+    home_index = 1
+    away_index = 0
+
+col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("🏠 Home Team")
     manual_home = st.selectbox("Home Team", list(team_mapping.keys()), index=home_index)
     
     auto_home_rest = rest_data.get(manual_home, 1)
-    home_is_b2b = auto_home_rest == 0
     manual_home_rest = st.number_input("Home Rest Days", 0, 7, min(auto_home_rest, 7), 
                                         help=f"Auto-detected: {auto_home_rest} days")
     
-    # Auto-fetch injuries
     home_abbrev = team_mapping.get(manual_home, "BOS")
     home_injuries = get_cached_injuries(home_abbrev)
     auto_home_injury = calculate_injury_level(home_injuries)
@@ -533,13 +464,11 @@ with col1:
         key="home_injury"
     )
     
-    # Show injury details
     if home_injuries:
         with st.expander(f"🏥 {len(home_injuries)} injuries detected"):
             for inj in home_injuries[:5]:
                 st.write(f"• {inj['player']}: {inj['status']}")
     
-    # Auto-detect B2B from rest days
     home_b2b = manual_home_rest == 0
     if home_b2b:
         st.warning("⚠️ BACK-TO-BACK detected")
@@ -549,11 +478,9 @@ with col2:
     manual_away = st.selectbox("Away Team", list(team_mapping.keys()), index=away_index)
     
     auto_away_rest = rest_data.get(manual_away, 1)
-    away_is_b2b = auto_away_rest == 0
     manual_away_rest = st.number_input("Away Rest Days", 0, 7, min(auto_away_rest, 7),
                                         help=f"Auto-detected: {auto_away_rest} days")
     
-    # Auto-fetch injuries
     away_abbrev = team_mapping.get(manual_away, "BOS")
     away_injuries = get_cached_injuries(away_abbrev)
     auto_away_injury = calculate_injury_level(away_injuries)
@@ -566,13 +493,11 @@ with col2:
         key="away_injury"
     )
     
-    # Show injury details
     if away_injuries:
         with st.expander(f"🏥 {len(away_injuries)} injuries detected"):
             for inj in away_injuries[:5]:
                 st.write(f"• {inj['player']}: {inj['status']}")
     
-    # Auto-detect B2B from rest days
     away_b2b = manual_away_rest == 0
     if away_b2b:
         st.warning("⚠️ BACK-TO-BACK detected")
@@ -645,12 +570,6 @@ st.sidebar.write("• 0 = Full strength")
 st.sidebar.write("• 1 = Role player out")
 st.sidebar.write("• 2 = Star questionable")
 st.sidebar.write("• 3 = Star OUT")
-
-st.sidebar.header("🆕 New Factors")
-st.sidebar.write("• 🏔️ Denver = +1.5 pts")
-st.sidebar.write("• 🏔️ Utah = +0.75 pts")
-st.sidebar.write("• 🔄 B2B = 1.5 pt penalty")
-st.sidebar.write("• ✈️ >2000mi = +0.75 pts")
 
 st.sidebar.header("📡 Status")
 st.sidebar.write(f"• Games today: {len(todays_games)}")
