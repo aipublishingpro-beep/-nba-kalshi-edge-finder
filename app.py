@@ -367,6 +367,8 @@ for g in markets['moneyline']:
     if abs(analysis['edge']) >= min_edge:
         pred_team = home if analysis['rec'] == 'FAVORS HOME' else away
         kelly = calculate_kelly(analysis['prob'] if analysis['rec'] == 'FAVORS HOME' else 100 - analysis['prob'], g['yes_price'] if analysis['rec'] == 'FAVORS HOME' else 100 - g['yes_price'], bankroll, kelly_frac)
+        # Create anchor ID from game matchup
+        anchor_id = f"{away.lower().replace(' ', '-')}-{home.lower().replace(' ', '-')}"
         all_edges.append({
             "game": f"{away} @ {home}", 
             "pred": pred_team, 
@@ -375,7 +377,8 @@ for g in markets['moneyline']:
             "rec": analysis['rec'], 
             "conf": analysis['conf'],
             "ticker": g['ticker'],
-            "date": g['game_date']
+            "date": g['game_date'],
+            "anchor": anchor_id
         })
 
 all_edges.sort(key=lambda x: x['edge'], reverse=True)
@@ -385,12 +388,14 @@ if all_edges[:3]:
     for i, e in enumerate(all_edges[:3]):
         with cols[i]:
             st.markdown(f'''
-            <div class="prediction-banner">
-                <span class="prediction-team">{e["pred"]}</span><br>
-                <span class="prediction-edge">+{e["edge"]:.1f}%</span>
-                <div class="prediction-details">{e["date"]} • {e["game"]} • {e["conf"]}</div>
-                <div class="click-hint">👇 See 12-factor breakdown below</div>
-            </div>
+            <a href="#{e["anchor"]}" style="text-decoration: none;">
+                <div class="prediction-banner" style="cursor: pointer;">
+                    <span class="prediction-team">{e["pred"]}</span><br>
+                    <span class="prediction-edge">+{e["edge"]:.1f}%</span>
+                    <div class="prediction-details">{e["date"]} • {e["game"]} • {e["conf"]}</div>
+                    <div class="click-hint">👇 Click for 12-factor breakdown</div>
+                </div>
+            </a>
             ''', unsafe_allow_html=True)
 else:
     st.info("No edges above threshold.")
@@ -422,6 +427,10 @@ with tab_ml:
         else:
             indicator = "⚪"
             rec_text = "NO EDGE"
+        
+        # Add anchor for linking from top 3
+        anchor_id = f"{away.lower().replace(' ', '-')}-{home.lower().replace(' ', '-')}"
+        st.markdown(f'<div id="{anchor_id}"></div>', unsafe_allow_html=True)
         
         with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | {preview_analysis['edge']:+.1f}% | {rec_text}"):
             # Manual injury inputs
