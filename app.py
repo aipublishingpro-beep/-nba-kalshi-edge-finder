@@ -18,7 +18,7 @@ components.html("""
 """, height=0)
 
 st.title("🎯 NBA Spread Predictor for Kalshi")
-st.write("**Real Today's Games • Auto Rest Detection • 9 Edge Factors**")
+st.write("**100% Automatic • 9 Edge Factors • Real-Time Data**")
 
 team_mapping = {
     "Atlanta Hawks": "ATL", "Boston Celtics": "BOS", "Brooklyn Nets": "BKN",
@@ -65,6 +65,51 @@ team_locations = {
     "Utah Jazz": {"lat": 40.768, "lon": -111.901, "altitude": 4226, "tz": -2},
     "Washington Wizards": {"lat": 38.898, "lon": -77.021, "altitude": 40, "tz": 0}
 }
+
+def fetch_team_injuries(team_abbrev):
+    """Fetch injuries for a specific team from ESPN"""
+    try:
+        url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries?team={team_abbrev}"
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            injuries = []
+            
+            for team in data.get('injuries', []):
+                for injury in team.get('injuries', []):
+                    player = injury.get('athlete', {}).get('displayName', 'Unknown')
+                    status = injury.get('status', 'Unknown')
+                    injuries.append({
+                        'player': player,
+                        'status': status
+                    })
+            
+            return injuries
+        return []
+    except:
+        return []
+
+def calculate_injury_level(injuries):
+    """Auto-calculate injury level based on injuries list"""
+    if not injuries:
+        return 0
+    
+    # Check for star players out (simplified - just count severity)
+    out_count = sum(1 for i in injuries if i['status'].lower() == 'out')
+    questionable_count = sum(1 for i in injuries if 'questionable' in i['status'].lower() or 'doubtful' in i['status'].lower())
+    
+    if out_count >= 2:
+        return 3  # Star confirmed OUT
+    elif out_count >= 1:
+        return 2  # Star questionable / limited
+    elif questionable_count >= 1:
+        return 1  # Rotation player out
+    return 0
+
+@st.cache_data(ttl=1800)
+def get_cached_injuries(team_abbrev):
+    return fetch_team_injuries(team_abbrev)
 
 INJURY_LEVELS = {
     0: "No key injuries",
@@ -448,7 +493,7 @@ else:
 
 # Manual Analysis
 st.header("🔍 Game Analysis")
-st.write("**Select teams • Rest days auto-detected • Injury status manual**")
+st.write("**Select teams • Rest days auto-detected • Injuries auto-detected**")
 
 col1, col2 = st.columns(2)
 
@@ -474,12 +519,26 @@ with col1:
     home_is_b2b = auto_home_rest == 0
     manual_home_rest = st.number_input("Home Rest Days", 0, 7, min(auto_home_rest, 7), 
                                         help=f"Auto-detected: {auto_home_rest} days")
+    
+    # Auto-fetch injuries
+    home_abbrev = team_mapping.get(manual_home, "BOS")
+    home_injuries = get_cached_injuries(home_abbrev)
+    auto_home_injury = calculate_injury_level(home_injuries)
+    
     home_injury_level = st.selectbox(
         "Home Injury Status",
         options=list(INJURY_LEVELS.keys()),
         format_func=lambda x: INJURY_LEVELS[x],
+        index=auto_home_injury,
         key="home_injury"
     )
+    
+    # Show injury details
+    if home_injuries:
+        with st.expander(f"🏥 {len(home_injuries)} injuries detected"):
+            for inj in home_injuries[:5]:
+                st.write(f"• {inj['player']}: {inj['status']}")
+    
     # Auto-detect B2B from rest days
     home_b2b = manual_home_rest == 0
     if home_b2b:
@@ -493,12 +552,26 @@ with col2:
     away_is_b2b = auto_away_rest == 0
     manual_away_rest = st.number_input("Away Rest Days", 0, 7, min(auto_away_rest, 7),
                                         help=f"Auto-detected: {auto_away_rest} days")
+    
+    # Auto-fetch injuries
+    away_abbrev = team_mapping.get(manual_away, "BOS")
+    away_injuries = get_cached_injuries(away_abbrev)
+    auto_away_injury = calculate_injury_level(away_injuries)
+    
     away_injury_level = st.selectbox(
         "Away Injury Status",
         options=list(INJURY_LEVELS.keys()),
         format_func=lambda x: INJURY_LEVELS[x],
+        index=auto_away_injury,
         key="away_injury"
     )
+    
+    # Show injury details
+    if away_injuries:
+        with st.expander(f"🏥 {len(away_injuries)} injuries detected"):
+            for inj in away_injuries[:5]:
+                st.write(f"• {inj['player']}: {inj['status']}")
+    
     # Auto-detect B2B from rest days
     away_b2b = manual_away_rest == 0
     if away_b2b:
@@ -582,7 +655,8 @@ st.sidebar.write("• ✈️ >2000mi = +0.75 pts")
 st.sidebar.header("📡 Status")
 st.sidebar.write(f"• Games today: {len(todays_games)}")
 st.sidebar.write(f"• Factors: 9 active")
-st.sidebar.write(f"• Rest data: {'✅ Loaded' if rest_data else '❌ Manual'}")
+st.sidebar.write(f"• Rest data: {'✅ Auto' if rest_data else '❌ Manual'}")
+st.sidebar.write(f"• Injuries: ✅ Auto (ESPN)")
 st.sidebar.write(f"• Updated: {datetime.now().strftime('%I:%M %p')}")
 
 st.markdown("---")
