@@ -34,43 +34,141 @@ team_mapping = {
     "Toronto Raptors": "TOR", "Utah Jazz": "UTA", "Washington Wizards": "WAS"
 }
 
+# Team name variations for matching
+team_variations = {
+    "Hawks": "Atlanta Hawks", "Celtics": "Boston Celtics", "Nets": "Brooklyn Nets",
+    "Hornets": "Charlotte Hornets", "Bulls": "Chicago Bulls", "Cavaliers": "Cleveland Cavaliers",
+    "Mavericks": "Dallas Mavericks", "Nuggets": "Denver Nuggets", "Pistons": "Detroit Pistons",
+    "Warriors": "Golden State Warriors", "Rockets": "Houston Rockets", "Pacers": "Indiana Pacers",
+    "Clippers": "LA Clippers", "Lakers": "Los Angeles Lakers", "Grizzlies": "Memphis Grizzlies",
+    "Heat": "Miami Heat", "Bucks": "Milwaukee Bucks", "Timberwolves": "Minnesota Timberwolves",
+    "Pelicans": "New Orleans Pelicans", "Knicks": "New York Knicks", "Thunder": "Oklahoma City Thunder",
+    "Magic": "Orlando Magic", "76ers": "Philadelphia 76ers", "Sixers": "Philadelphia 76ers",
+    "Suns": "Phoenix Suns", "Trail Blazers": "Portland Trail Blazers", "Blazers": "Portland Trail Blazers",
+    "Kings": "Sacramento Kings", "Spurs": "San Antonio Spurs", "Raptors": "Toronto Raptors",
+    "Jazz": "Utah Jazz", "Wizards": "Washington Wizards",
+    "Atlanta": "Atlanta Hawks", "Boston": "Boston Celtics", "Brooklyn": "Brooklyn Nets",
+    "Charlotte": "Charlotte Hornets", "Chicago": "Chicago Bulls", "Cleveland": "Cleveland Cavaliers",
+    "Dallas": "Dallas Mavericks", "Denver": "Denver Nuggets", "Detroit": "Detroit Pistons",
+    "Golden State": "Golden State Warriors", "Houston": "Houston Rockets", "Indiana": "Indiana Pacers",
+    "LA Clippers": "LA Clippers", "Los Angeles Lakers": "Los Angeles Lakers", "L.A. Lakers": "Los Angeles Lakers",
+    "L.A. Clippers": "LA Clippers", "Memphis": "Memphis Grizzlies", "Miami": "Miami Heat",
+    "Milwaukee": "Milwaukee Bucks", "Minnesota": "Minnesota Timberwolves", "New Orleans": "New Orleans Pelicans",
+    "New York": "New York Knicks", "Oklahoma City": "Oklahoma City Thunder", "Orlando": "Orlando Magic",
+    "Philadelphia": "Philadelphia 76ers", "Phoenix": "Phoenix Suns", "Portland": "Portland Trail Blazers",
+    "Sacramento": "Sacramento Kings", "San Antonio": "San Antonio Spurs", "Toronto": "Toronto Raptors",
+    "Utah": "Utah Jazz", "Washington": "Washington Wizards"
+}
+
 _injury_cache = {}
 _cache_time = 0
 CACHE_DURATION = 14400
 
+def normalize_team_name(name):
+    """Convert various team name formats to standard format"""
+    name = name.strip()
+    if name in team_mapping:
+        return name
+    if name in team_variations:
+        return team_variations[name]
+    for key, value in team_variations.items():
+        if key.lower() in name.lower():
+            return value
+    return name
+
 def fetch_nba_injuries():
-    """Scrape ESPN NBA injury report"""
-    url = "https://www.espn.com/nba/injuries"
+    """Fetch NBA injuries from CBS Sports"""
+    url = "https://www.cbssports.com/nba/injuries/"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    
     try:
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.content, 'html.parser')
         injuries = {}
         
-        team_sections = soup.find_all('div', class_='Table__Title')
+        # Find all team injury tables
+        team_tables = soup.find_all('div', class_='TeamLogoNameLockup')
         
-        for team_header in team_sections:
-            team_name = team_header.text.strip()
-            table = team_header.find_next('table')
-            if not table:
-                continue
+        if not team_tables:
+            # Try alternative structure
+            tables = soup.find_all('table', class_='TableBase-table')
+            current_team = None
             
-            players = []
-            rows = table.find_all('tr')
-            
-            for row in rows:
-                cells = row.find_all('td')
-                if len(cells) >= 1:
-                    player = cells[0].text.strip()
-                    if player and player.lower() != "name" and len(player) > 1:
-                        players.append(player)
-            
-            if players and team_name:
-                injuries[team_name] = players
+            for element in soup.find_all(['span', 'div', 'a', 'table', 'tr']):
+                # Look for team names
+                if element.name in ['span', 'div', 'a']:
+                    text = element.get_text(strip=True)
+                    normalized = normalize_team_name(text)
+                    if normalized in team_mapping:
+                        current_team = normalized
+                        if current_team not in injuries:
+                            injuries[current_team] = []
+                
+                # Look for player rows
+                if element.name == 'tr' and current_team:
+                    cells = element.find_all('td')
+                    if cells:
+                        player_link = element.find('a')
+                        if player_link:
+                            player_name = player_link.get_text(strip=True)
+                            if player_name and len(player_name) > 2 and player_name not in injuries.get(current_team, []):
+                                injuries[current_team].append(player_name)
+        
+        # If CBS doesn't work, try a simple backup
+        if not injuries or sum(len(v) for v in injuries.values()) < 10:
+            injuries = fetch_injuries_backup()
         
         return injuries
+        
     except Exception as e:
-        st.warning(f"⚠️ Could not fetch live injuries: {e}")
+        st.warning(f"⚠️ CBS Sports unavailable, using backup data")
+        return fetch_injuries_backup()
+
+def fetch_injuries_backup():
+    """Backup: Fetch from ESPN with careful parsing"""
+    url = "https://www.espn.com/nba/injuries"
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.content, 'html.parser')
+        injuries = {}
+        
+        # Find all the responsive tables which contain team data
+        page_content = soup.find('div', class_='page-container')
+        if not page_content:
+            page_content = soup
+        
+        # Look for team sections - ESPN wraps each team in a section
+        current_team = None
+        
+        for element in page_content.find_all(['div', 'span', 'a', 'tr', 'td']):
+            text = element.get_text(strip=True)
+            
+            # Check if this is a team name
+            if element.get('class'):
+                classes = ' '.join(element.get('class', []))
+                if 'Table__Title' in classes or 'headline' in classes.lower():
+                    normalized = normalize_team_name(text)
+                    if normalized in team_mapping:
+                        current_team = normalized
+                        if current_team not in injuries:
+                            injuries[current_team] = []
+                        continue
+            
+            # Check for player names in table cells
+            if element.name == 'a' and current_team:
+                href = element.get('href', '')
+                if '/nba/player/' in href:
+                    player_name = text
+                    if player_name and len(player_name) > 2:
+                        # Make sure this player belongs to current team
+                        if player_name not in injuries[current_team]:
+                            injuries[current_team].append(player_name)
+        
+        return injuries
+        
+    except Exception as e:
         return {}
 
 def get_injuries_cached():
@@ -98,8 +196,8 @@ def fetch_todays_games():
                 game_time = game['gameTimeUTC']
                 game_dt = datetime.fromisoformat(game_time.replace('Z', '+00:00'))
                 game_time_local = game_dt.astimezone().strftime('%I:%M %p')
-                home_full = next((k for k, v in team_mapping.items() if home_team in k), home_team)
-                away_full = next((k for k, v in team_mapping.items() if away_team in k), away_team)
+                home_full = normalize_team_name(home_team)
+                away_full = normalize_team_name(away_team)
                 games.append({
                     'home_team': home_full,
                     'away_team': away_full,
@@ -224,7 +322,7 @@ if injuries_data:
         for team, players in sorted(injuries_data.items()):
             st.write(f"**{team}:** {', '.join(players)}")
 else:
-    st.warning("⚠️ Could not load injury data.")
+    st.warning("⚠️ Could not load injury data. Analysis will proceed without injury factor.")
 
 st.header("🔢 Batch Analysis")
 if st.button("🔄 Analyze Today's Games", type="primary"):
