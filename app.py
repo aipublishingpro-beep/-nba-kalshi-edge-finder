@@ -112,30 +112,66 @@ def get_timezone_disadvantage(home_team, away_team):
     return 0
 
 def fetch_todays_games():
+    """Fetch today's games from ESPN API"""
     try:
-        url = "https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json"
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Referer': 'https://www.nba.com/'
-        }
-        response = requests.get(url, headers=headers, timeout=10)
+        today = datetime.now().strftime('%Y%m%d')
+        url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={today}"
+        
+        response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
             games = []
-            for game in data.get('games', []):
-                home_team = game['homeTeam']['teamName']
-                away_team = game['awayTeam']['teamName']
-                game_time = game['gameTimeUTC']
-                game_dt = datetime.fromisoformat(game_time.replace('Z', '+00:00'))
-                game_time_local = game_dt.astimezone().strftime('%I:%M %p')
-                home_full = next((k for k in team_mapping.keys() if home_team in k), home_team)
-                away_full = next((k for k in team_mapping.keys() if away_team in k), away_team)
-                games.append({
-                    'home_team': home_full,
-                    'away_team': away_full,
-                    'game_time': game_time_local,
-                    'game_id': game['gameId']
-                })
+            
+            espn_teams = {
+                "ATL": "Atlanta Hawks", "BOS": "Boston Celtics", "BKN": "Brooklyn Nets",
+                "CHA": "Charlotte Hornets", "CHI": "Chicago Bulls", "CLE": "Cleveland Cavaliers",
+                "DAL": "Dallas Mavericks", "DEN": "Denver Nuggets", "DET": "Detroit Pistons",
+                "GS": "Golden State Warriors", "GSW": "Golden State Warriors",
+                "HOU": "Houston Rockets", "IND": "Indiana Pacers",
+                "LAC": "LA Clippers", "LAL": "Los Angeles Lakers", "MEM": "Memphis Grizzlies",
+                "MIA": "Miami Heat", "MIL": "Milwaukee Bucks", "MIN": "Minnesota Timberwolves",
+                "NO": "New Orleans Pelicans", "NOP": "New Orleans Pelicans",
+                "NY": "New York Knicks", "NYK": "New York Knicks",
+                "OKC": "Oklahoma City Thunder", "ORL": "Orlando Magic",
+                "PHI": "Philadelphia 76ers", "PHX": "Phoenix Suns", "POR": "Portland Trail Blazers",
+                "SAC": "Sacramento Kings", "SA": "San Antonio Spurs", "SAS": "San Antonio Spurs",
+                "TOR": "Toronto Raptors", "UTA": "Utah Jazz", "UTAH": "Utah Jazz",
+                "WAS": "Washington Wizards", "WSH": "Washington Wizards"
+            }
+            
+            for event in data.get('events', []):
+                competition = event.get('competitions', [{}])[0]
+                competitors = competition.get('competitors', [])
+                
+                if len(competitors) == 2:
+                    home_team = None
+                    away_team = None
+                    
+                    for comp in competitors:
+                        abbrev = comp.get('team', {}).get('abbreviation', '')
+                        full_name = espn_teams.get(abbrev, comp.get('team', {}).get('displayName', ''))
+                        
+                        if comp.get('homeAway') == 'home':
+                            home_team = full_name
+                        else:
+                            away_team = full_name
+                    
+                    # Get game time
+                    game_time = event.get('date', '')
+                    try:
+                        game_dt = datetime.fromisoformat(game_time.replace('Z', '+00:00'))
+                        game_time_local = game_dt.astimezone().strftime('%I:%M %p')
+                    except:
+                        game_time_local = event.get('status', {}).get('type', {}).get('shortDetail', 'TBD')
+                    
+                    if home_team and away_team:
+                        games.append({
+                            'home_team': home_team,
+                            'away_team': away_team,
+                            'game_time': game_time_local,
+                            'game_id': event.get('id', '')
+                        })
+            
             return games
         else:
             return []
@@ -393,19 +429,46 @@ todays_games = fetch_todays_games()
 
 if not todays_games:
     st.warning("🚫 No NBA games scheduled today. Use manual analysis below.")
+    selected_game = None
 else:
-    st.success(f"🎯 Found {len(todays_games)} game(s) today")
-    for i, game in enumerate(todays_games):
-        st.write(f"**Game {i+1}:** {game['away_team']} @ {game['home_team']} - {game['game_time']}")
+    st.success(f"🎯 Found {len(todays_games)} game(s) today - Click to analyze!")
+    
+    # Create buttons for each game
+    game_options = ["Select a game..."] + [f"{g['away_team']} @ {g['home_team']} - {g['game_time']}" for g in todays_games]
+    selected_game_str = st.selectbox("🏀 Pick a game to analyze", game_options)
+    
+    if selected_game_str != "Select a game...":
+        # Find the selected game
+        for g in todays_games:
+            if f"{g['away_team']} @ {g['home_team']}" in selected_game_str:
+                selected_game = g
+                break
+    else:
+        selected_game = None
 
 # Manual Analysis
 st.header("🔍 Game Analysis")
 st.write("**Select teams • Rest days auto-detected • Injury status manual**")
 
 col1, col2 = st.columns(2)
+
+# Pre-select teams if game was picked
+if selected_game:
+    try:
+        home_index = list(team_mapping.keys()).index(selected_game['home_team'])
+    except:
+        home_index = 13
+    try:
+        away_index = list(team_mapping.keys()).index(selected_game['away_team'])
+    except:
+        away_index = 9
+else:
+    home_index = 17
+    away_index = 5
+
 with col1:
     st.subheader("🏠 Home Team")
-    manual_home = st.selectbox("Home Team", list(team_mapping.keys()), index=17)
+    manual_home = st.selectbox("Home Team", list(team_mapping.keys()), index=home_index)
     
     auto_home_rest = rest_data.get(manual_home, 1)
     home_is_b2b = auto_home_rest == 0
@@ -424,7 +487,7 @@ with col1:
 
 with col2:
     st.subheader("✈️ Away Team")
-    manual_away = st.selectbox("Away Team", list(team_mapping.keys()), index=5)
+    manual_away = st.selectbox("Away Team", list(team_mapping.keys()), index=away_index)
     
     auto_away_rest = rest_data.get(manual_away, 1)
     away_is_b2b = auto_away_rest == 0
