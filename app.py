@@ -20,17 +20,38 @@ components.html("""
 st.title("🎯 NBA Spread Predictor for Kalshi")
 st.write("**100% Automatic • 9 Edge Factors • Real-Time Data**")
 
+# Updated team_mapping with ESPN IDs for injury API
 team_mapping = {
-    "Atlanta Hawks": "ATL", "Boston Celtics": "BOS", "Brooklyn Nets": "BKN",
-    "Charlotte Hornets": "CHA", "Chicago Bulls": "CHI", "Cleveland Cavaliers": "CLE",
-    "Dallas Mavericks": "DAL", "Denver Nuggets": "DEN", "Detroit Pistons": "DET",
-    "Golden State Warriors": "GSW", "Houston Rockets": "HOU", "Indiana Pacers": "IND",
-    "LA Clippers": "LAC", "Los Angeles Lakers": "LAL", "Memphis Grizzlies": "MEM",
-    "Miami Heat": "MIA", "Milwaukee Bucks": "MIL", "Minnesota Timberwolves": "MIN",
-    "New Orleans Pelicans": "NOP", "New York Knicks": "NYK", "Oklahoma City Thunder": "OKC",
-    "Orlando Magic": "ORL", "Philadelphia 76ers": "PHI", "Phoenix Suns": "PHX",
-    "Portland Trail Blazers": "POR", "Sacramento Kings": "SAC", "San Antonio Spurs": "SAS",
-    "Toronto Raptors": "TOR", "Utah Jazz": "UTA", "Washington Wizards": "WAS"
+    "Atlanta Hawks": {"abbrev": "ATL", "espn_id": 1},
+    "Boston Celtics": {"abbrev": "BOS", "espn_id": 2},
+    "Brooklyn Nets": {"abbrev": "BKN", "espn_id": 17},
+    "Charlotte Hornets": {"abbrev": "CHA", "espn_id": 30},
+    "Chicago Bulls": {"abbrev": "CHI", "espn_id": 4},
+    "Cleveland Cavaliers": {"abbrev": "CLE", "espn_id": 5},
+    "Dallas Mavericks": {"abbrev": "DAL", "espn_id": 6},
+    "Denver Nuggets": {"abbrev": "DEN", "espn_id": 7},
+    "Detroit Pistons": {"abbrev": "DET", "espn_id": 8},
+    "Golden State Warriors": {"abbrev": "GSW", "espn_id": 9},
+    "Houston Rockets": {"abbrev": "HOU", "espn_id": 10},
+    "Indiana Pacers": {"abbrev": "IND", "espn_id": 11},
+    "LA Clippers": {"abbrev": "LAC", "espn_id": 12},
+    "Los Angeles Lakers": {"abbrev": "LAL", "espn_id": 13},
+    "Memphis Grizzlies": {"abbrev": "MEM", "espn_id": 29},
+    "Miami Heat": {"abbrev": "MIA", "espn_id": 14},
+    "Milwaukee Bucks": {"abbrev": "MIL", "espn_id": 15},
+    "Minnesota Timberwolves": {"abbrev": "MIN", "espn_id": 16},
+    "New Orleans Pelicans": {"abbrev": "NOP", "espn_id": 3},
+    "New York Knicks": {"abbrev": "NYK", "espn_id": 18},
+    "Oklahoma City Thunder": {"abbrev": "OKC", "espn_id": 25},
+    "Orlando Magic": {"abbrev": "ORL", "espn_id": 19},
+    "Philadelphia 76ers": {"abbrev": "PHI", "espn_id": 20},
+    "Phoenix Suns": {"abbrev": "PHX", "espn_id": 21},
+    "Portland Trail Blazers": {"abbrev": "POR", "espn_id": 22},
+    "Sacramento Kings": {"abbrev": "SAC", "espn_id": 23},
+    "San Antonio Spurs": {"abbrev": "SAS", "espn_id": 24},
+    "Toronto Raptors": {"abbrev": "TOR", "espn_id": 28},
+    "Utah Jazz": {"abbrev": "UTA", "espn_id": 26},
+    "Washington Wizards": {"abbrev": "WAS", "espn_id": 27}
 }
 
 team_locations = {
@@ -66,21 +87,46 @@ team_locations = {
     "Washington Wizards": {"lat": 38.898, "lon": -77.021, "altitude": 40, "tz": 0}
 }
 
-def fetch_team_injuries(team_abbrev):
+def fetch_team_injuries(team_name):
+    """Fetch injuries using ESPN Core API with team ID"""
     try:
-        url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries?team={team_abbrev}"
+        team_info = team_mapping.get(team_name)
+        if not team_info:
+            return []
+        
+        team_id = team_info["espn_id"]
+        url = f"https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/{team_id}/injuries?limit=100"
+        
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
             injuries = []
-            for team in data.get('injuries', []):
-                for injury in team.get('injuries', []):
-                    player = injury.get('athlete', {}).get('displayName', 'Unknown')
-                    status = injury.get('status', 'Unknown')
-                    injuries.append({'player': player, 'status': status})
+            
+            for item in data.get('items', []):
+                if '$ref' in item:
+                    try:
+                        injury_resp = requests.get(item['$ref'], timeout=5)
+                        if injury_resp.status_code == 200:
+                            injury_data = injury_resp.json()
+                            player_name = injury_data.get('athlete', {}).get('displayName', 'Unknown')
+                            status = injury_data.get('status', 'Unknown')
+                            if not player_name or player_name == 'Unknown':
+                                athlete_ref = injury_data.get('athlete', {}).get('$ref', '')
+                                if athlete_ref:
+                                    ath_resp = requests.get(athlete_ref, timeout=5)
+                                    if ath_resp.status_code == 200:
+                                        player_name = ath_resp.json().get('displayName', 'Unknown')
+                            injuries.append({'player': player_name, 'status': status})
+                    except:
+                        continue
+                else:
+                    player_name = item.get('athlete', {}).get('displayName', 'Unknown')
+                    status = item.get('status', 'Unknown')
+                    injuries.append({'player': player_name, 'status': status})
+            
             return injuries
         return []
-    except:
+    except Exception as e:
         return []
 
 def calculate_injury_level(injuries):
@@ -97,8 +143,8 @@ def calculate_injury_level(injuries):
     return 0
 
 @st.cache_data(ttl=1800)
-def get_cached_injuries(team_abbrev):
-    return fetch_team_injuries(team_abbrev)
+def get_cached_injuries(team_name):
+    return fetch_team_injuries(team_name)
 
 INJURY_LEVELS = {
     0: "No key injuries",
@@ -452,8 +498,8 @@ with col1:
     manual_home_rest = st.number_input("Home Rest Days", 0, 7, min(auto_home_rest, 7), 
                                         help=f"Auto-detected: {auto_home_rest} days")
     
-    home_abbrev = team_mapping.get(manual_home, "BOS")
-    home_injuries = get_cached_injuries(home_abbrev)
+    # FIXED: Now using team name directly
+    home_injuries = get_cached_injuries(manual_home)
     auto_home_injury = calculate_injury_level(home_injuries)
     
     home_injury_level = st.selectbox(
@@ -481,8 +527,8 @@ with col2:
     manual_away_rest = st.number_input("Away Rest Days", 0, 7, min(auto_away_rest, 7),
                                         help=f"Auto-detected: {auto_away_rest} days")
     
-    away_abbrev = team_mapping.get(manual_away, "BOS")
-    away_injuries = get_cached_injuries(away_abbrev)
+    # FIXED: Now using team name directly
+    away_injuries = get_cached_injuries(manual_away)
     auto_away_injury = calculate_injury_level(away_injuries)
     
     away_injury_level = st.selectbox(
