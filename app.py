@@ -116,7 +116,18 @@ def fetch_kalshi_nba_games():
             key = f"{g['away_team']}@{g['home_team']}_{g['game_date']}"
             if key not in seen or g['volume'] > seen[key]['volume']:
                 seen[key] = g
-        return list(seen.values())
+        
+        # Sort by date (today first)
+        month_order = {'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+                       'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12}
+        def date_sort_key(g):
+            try:
+                parts = g['game_date'].split()
+                return (month_order.get(parts[0], 0), int(parts[1]))
+            except:
+                return (99, 99)
+        
+        return sorted(seen.values(), key=date_sort_key)
     except: return []
 
 @st.cache_data(ttl=14400)
