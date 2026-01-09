@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
+from math import radians, sin, cos, sqrt, atan2
 
 st.set_page_config(page_title="KALSHI NBA EDGE FINDER", layout="wide")
 
@@ -17,7 +18,7 @@ components.html("""
 """, height=0)
 
 st.title("🎯 NBA Spread Predictor for Kalshi")
-st.write("**Real Today's Games • Manual Injury Input • Clean Signal**")
+st.write("**Real Today's Games • Auto Rest Detection • 9 Edge Factors**")
 
 team_mapping = {
     "Atlanta Hawks": "ATL", "Boston Celtics": "BOS", "Brooklyn Nets": "BKN",
@@ -32,6 +33,40 @@ team_mapping = {
     "Toronto Raptors": "TOR", "Utah Jazz": "UTA", "Washington Wizards": "WAS"
 }
 
+# Team locations: lat, lon, altitude (feet), timezone offset from ET
+team_locations = {
+    "Atlanta Hawks": {"lat": 33.757, "lon": -84.396, "altitude": 1050, "tz": 0},
+    "Boston Celtics": {"lat": 42.366, "lon": -71.062, "altitude": 20, "tz": 0},
+    "Brooklyn Nets": {"lat": 40.683, "lon": -73.976, "altitude": 30, "tz": 0},
+    "Charlotte Hornets": {"lat": 35.225, "lon": -80.839, "altitude": 751, "tz": 0},
+    "Chicago Bulls": {"lat": 41.881, "lon": -87.674, "altitude": 594, "tz": -1},
+    "Cleveland Cavaliers": {"lat": 41.497, "lon": -81.688, "altitude": 653, "tz": 0},
+    "Dallas Mavericks": {"lat": 32.790, "lon": -96.810, "altitude": 430, "tz": -1},
+    "Denver Nuggets": {"lat": 39.749, "lon": -105.008, "altitude": 5280, "tz": -2},
+    "Detroit Pistons": {"lat": 42.341, "lon": -83.055, "altitude": 600, "tz": 0},
+    "Golden State Warriors": {"lat": 37.768, "lon": -122.388, "altitude": 10, "tz": -3},
+    "Houston Rockets": {"lat": 29.751, "lon": -95.362, "altitude": 80, "tz": -1},
+    "Indiana Pacers": {"lat": 39.764, "lon": -86.156, "altitude": 715, "tz": 0},
+    "LA Clippers": {"lat": 34.043, "lon": -118.267, "altitude": 305, "tz": -3},
+    "Los Angeles Lakers": {"lat": 34.043, "lon": -118.267, "altitude": 305, "tz": -3},
+    "Memphis Grizzlies": {"lat": 35.138, "lon": -90.051, "altitude": 337, "tz": -1},
+    "Miami Heat": {"lat": 25.781, "lon": -80.188, "altitude": 10, "tz": 0},
+    "Milwaukee Bucks": {"lat": 43.045, "lon": -87.918, "altitude": 617, "tz": -1},
+    "Minnesota Timberwolves": {"lat": 44.980, "lon": -93.276, "altitude": 830, "tz": -1},
+    "New Orleans Pelicans": {"lat": 29.949, "lon": -90.082, "altitude": 3, "tz": -1},
+    "New York Knicks": {"lat": 40.751, "lon": -73.994, "altitude": 33, "tz": 0},
+    "Oklahoma City Thunder": {"lat": 35.463, "lon": -97.515, "altitude": 1201, "tz": -1},
+    "Orlando Magic": {"lat": 28.539, "lon": -81.384, "altitude": 82, "tz": 0},
+    "Philadelphia 76ers": {"lat": 39.901, "lon": -75.172, "altitude": 39, "tz": 0},
+    "Phoenix Suns": {"lat": 33.446, "lon": -112.071, "altitude": 1086, "tz": -2},
+    "Portland Trail Blazers": {"lat": 45.532, "lon": -122.667, "altitude": 50, "tz": -3},
+    "Sacramento Kings": {"lat": 38.580, "lon": -121.500, "altitude": 30, "tz": -3},
+    "San Antonio Spurs": {"lat": 29.427, "lon": -98.438, "altitude": 650, "tz": -1},
+    "Toronto Raptors": {"lat": 43.643, "lon": -79.379, "altitude": 249, "tz": 0},
+    "Utah Jazz": {"lat": 40.768, "lon": -111.901, "altitude": 4226, "tz": -2},
+    "Washington Wizards": {"lat": 38.898, "lon": -77.021, "altitude": 40, "tz": 0}
+}
+
 INJURY_LEVELS = {
     0: "No key injuries",
     1: "Rotation player out",
@@ -41,6 +76,45 @@ INJURY_LEVELS = {
 
 def injury_points(level):
     return {0: 0.0, 1: 1.0, 2: 2.5, 3: 4.0}.get(level, 0.0)
+
+def calculate_distance(team1, team2):
+    """Calculate distance in miles between two teams"""
+    loc1 = team_locations.get(team1)
+    loc2 = team_locations.get(team2)
+    if not loc1 or not loc2:
+        return 0
+    R = 3959  # Earth's radius in miles
+    lat1, lon1 = radians(loc1["lat"]), radians(loc1["lon"])
+    lat2, lon2 = radians(loc2["lat"]), radians(loc2["lon"])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
+    return R * c
+
+def get_altitude_advantage(home_team):
+    """Returns altitude advantage for high-altitude home teams"""
+    loc = team_locations.get(home_team)
+    if not loc:
+        return 0
+    altitude = loc["altitude"]
+    if altitude >= 5000:  # Denver
+        return 1.5
+    elif altitude >= 4000:  # Utah
+        return 0.75
+    return 0
+
+def get_timezone_disadvantage(home_team, away_team):
+    """Calculate timezone disadvantage for away team"""
+    home_loc = team_locations.get(home_team)
+    away_loc = team_locations.get(away_team)
+    if not home_loc or not away_loc:
+        return 0
+    tz_diff = abs(home_loc["tz"] - away_loc["tz"])
+    # West team traveling East for early game = disadvantage
+    if away_loc["tz"] < home_loc["tz"]:  # West team going East
+        return tz_diff * 0.3
+    return 0
 
 def fetch_todays_games():
     try:
@@ -73,6 +147,101 @@ def fetch_todays_games():
     except Exception as e:
         st.error(f"❌ Failed to fetch games: {e}")
         return []
+
+def fetch_team_rest_days():
+    """Fetch recent schedule and calculate rest days for all teams"""
+    try:
+        url = "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://www.nba.com/'
+        }
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            today = datetime.now().date()
+            
+            # Track last game date for each team
+            last_game = {}
+            
+            # Parse game dates
+            for game_date in data.get('leagueSchedule', {}).get('gameDates', []):
+                date_str = game_date.get('gameDate', '')[:10]  # Get YYYY-MM-DD
+                try:
+                    game_day = datetime.strptime(date_str, '%m/%d/%Y').date()
+                except:
+                    try:
+                        game_day = datetime.strptime(date_str, '%Y-%m-%d').date()
+                    except:
+                        continue
+                
+                # Only look at past games
+                if game_day >= today:
+                    continue
+                    
+                for game in game_date.get('games', []):
+                    home_name = game.get('homeTeam', {}).get('teamName', '')
+                    away_name = game.get('awayTeam', {}).get('teamName', '')
+                    
+                    # Match to full team names
+                    for full_name in team_mapping.keys():
+                        if home_name in full_name:
+                            if full_name not in last_game or game_day > last_game[full_name]:
+                                last_game[full_name] = game_day
+                        if away_name in full_name:
+                            if full_name not in last_game or game_day > last_game[full_name]:
+                                last_game[full_name] = game_day
+            
+            # Calculate rest days
+            rest_days = {}
+            for team, last_date in last_game.items():
+                days = (today - last_date).days
+                rest_days[team] = days
+            
+            return rest_days
+        return {}
+    except Exception as e:
+        return {}
+
+@st.cache_data(ttl=3600)
+def get_cached_rest_days():
+    """Cache rest days for 1 hour"""
+    return fetch_team_rest_days()
+
+def fetch_team_record():
+    """Fetch team standings for recent form"""
+    try:
+        url = "https://cdn.nba.com/static/json/liveData/standings/standings_00.json"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://www.nba.com/'
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            records = {}
+            for team in data.get('standings', []):
+                team_name = team.get('teamCity', '') + ' ' + team.get('teamName', '')
+                # Match to our team names
+                for full_name in team_mapping.keys():
+                    if team.get('teamName', '') in full_name:
+                        l10_record = team.get('last10HomeWins', 0) + team.get('last10RoadWins', 0)
+                        streak = team.get('streak', 0)
+                        records[full_name] = {
+                            'l10_wins': team.get('last10Wins', 5),
+                            'streak': team.get('currentStreak', 0),
+                            'win_pct': team.get('winPct', 0.5)
+                        }
+                        break
+            return records
+        return {}
+    except:
+        return {}
+
+# Cache standings data
+@st.cache_data(ttl=3600)
+def get_cached_standings():
+    return fetch_team_record()
 
 team_stats = {
     "Boston Celtics": {"net_rating": 11.7, "def_rank": 2, "pace": 99.1},
@@ -107,10 +276,18 @@ team_stats = {
     "Detroit Pistons": {"net_rating": -12.3, "def_rank": 30, "pace": 95.6}
 }
 
-def calculate_kalshi_edge(home_team, away_team, market_spread, home_rest, away_rest, home_injury_level, away_injury_level, kalshi_yes_price):
+def calculate_kalshi_edge(home_team, away_team, market_spread, home_rest, away_rest, 
+                          home_injury_level, away_injury_level, kalshi_yes_price,
+                          home_b2b, away_b2b):
     home_stats = team_stats.get(home_team, {"net_rating": 0, "def_rank": 15, "pace": 95})
     away_stats = team_stats.get(away_team, {"net_rating": 0, "def_rank": 15, "pace": 95})
     
+    # Get standings for form
+    standings = get_cached_standings()
+    home_form = standings.get(home_team, {'l10_wins': 5, 'streak': 0})
+    away_form = standings.get(away_team, {'l10_wins': 5, 'streak': 0})
+    
+    # Original factors
     rest_advantage = (home_rest - away_rest) * st.session_state.get('rest_weight', 0.75)
     defense_advantage = (away_stats["def_rank"] - home_stats["def_rank"]) * 0.2 * st.session_state.get('defense_weight', 1.0)
     pace_advantage = (home_stats["pace"] - away_stats["pace"]) * 0.015 * st.session_state.get('pace_weight', 0.6)
@@ -121,7 +298,34 @@ def calculate_kalshi_edge(home_team, away_team, market_spread, home_rest, away_r
     
     net_rating_advantage = (home_stats["net_rating"] - away_stats["net_rating"]) * 0.1
     
-    total_adjustment = rest_advantage + defense_advantage + pace_advantage + net_injury_impact + net_rating_advantage
+    # NEW FACTORS
+    # 1. Altitude advantage (Denver/Utah)
+    altitude_advantage = get_altitude_advantage(home_team) * st.session_state.get('altitude_weight', 1.0)
+    
+    # 2. Back-to-back penalty
+    b2b_impact = 0
+    if home_b2b:
+        b2b_impact -= 1.5 * st.session_state.get('b2b_weight', 1.0)
+    if away_b2b:
+        b2b_impact += 1.5 * st.session_state.get('b2b_weight', 1.0)
+    
+    # 3. Travel distance (>1500 miles = fatigue for away team)
+    distance = calculate_distance(away_team, home_team)
+    travel_impact = 0
+    if distance > 2000:
+        travel_impact = 0.75 * st.session_state.get('travel_weight', 0.8)
+    elif distance > 1500:
+        travel_impact = 0.4 * st.session_state.get('travel_weight', 0.8)
+    
+    # 4. Recent form (last 10 games)
+    form_diff = (home_form['l10_wins'] - away_form['l10_wins']) * 0.15
+    form_impact = form_diff * st.session_state.get('form_weight', 0.7)
+    
+    # Total adjustment
+    total_adjustment = (rest_advantage + defense_advantage + pace_advantage + 
+                       net_injury_impact + net_rating_advantage + altitude_advantage +
+                       b2b_impact + travel_impact + form_impact)
+    
     adjusted_spread = market_spread + total_adjustment
     edge_size = abs(adjusted_spread - market_spread)
     
@@ -140,9 +344,19 @@ def calculate_kalshi_edge(home_team, away_team, market_spread, home_rest, away_r
             kalshi_recommendation = "NO"
             reasoning = f"{home_team} likely to cover +{abs(market_spread):.1f}"
     
-    factors = [rest_advantage, defense_advantage, pace_advantage, net_injury_impact, net_rating_advantage]
-    factor_agreement = len([x for x in factors if abs(x) > 0.3])
-    confidence_score = min(100, int(edge_size * 15 + factor_agreement * 12))
+    factors = {
+        "rest": rest_advantage,
+        "defense": defense_advantage,
+        "pace": pace_advantage,
+        "injury": net_injury_impact,
+        "net_rating": net_rating_advantage,
+        "altitude": altitude_advantage,
+        "b2b": b2b_impact,
+        "travel": travel_impact,
+        "form": form_impact
+    }
+    factor_agreement = len([v for v in factors.values() if abs(v) > 0.3])
+    confidence_score = min(100, int(edge_size * 15 + factor_agreement * 10))
     
     kalshi_no_price = 100 - kalshi_yes_price
     if kalshi_recommendation == "YES":
@@ -159,18 +373,26 @@ def calculate_kalshi_edge(home_team, away_team, market_spread, home_rest, away_r
         "edge_size": edge_size,
         "adjusted_spread": adjusted_spread,
         "expected_value": ev,
-        "factors": factors
+        "factors": factors,
+        "distance": distance
     }
 
 # Sidebar
 st.sidebar.header("🎯 Kalshi Settings")
 st.session_state.confidence_threshold = st.sidebar.slider("Confidence Threshold", 50, 90, 65)
 st.session_state.min_edge = st.sidebar.slider("Minimum Edge", 0.5, 5.0, 1.0)
-st.sidebar.header("🧠 Model Weights")
+
+st.sidebar.header("🧠 Original Weights")
 st.session_state.rest_weight = st.sidebar.slider("Rest Advantage", 0.0, 2.0, 0.75)
 st.session_state.defense_weight = st.sidebar.slider("Defense Mismatch", 0.0, 2.0, 1.0)
 st.session_state.injury_weight = st.sidebar.slider("Injury Impact", 0.0, 3.0, 1.25)
 st.session_state.pace_weight = st.sidebar.slider("Pace Impact", 0.0, 2.0, 0.6)
+
+st.sidebar.header("🆕 New Factor Weights")
+st.session_state.altitude_weight = st.sidebar.slider("Altitude (DEN/UTA)", 0.0, 2.0, 1.0)
+st.session_state.b2b_weight = st.sidebar.slider("Back-to-Back", 0.0, 2.0, 1.0)
+st.session_state.travel_weight = st.sidebar.slider("Travel Distance", 0.0, 2.0, 0.8)
+st.session_state.form_weight = st.sidebar.slider("Recent Form (L10)", 0.0, 2.0, 0.7)
 
 # Today's Games
 st.header("📅 Today's NBA Games")
@@ -183,32 +405,52 @@ else:
     for i, game in enumerate(todays_games):
         st.write(f"**Game {i+1}:** {game['away_team']} @ {game['home_team']} - {game['game_time']}")
 
+# Get auto rest days
+rest_data = get_cached_rest_days()
+
 # Manual Analysis
 st.header("🔍 Game Analysis")
-st.write("**Select teams and set injury status manually for accurate analysis**")
+st.write("**Select teams • Rest days auto-detected • Injury status manual**")
 
 col1, col2 = st.columns(2)
 with col1:
     st.subheader("🏠 Home Team")
     manual_home = st.selectbox("Home Team", list(team_mapping.keys()), index=13)
-    manual_home_rest = st.number_input("Home Rest Days", 1, 7, 2)
+    
+    # Auto-detect rest days
+    auto_home_rest = rest_data.get(manual_home, 2)
+    home_is_b2b = auto_home_rest == 1
+    manual_home_rest = st.number_input("Home Rest Days", 1, 7, min(auto_home_rest, 7), 
+                                        help=f"Auto-detected: {auto_home_rest} days")
     home_injury_level = st.selectbox(
         "Home Injury Status",
         options=list(INJURY_LEVELS.keys()),
         format_func=lambda x: INJURY_LEVELS[x],
         key="home_injury"
     )
+    home_b2b = st.checkbox("Home team on BACK-TO-BACK", value=home_is_b2b, key="home_b2b")
 
 with col2:
     st.subheader("✈️ Away Team")
     manual_away = st.selectbox("Away Team", list(team_mapping.keys()), index=9)
-    manual_away_rest = st.number_input("Away Rest Days", 1, 7, 1)
+    
+    # Auto-detect rest days
+    auto_away_rest = rest_data.get(manual_away, 2)
+    away_is_b2b = auto_away_rest == 1
+    manual_away_rest = st.number_input("Away Rest Days", 1, 7, min(auto_away_rest, 7),
+                                        help=f"Auto-detected: {auto_away_rest} days")
     away_injury_level = st.selectbox(
         "Away Injury Status",
         options=list(INJURY_LEVELS.keys()),
         format_func=lambda x: INJURY_LEVELS[x],
         key="away_injury"
     )
+    away_b2b = st.checkbox("Away team on BACK-TO-BACK", value=away_is_b2b, key="away_b2b")
+
+# Show auto-calculated info
+distance = calculate_distance(manual_away, manual_home)
+altitude = team_locations.get(manual_home, {}).get("altitude", 0)
+st.info(f"📍 Travel distance: **{distance:.0f} miles** | 🏔️ Home altitude: **{altitude:,} ft**")
 
 st.subheader("📊 Market Data")
 col3, col4 = st.columns(2)
@@ -220,7 +462,7 @@ with col4:
 if st.button("📈 Analyze Game", type="primary"):
     result = calculate_kalshi_edge(
         manual_home, manual_away, manual_spread, manual_home_rest, manual_away_rest,
-        home_injury_level, away_injury_level, manual_yes_price
+        home_injury_level, away_injury_level, manual_yes_price, home_b2b, away_b2b
     )
     
     st.subheader("📊 Analysis Results")
@@ -249,13 +491,19 @@ if st.button("📈 Analyze Game", type="primary"):
     else:
         st.error("🔍 Insufficient edge or confidence - NO TRADE")
     
-    with st.expander("View Factor Breakdown"):
+    with st.expander("View Factor Breakdown (9 Factors)"):
         factors = result['factors']
-        st.write(f"• Rest Advantage: {factors[0]:+.2f}")
-        st.write(f"• Defense Advantage: {factors[1]:+.2f}")
-        st.write(f"• Pace Advantage: {factors[2]:+.2f}")
-        st.write(f"• Injury Impact: {factors[3]:+.2f}")
-        st.write(f"• Net Rating Advantage: {factors[4]:+.2f}")
+        st.write("**Original Factors:**")
+        st.write(f"• Rest Advantage: {factors['rest']:+.2f}")
+        st.write(f"• Defense Advantage: {factors['defense']:+.2f}")
+        st.write(f"• Pace Advantage: {factors['pace']:+.2f}")
+        st.write(f"• Injury Impact: {factors['injury']:+.2f}")
+        st.write(f"• Net Rating Advantage: {factors['net_rating']:+.2f}")
+        st.write("**New Factors:**")
+        st.write(f"• 🏔️ Altitude Advantage: {factors['altitude']:+.2f}")
+        st.write(f"• 🔄 Back-to-Back Impact: {factors['b2b']:+.2f}")
+        st.write(f"• ✈️ Travel Fatigue: {factors['travel']:+.2f}")
+        st.write(f"• 📈 Recent Form (L10): {factors['form']:+.2f}")
 
 # Sidebar info
 st.sidebar.markdown("---")
@@ -270,8 +518,16 @@ st.sidebar.write("• 1 = Role player out")
 st.sidebar.write("• 2 = Star questionable")
 st.sidebar.write("• 3 = Star OUT")
 
+st.sidebar.header("🆕 New Factors")
+st.sidebar.write("• 🏔️ Denver = +1.5 pts")
+st.sidebar.write("• 🏔️ Utah = +0.75 pts")
+st.sidebar.write("• 🔄 B2B = 1.5 pt penalty")
+st.sidebar.write("• ✈️ >2000mi = +0.75 pts")
+
 st.sidebar.header("📡 Status")
 st.sidebar.write(f"• Games today: {len(todays_games)}")
+st.sidebar.write(f"• Factors: 9 active")
+st.sidebar.write(f"• Rest data: {'✅ Loaded' if rest_data else '❌ Manual'}")
 st.sidebar.write(f"• Updated: {datetime.now().strftime('%I:%M %p')}")
 
 st.markdown("---")
