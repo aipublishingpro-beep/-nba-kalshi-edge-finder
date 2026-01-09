@@ -148,105 +148,143 @@ def fetch_rest_days():
     return rest
 
 def calculate_edge(home, away, kalshi_price, home_rest, away_rest, home_inj, away_inj, travel, weights):
-    """REALISTIC edge calculation with haircuts"""
+    """
+    TRULY REALISTIC edge calculation
+    
+    Key insight: Kalshi prices ARE the market's probability estimate.
+    Our model should only find SMALL deviations (2-5%) based on factors
+    the market might be slightly mispricing.
+    
+    We DON'T calculate our own probability from scratch.
+    We ADJUST the market price by small amounts.
+    """
     hs = TEAM_STATS.get(home, {})
     aws = TEAM_STATS.get(away, {})
     
     if not hs or not aws:
-        return {"prob": 50, "adj_prob": 50, "raw_edge": 0, "adj_edge": 0, "factors": {}, "raw": {}, "rec": "NO DATA", "conf": "LOW", "haircut": 5}
+        return {"prob": kalshi_price, "adj_prob": kalshi_price, "raw_edge": 0, "adj_edge": 0, 
+                "factors": {}, "raw": {}, "rec": "NO DATA", "conf": "LOW", "haircut": 0}
     
     factors, raw = {}, {}
     
-    # REALISTIC WEIGHTS (scaled down)
+    # ============================================================
+    # ADJUSTMENT APPROACH: Start from market, add/subtract small edges
+    # Each factor can only contribute ±0.5 to ±1.5% MAX
+    # ============================================================
     
-    # 1. Rest: 1.0 per day diff (was 2.5)
+    # 1. REST ADVANTAGE (max ±1.5%)
+    # Back-to-back vs 3+ days rest is meaningful
     rest_diff = home_rest - away_rest
-    factors["rest"] = max(-3, min(3, rest_diff * 1.0 * weights["rest"]))
+    if rest_diff >= 2:  # Home well rested, away tired
+        factors["rest"] = min(1.5, rest_diff * 0.5) * weights["rest"]
+    elif rest_diff <= -2:  # Home tired, away rested
+        factors["rest"] = max(-1.5, rest_diff * 0.5) * weights["rest"]
+    else:
+        factors["rest"] = rest_diff * 0.3 * weights["rest"]
     raw["home_rest"], raw["away_rest"] = home_rest, away_rest
     
-    # 2. Defense: 0.1 per rank diff (was 0.15)
-    def_diff = aws.get("def_rank", 15) - hs.get("def_rank", 15)
-    factors["defense"] = max(-2, min(2, def_diff * 0.1 * weights["defense"]))
-    raw["home_def"], raw["away_def"] = hs.get("def_rank", 15), aws.get("def_rank", 15)
-    
-    # 3. Injury: 1.0 per level (was 1.5)
-    inj_diff = away_inj - home_inj
-    factors["injury"] = max(-3, min(3, inj_diff * 1.0 * weights["injury"]))
+    # 2. INJURIES (max ±2%)
+    # Star out is significant but market usually prices this in
+    inj_diff = away_inj - home_inj  # Positive = away more injured
+    factors["injury"] = max(-2, min(2, inj_diff * 0.6)) * weights["injury"]
     raw["home_inj"], raw["away_inj"] = home_inj, away_inj
     
-    # 4. Pace: minimal impact
-    pace_diff = hs.get("pace", 100) - aws.get("pace", 100)
-    factors["pace"] = max(-1, min(1, pace_diff * 0.05 * weights["pace"]))
-    raw["home_pace"], raw["away_pace"] = hs.get("pace", 100), aws.get("pace", 100)
-    
-    # 5. Net Rating: 0.4 per point (was 0.8) - CAPPED
-    net_diff = hs.get("net_rating", 0) - aws.get("net_rating", 0)
-    factors["net_rating"] = max(-6, min(6, net_diff * 0.4 * weights["net_rating"]))
-    raw["home_net"], raw["away_net"] = hs.get("net_rating", 0), aws.get("net_rating", 0)
-    
-    # 6. Travel: 0.3 per 1000mi (was 0.8)
-    travel_factor = min(travel / 1000, 3) * 0.3 * weights["travel"]
-    factors["travel"] = max(0, min(1.5, travel_factor))
+    # 3. TRAVEL FATIGUE (max ±0.5%)
+    # Only matters for extreme distances, market mostly prices this
+    if travel > 2000:
+        factors["travel"] = 0.5 * weights["travel"]
+    elif travel > 1500:
+        factors["travel"] = 0.3 * weights["travel"]
+    else:
+        factors["travel"] = 0
     raw["travel"] = travel
     
-    # 7. Splits: 3.0 multiplier (was 8)
-    split_diff = hs.get("home_win_pct", 0.5) - aws.get("away_win_pct", 0.5)
-    factors["splits"] = max(-2, min(2, split_diff * 3.0 * weights["splits"]))
-    raw["home_pct"], raw["away_pct"] = hs.get("home_win_pct", 0.5), aws.get("away_win_pct", 0.5)
-    
-    # 8. Division: -1.0 (was -1.5)
+    # 4. DIVISION GAME (max -0.5%)
+    # Division games are tighter, reduces home edge
     is_div = hs.get("division") == aws.get("division")
-    factors["division"] = -1.0 * weights["division"] if is_div else 0
+    factors["division"] = -0.5 * weights["division"] if is_div else 0
     raw["is_division"] = is_div
     
-    # 9-12: Minor factors (reduced)
-    ft_diff = hs.get("ft_rate", 0.25) - aws.get("ft_rate", 0.25)
-    factors["ft_rate"] = max(-1, min(1, ft_diff * 5 * weights["ft_rate"]))
-    raw["home_ft"], raw["away_ft"] = hs.get("ft_rate", 0.25), aws.get("ft_rate", 0.25)
+    # ============================================================
+    # FACTORS THE MARKET ALREADY PRICES WELL - MINIMAL ADJUSTMENT
+    # These are for display only, near-zero weight
+    # ============================================================
     
-    reb_diff = hs.get("reb_rate", 50) - aws.get("reb_rate", 50)
-    factors["rebounding"] = max(-1, min(1, reb_diff * 0.1 * weights["rebounding"]))
-    raw["home_reb"], raw["away_reb"] = hs.get("reb_rate", 50), aws.get("reb_rate", 50)
+    # Net rating, defense, pace, splits - market knows these
+    # Only include for transparency, not for edge calculation
+    net_diff = hs.get("net_rating", 0) - aws.get("net_rating", 0)
+    factors["net_rating"] = 0  # Market prices this perfectly
+    raw["home_net"], raw["away_net"] = hs.get("net_rating", 0), aws.get("net_rating", 0)
     
-    three_diff = (hs.get("three_pct", 0.35) - aws.get("three_pct", 0.35)) * 100
-    factors["three_pt"] = max(-1, min(1, three_diff * 0.15 * weights["three_pt"]))
-    raw["home_3pt"], raw["away_3pt"] = hs.get("three_pct", 0.35), aws.get("three_pct", 0.35)
+    def_diff = aws.get("def_rank", 15) - hs.get("def_rank", 15)
+    factors["defense"] = 0  # Market prices this perfectly
+    raw["home_def"], raw["away_def"] = hs.get("def_rank", 15), aws.get("def_rank", 15)
     
-    # Calculate raw probability
-    base_home_adv = 2.5  # Reduced from 3.5
+    factors["pace"] = 0
+    raw["home_pace"], raw["away_pace"] = hs.get("pace", 100), aws.get("pace", 100)
+    
+    factors["splits"] = 0
+    raw["home_pct"], raw["away_pct"] = hs.get("home_win_pct", 0.5), aws.get("away_win_pct", 0.5)
+    
+    factors["ft_rate"] = 0
+    factors["rebounding"] = 0
+    factors["three_pt"] = 0
+    
+    # ============================================================
+    # CALCULATE ADJUSTED PROBABILITY
+    # ============================================================
+    
+    # Sum adjustments (should be small: typically -2% to +3%)
     total_adj = sum(factors.values())
-    total_adj = max(-10, min(10, total_adj))  # Cap total adjustment at ±10%
     
-    raw_prob = 50 + base_home_adv + total_adj
-    raw_prob = max(25, min(75, raw_prob))
+    # HARD CAP: Never adjust more than ±4% from market
+    total_adj = max(-4, min(4, total_adj))
     
-    # MANDATORY HAIRCUTS - applied toward 50%
-    haircut = 5  # Model uncertainty (3%) + NBA variance (2%)
+    # Raw model probability = market + adjustments
+    raw_prob = kalshi_price + total_adj
+    raw_prob = max(20, min(80, raw_prob))
     
-    if raw_prob > 50:
-        adj_prob = max(50, raw_prob - haircut)
+    # HAIRCUT: Assume we're probably wrong, regress toward market
+    # Apply 40% haircut on any edge we think we found
+    haircut_pct = 40
+    if total_adj > 0:
+        adj_prob = kalshi_price + (total_adj * (100 - haircut_pct) / 100)
     else:
-        adj_prob = min(50, raw_prob + haircut)
+        adj_prob = kalshi_price + (total_adj * (100 - haircut_pct) / 100)
     
-    raw_edge = raw_prob - kalshi_price
-    adj_edge = adj_prob - kalshi_price
+    adj_prob = max(20, min(80, adj_prob))
     
-    # REALISTIC THRESHOLDS
-    if abs(adj_edge) < 2:
+    # Calculate edges
+    raw_edge = raw_prob - kalshi_price  # Before haircut
+    adj_edge = adj_prob - kalshi_price  # After haircut
+    
+    # ============================================================
+    # RECOMMENDATIONS - VERY CONSERVATIVE
+    # ============================================================
+    
+    if abs(adj_edge) < 1.5:
         rec, conf = "NO EDGE", "LOW"
-    elif abs(adj_edge) < 3:
+    elif abs(adj_edge) < 2.5:
         rec = "SLIGHT HOME" if adj_edge > 0 else "SLIGHT AWAY"
         conf = "LOW"
-    elif abs(adj_edge) < 5:
-        rec = "FAVORS HOME" if adj_edge > 0 else "FAVORS AWAY"
+    elif abs(adj_edge) < 3.5:
+        rec = "LEAN HOME" if adj_edge > 0 else "LEAN AWAY"
         conf = "MED"
     else:
-        rec = "CHECK MODEL" if adj_edge > 0 else "CHECK MODEL"
-        conf = "HIGH"
+        rec = "EDGE HOME" if adj_edge > 0 else "EDGE AWAY"
+        conf = "MED"
     
     return {
-        "prob": raw_prob, "adj_prob": adj_prob, "raw_edge": raw_edge, "adj_edge": adj_edge,
-        "factors": factors, "raw": raw, "rec": rec, "conf": conf, "haircut": haircut
+        "prob": raw_prob, 
+        "adj_prob": adj_prob, 
+        "raw_edge": raw_edge, 
+        "adj_edge": adj_edge,
+        "factors": factors, 
+        "raw": raw, 
+        "rec": rec, 
+        "conf": conf, 
+        "haircut": haircut_pct,
+        "total_adj": total_adj
     }
 
 def calculate_kelly(win_prob, price, bankroll, fraction):
@@ -258,7 +296,7 @@ def calculate_kelly(win_prob, price, bankroll, fraction):
 
 # ========== UI ==========
 st.title("🏀 NBA Edge Finder")
-st.caption("Realistic Model • Haircuts Applied • For Analysis Only")
+st.caption("Realistic Model • Market-Adjusted • Small Edges Only")
 
 clicked_game = st.query_params.get("game", None)
 if clicked_game:
@@ -266,53 +304,54 @@ if clicked_game:
 
 st.markdown("""
 <style>
-    .prediction-banner {background: linear-gradient(135deg, rgba(255, 107, 53, 0.2) 0%, rgba(247, 147, 30, 0.1) 100%);
-        border-left: 4px solid #FF6B35; border-radius: 8px; padding: 16px 20px; margin: 10px 0;}
-    .prediction-banner:hover {transform: scale(1.01); box-shadow: 0 4px 20px rgba(255, 107, 53, 0.3);}
-    .prediction-team {font-size: 1.5rem; font-weight: 700; color: #FAFAFA;}
-    .prediction-edge {font-size: 1.8rem; font-weight: 800; color: #FF6B35;}
-    .prediction-details {color: rgba(250, 250, 250, 0.7); font-size: 0.9rem; margin-top: 4px;}
+    .prediction-banner {background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(34, 197, 94, 0.05) 100%);
+        border-left: 4px solid #22c55e; border-radius: 8px; padding: 16px 20px; margin: 10px 0;}
+    .prediction-banner:hover {transform: scale(1.01); box-shadow: 0 4px 20px rgba(34, 197, 94, 0.2);}
+    .prediction-team {font-size: 1.4rem; font-weight: 700; color: #FAFAFA;}
+    .prediction-edge {font-size: 1.6rem; font-weight: 800; color: #22c55e;}
+    .prediction-details {color: rgba(250, 250, 250, 0.7); font-size: 0.85rem; margin-top: 4px;}
+    .no-edge-banner {background: rgba(100, 100, 100, 0.1); border-left: 4px solid #666; border-radius: 8px; padding: 12px 16px; margin: 10px 0;}
 </style>
 """, unsafe_allow_html=True)
 
 # Sidebar
-st.sidebar.header("⚙️ Settings")
-st.sidebar.markdown("**Realistic Weights**")
-st.sidebar.caption("Scaled to produce 2-5% edges max")
+st.sidebar.header("⚙️ Model Settings")
 
-with st.sidebar.expander("🎚️ Factor Weights", expanded=False):
-    w_rest = st.slider("Rest", 0.0, 2.0, 1.0, 0.1, key="w1")
-    w_def = st.slider("Defense", 0.0, 2.0, 1.0, 0.1, key="w2")
-    w_inj = st.slider("Injuries", 0.0, 2.0, 1.0, 0.1, key="w3")
-    w_pace = st.slider("Pace", 0.0, 2.0, 1.0, 0.1, key="w4")
-    w_net = st.slider("Net Rating", 0.0, 2.0, 1.0, 0.1, key="w5")
-    w_travel = st.slider("Travel", 0.0, 2.0, 1.0, 0.1, key="w6")
-    w_splits = st.slider("Splits", 0.0, 2.0, 1.0, 0.1, key="w7")
-    w_div = st.slider("Division", 0.0, 2.0, 1.0, 0.1, key="w8")
-    w_ft = st.slider("FT Rate", 0.0, 2.0, 1.0, 0.1, key="w10")
-    w_reb = st.slider("Rebounding", 0.0, 2.0, 1.0, 0.1, key="w11")
-    w_three = st.slider("3PT", 0.0, 2.0, 1.0, 0.1, key="w12")
+st.sidebar.markdown("**Philosophy**")
+st.sidebar.caption("Market prices are ~95% accurate. We only find small edges from situational factors the market might underweight.")
 
-weights = {"rest": w_rest, "defense": w_def, "injury": w_inj, "pace": w_pace, "net_rating": w_net, 
-           "travel": w_travel, "splits": w_splits, "division": w_div, "ft_rate": w_ft, 
-           "rebounding": w_reb, "three_pt": w_three}
+with st.sidebar.expander("🎚️ Situational Weights", expanded=False):
+    st.caption("Only factors that might be slightly mispriced")
+    w_rest = st.slider("Rest Days", 0.0, 2.0, 1.0, 0.1, key="w1", help="Back-to-back situations")
+    w_inj = st.slider("Injury News", 0.0, 2.0, 1.0, 0.1, key="w3", help="GTD/Out announcements")
+    w_travel = st.slider("Travel", 0.0, 2.0, 1.0, 0.1, key="w6", help="Cross-country trips")
+    w_div = st.slider("Division", 0.0, 2.0, 1.0, 0.1, key="w8", help="Division rivalry games")
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("**Haircuts (Always Applied)**")
-st.sidebar.write("• Model uncertainty: -3%")
-st.sidebar.write("• NBA variance: -2%")
-st.sidebar.write("• **Total: -5%**")
+# Disabled weights (market prices these accurately)
+weights = {
+    "rest": w_rest, 
+    "injury": w_inj, 
+    "travel": w_travel, 
+    "division": w_div,
+    # These are set to 0 in calculate_edge anyway
+    "defense": 0, "pace": 0, "net_rating": 0, "splits": 0,
+    "ft_rate": 0, "rebounding": 0, "three_pt": 0
+}
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("**Edge Thresholds**")
-st.sidebar.write("• <2% = No edge")
-st.sidebar.write("• 2-3% = Slight edge")
-st.sidebar.write("• 3-5% = Good edge")
-st.sidebar.write("• >5% = Check model")
+st.sidebar.write("• <1.5% = No edge")
+st.sidebar.write("• 1.5-2.5% = Slight")
+st.sidebar.write("• 2.5-3.5% = Lean")
+st.sidebar.write("• 3.5%+ = Edge (rare)")
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("**Haircut: 40%**")
+st.sidebar.caption("We assume we're probably wrong and regress edges toward market")
 
 with st.sidebar.expander("💰 Position Sizing"):
     bankroll = st.number_input("Bankroll ($)", 100, 100000, 1000)
-    kelly_frac = st.slider("Kelly Fraction", 0.1, 1.0, 0.25, 0.05)
+    kelly_frac = st.slider("Kelly Fraction", 0.1, 0.5, 0.15, 0.05)
 
 if st.sidebar.button("🔄 Refresh"):
     st.cache_data.clear()
@@ -327,7 +366,7 @@ st.sidebar.write(f"**Games:** {len(markets['moneyline'])}")
 
 # Top Edges
 st.markdown("---")
-st.subheader("🎯 Top Edges (After Haircuts)")
+st.subheader("🎯 Today's Edges")
 
 all_edges = []
 seen = set()
@@ -341,34 +380,51 @@ for g in markets['moneyline']:
     travel = calculate_travel_distance(away, home)
     analysis = calculate_edge(home, away, g['yes_price'], rest_days.get(home, 2), rest_days.get(away, 2), 0, 0, travel, weights)
     
-    if abs(analysis['adj_edge']) >= 2:
-        pred_team = home if analysis['adj_edge'] > 0 else away
-        all_edges.append({
-            "game": key, "pred": pred_team, "adj_edge": abs(analysis['adj_edge']),
-            "raw_edge": abs(analysis['raw_edge']), "rec": analysis['rec'], "conf": analysis['conf'],
-            "date": g['game_date']
-        })
+    pred_team = home if analysis['adj_edge'] > 0 else away
+    all_edges.append({
+        "game": key, "pred": pred_team, "adj_edge": analysis['adj_edge'],
+        "raw_edge": analysis['raw_edge'], "rec": analysis['rec'], "conf": analysis['conf'],
+        "date": g['game_date'], "market": g['yes_price']
+    })
 
-all_edges.sort(key=lambda x: x['adj_edge'], reverse=True)
+all_edges.sort(key=lambda x: abs(x['adj_edge']), reverse=True)
 
-if all_edges[:3]:
+# Show top 3 (or message if no edges)
+has_edge = [e for e in all_edges if abs(e['adj_edge']) >= 1.5]
+
+if has_edge[:3]:
     cols = st.columns(3)
-    for i, e in enumerate(all_edges[:3]):
+    for i, e in enumerate(has_edge[:3]):
         with cols[i]:
             game_encoded = e['game'].replace(' ', '_').replace('@', 'at')
-            edge_color = "#FF6B35" if e['adj_edge'] >= 3 else "#888"
-            st.markdown(f'''
-            <a href="?game={game_encoded}" style="text-decoration:none;">
-                <div class="prediction-banner" style="cursor:pointer; border-left-color:{edge_color}">
-                    <span class="prediction-team">{e["pred"]}</span><br>
-                    <span class="prediction-edge" style="color:{edge_color}">+{e["adj_edge"]:.1f}%</span>
-                    <div class="prediction-details">{e["date"]} • {e["game"]} • {e["conf"]}</div>
-                    <div style="font-size:0.7rem; color:#888; margin-top:4px;">Raw: {e["raw_edge"]:.1f}% → Adj: {e["adj_edge"]:.1f}% (after -5% haircut)</div>
-                </div>
-            </a>
-            ''', unsafe_allow_html=True)
+            is_real_edge = abs(e['adj_edge']) >= 2.5
+            
+            if is_real_edge:
+                st.markdown(f'''
+                <a href="?game={game_encoded}" style="text-decoration:none;">
+                    <div class="prediction-banner" style="cursor:pointer;">
+                        <span class="prediction-team">{e["pred"]}</span><br>
+                        <span class="prediction-edge">+{abs(e["adj_edge"]):.1f}%</span>
+                        <div class="prediction-details">{e["date"]} • {e["game"]}</div>
+                        <div style="font-size:0.75rem; color:#888; margin-top:4px;">{e["rec"]} • Market: {e["market"]:.0f}%</div>
+                    </div>
+                </a>
+                ''', unsafe_allow_html=True)
+            else:
+                st.markdown(f'''
+                <a href="?game={game_encoded}" style="text-decoration:none;">
+                    <div class="no-edge-banner" style="cursor:pointer;">
+                        <span style="font-size:1.2rem; color:#aaa;">{e["pred"]}</span><br>
+                        <span style="font-size:1.3rem; color:#888;">+{abs(e["adj_edge"]):.1f}%</span>
+                        <div class="prediction-details">{e["date"]} • {e["game"]}</div>
+                        <div style="font-size:0.75rem; color:#666; margin-top:4px;">Slight lean • Market: {e["market"]:.0f}%</div>
+                    </div>
+                </a>
+                ''', unsafe_allow_html=True)
 else:
-    st.info("No edges ≥2% after haircuts today. This is normal - pass most games.")
+    st.info("✅ No actionable edges today. Market is efficient. This is normal - pass most games.")
+
+st.caption("💡 Realistic edges are 2-4%. If any model shows 10%+, it's broken.")
 
 # Tabs
 tab_ml, tab_tot, tab_spr = st.tabs(["🏀 Winner", "📊 Totals", "📏 Spreads"])
@@ -388,10 +444,10 @@ with tab_ml:
         h_rest, a_rest = rest_days.get(home, 2), rest_days.get(away, 2)
         analysis = calculate_edge(home, away, g['yes_price'], h_rest, a_rest, 0, 0, travel, weights)
         
-        if analysis['adj_edge'] > 2:
+        if abs(analysis['adj_edge']) >= 2.5:
             indicator = "🟢"
-        elif analysis['adj_edge'] < -2:
-            indicator = "🔴"
+        elif abs(analysis['adj_edge']) >= 1.5:
+            indicator = "🟡"
         else:
             indicator = "⚪"
         
@@ -400,45 +456,56 @@ with tab_ml:
         
         st.markdown(f'<div id="game-{game_encoded}" style="scroll-margin-top:100px;"></div>', unsafe_allow_html=True)
         
-        with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | Adj: {analysis['adj_edge']:+.1f}% | {analysis['rec']}", expanded=should_expand):
+        with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | Edge: {analysis['adj_edge']:+.1f}% | {analysis['rec']}", expanded=should_expand):
+            
+            st.caption(f"Market: {home} {g['yes_price']:.0f}% to win")
+            
             ic1, ic2 = st.columns(2)
             with ic1:
-                home_inj = st.select_slider(f"🏥 {home}", [0,1,2,3], 0, format_func=lambda x: ["HEALTHY","MINOR","STAR GTD","STAR OUT"][x], key=f"ml_h_{idx}")
+                home_inj = st.select_slider(f"🏥 {home}", [0,1,2,3], 0, format_func=lambda x: ["Full","Minor","Star GTD","Star OUT"][x], key=f"ml_h_{idx}")
             with ic2:
-                away_inj = st.select_slider(f"🏥 {away}", [0,1,2,3], 0, format_func=lambda x: ["HEALTHY","MINOR","STAR GTD","STAR OUT"][x], key=f"ml_a_{idx}")
+                away_inj = st.select_slider(f"🏥 {away}", [0,1,2,3], 0, format_func=lambda x: ["Full","Minor","Star GTD","Star OUT"][x], key=f"ml_a_{idx}")
             
             inj_map = {0: 0, 1: 1.0, 2: 2.0, 3: 3.0}
             analysis = calculate_edge(home, away, g['yes_price'], h_rest, a_rest, inj_map[home_inj], inj_map[away_inj], travel, weights)
             
-            # Results
-            c1, c2, c3, c4, c5 = st.columns(5)
-            c1.metric("Market", f"{g['yes_price']:.0f}%")
-            c2.metric("Model", f"{analysis['prob']:.1f}%")
-            c3.metric("Haircut", f"-{analysis['haircut']}%")
-            c4.metric("Adj Model", f"{analysis['adj_prob']:.1f}%")
-            c5.metric("ADJ EDGE", f"{analysis['adj_edge']:+.1f}%")
+            # Results - cleaner display
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Market", f"{g['yes_price']:.0f}%", help=f"{home} win probability per Kalshi")
+            c2.metric("Adjustment", f"{analysis['total_adj']:+.1f}%", help="Our situational adjustment")
+            c3.metric("After Haircut", f"{analysis['adj_edge']:+.1f}%", help="40% haircut applied")
+            c4.metric("Final Edge", f"{analysis['adj_edge']:+.1f}%")
             
             if analysis['rec'] not in ["NO EDGE", "NO DATA"]:
                 pred_team = home if analysis['adj_edge'] > 0 else away
-                kelly = calculate_kelly(analysis['adj_prob'] if analysis['adj_edge'] > 0 else 100 - analysis['adj_prob'], 
-                                        g['yes_price'] if analysis['adj_edge'] > 0 else 100 - g['yes_price'], bankroll, kelly_frac)
-                st.markdown(f'''
-                <div class="prediction-banner">
-                    <span class="prediction-team">Model: {pred_team}</span>
-                    <span class="prediction-edge" style="float:right">{analysis['adj_edge']:+.1f}%</span>
-                    <div class="prediction-details">{analysis['rec']} • Kelly: ${kelly['bet']:.2f}</div>
-                </div>
-                ''', unsafe_allow_html=True)
+                kelly = calculate_kelly(
+                    analysis['adj_prob'] if analysis['adj_edge'] > 0 else 100 - analysis['adj_prob'], 
+                    g['yes_price'] if analysis['adj_edge'] > 0 else 100 - g['yes_price'], 
+                    bankroll, kelly_frac
+                )
+                
+                edge_strength = "Small edge" if abs(analysis['adj_edge']) < 3 else "Decent edge"
+                
+                st.success(f"**{analysis['rec']}**: {pred_team} • {edge_strength} of {abs(analysis['adj_edge']):.1f}%")
+                
+                if kelly['bet'] > 0:
+                    st.caption(f"Kelly suggests: ${kelly['bet']:.2f} ({kelly['adj_kelly']:.1f}% of bankroll)")
             else:
-                st.info(f"No actionable edge. Raw: {analysis['raw_edge']:+.1f}% → After haircut: {analysis['adj_edge']:+.1f}%")
+                st.info(f"No actionable edge. Market looks efficient here.")
             
             with st.expander("📊 Factor Breakdown"):
-                f = analysis['factors']
-                for name, val in f.items():
-                    st.write(f"• {name}: {val:+.2f}%")
+                st.write(f"**Rest**: Home {h_rest}d, Away {a_rest}d → {analysis['factors'].get('rest', 0):+.2f}%")
+                st.write(f"**Injury**: Home {home_inj}, Away {away_inj} → {analysis['factors'].get('injury', 0):+.2f}%")
+                st.write(f"**Travel**: {travel} mi → {analysis['factors'].get('travel', 0):+.2f}%")
+                st.write(f"**Division**: {analysis['raw'].get('is_division', False)} → {analysis['factors'].get('division', 0):+.2f}%")
+                st.markdown("---")
+                st.write(f"**Total Adj**: {analysis['total_adj']:+.2f}%")
+                st.write(f"**After 40% Haircut**: {analysis['adj_edge']:+.2f}%")
 
 with tab_tot:
     st.subheader("Total Points")
+    st.caption("Market prices totals efficiently. Edges are rare.")
+    
     seen_tot = set()
     for g in markets['totals']:
         home, away, line = g['home'], g['away'], g.get('line', 220)
@@ -447,22 +514,32 @@ with tab_tot:
             continue
         seen_tot.add(key)
         
+        # Simple projection - acknowledge market is usually right
         hs, aws = TEAM_STATS.get(home, {}), TEAM_STATS.get(away, {})
-        projected = (hs.get('ppg', 110) + aws.get('ppg', 110)) - ((15 - hs.get('def_rank', 15)) + (15 - aws.get('def_rank', 15))) * 0.2
-        raw_edge = projected - line
-        adj_edge = raw_edge * 0.5  # Conservative haircut on totals
+        combined_ppg = (hs.get('ppg', 110) + aws.get('ppg', 110)) / 2
+        pace_factor = ((hs.get('pace', 100) + aws.get('pace', 100)) / 2 - 100) * 0.5
+        projected = combined_ppg + pace_factor
         
-        indicator = "🟢" if adj_edge > 2 else ("🔴" if adj_edge < -2 else "⚪")
-        rec = "OVER" if adj_edge > 2 else ("UNDER" if adj_edge < -2 else "NO EDGE")
+        raw_diff = projected - line
+        # Heavy haircut - market prices totals well
+        adj_edge = raw_diff * 0.3
         
-        with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | O/U {line} | {adj_edge:+.1f}"):
+        indicator = "🟢" if abs(adj_edge) > 2 else "⚪"
+        rec = "LEAN OVER" if adj_edge > 2 else ("LEAN UNDER" if adj_edge < -2 else "NO EDGE")
+        
+        with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | O/U {line} | {adj_edge:+.1f}%"):
             c1, c2, c3 = st.columns(3)
             c1.metric("Line", f"{line}")
-            c2.metric("Projected", f"{projected:.1f}")
-            c3.metric("Adj Edge", f"{adj_edge:+.1f}")
+            c2.metric("Est. Total", f"{projected:.0f}")
+            c3.metric("Edge", f"{adj_edge:+.1f}%")
+            
+            if abs(adj_edge) < 2:
+                st.info("Market looks efficient")
 
 with tab_spr:
     st.subheader("Spreads")
+    st.caption("Market prices spreads efficiently. Edges are rare.")
+    
     seen_spr = set()
     for g in markets['spreads']:
         home, away, line = g['home'], g['away'], g.get('line', 5)
@@ -472,17 +549,20 @@ with tab_spr:
         seen_spr.add(key)
         
         hs, aws = TEAM_STATS.get(home, {}), TEAM_STATS.get(away, {})
-        predicted = (hs.get('net_rating', 0) - aws.get('net_rating', 0)) * 0.4 + 2.5
-        raw_edge = predicted - line
-        adj_edge = raw_edge * 0.5
+        net_diff = hs.get('net_rating', 0) - aws.get('net_rating', 0)
+        # Home court ~2.5 points
+        predicted_margin = net_diff * 0.5 + 2.5
         
-        indicator = "🟢" if adj_edge > 2 else ("🔴" if adj_edge < -2 else "⚪")
+        raw_diff = predicted_margin - line
+        adj_edge = raw_diff * 0.3  # Heavy haircut
         
-        with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | {g.get('spread_team', home)} -{line} | {adj_edge:+.1f}"):
+        indicator = "🟢" if abs(adj_edge) > 2 else "⚪"
+        
+        with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | {g.get('spread_team', home)} -{line} | {adj_edge:+.1f}%"):
             c1, c2, c3 = st.columns(3)
             c1.metric("Line", f"-{line}")
-            c2.metric("Model", f"{predicted:+.1f}")
-            c3.metric("Adj Edge", f"{adj_edge:+.1f}")
+            c2.metric("Model", f"{predicted_margin:+.1f}")
+            c3.metric("Edge", f"{adj_edge:+.1f}%")
 
 st.markdown("---")
-st.caption("⚠️ **Realistic edges are 2-5%.** If you see 10%+ edges, the model is wrong, not the market. Always apply haircuts. Pass 90% of games.")
+st.caption("⚠️ **Realistic edges are 2-4%.** Markets are efficient. Pass 90% of games. If you see 10%+ edges, the model is wrong.")
