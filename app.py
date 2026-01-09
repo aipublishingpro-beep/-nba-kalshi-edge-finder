@@ -438,6 +438,11 @@ def calculate_edge(home_team, away_team, kalshi_home_price, home_rest, away_rest
 st.title("🏀 NBA Kalshi Edge Finder")
 st.markdown("**Powered by Kalshi API** - Real-time prices direct from Kalshi")
 
+# Show current date/time
+from datetime import timezone
+now_et = datetime.now()
+st.caption(f"📅 **{now_et.strftime('%A, %B %d, %Y')}** | ⏰ **{now_et.strftime('%I:%M %p')}** (your local time) | Data refreshes every 5 min")
+
 # ========== SIDEBAR ==========
 st.sidebar.header("⚙️ Factor Weights")
 st.sidebar.caption("Adjust how much each factor influences the edge calculation")
@@ -453,8 +458,12 @@ weights = {
 
 st.sidebar.markdown("---")
 st.sidebar.header("🎯 Display Settings")
-min_edge = st.sidebar.slider("Minimum Edge to Highlight", 0, 20, 5)
-show_all = st.sidebar.checkbox("Show all games", value=True)
+show_filter = st.sidebar.radio(
+    "Show games:",
+    ["🔥 High Edge Only", "✅ All with Edge", "📋 All Games"],
+    index=0
+)
+min_edge = st.sidebar.slider("Minimum Edge %", 0, 25, 5)
 
 st.sidebar.markdown("---")
 st.sidebar.header("📅 Default Rest Days")
@@ -484,28 +493,20 @@ if not games:
     st.warning("No NBA games found on Kalshi right now. Games appear closer to game time.")
     st.info("Check back when games are scheduled, or verify at: https://kalshi.com/sports/basketball/Pro%20Basketball%20(M)")
 else:
-    st.success(f"✅ Found **{len(games)} NBA games** on Kalshi")
-    
-    # Display games
+    # Pre-calculate edges to show counts
+    games_with_analysis = []
     for game in games:
         home = game['home_team']
         away = game['away_team']
         kalshi_price = game['yes_price']
-        
-        # Count injuries
         home_injury_list = injuries.get(home, [])
         away_injury_list = injuries.get(away, [])
         home_injury_count = len(home_injury_list)
         away_injury_count = len(away_injury_list)
-        
-        # Calculate travel distance for away team
         away_travel = calculate_travel_distance(away, home)
-        
-        # Get auto rest days (fallback to sidebar default)
         auto_home_rest = get_team_rest_days(home, rest_days_data, default_home_rest)
         auto_away_rest = get_team_rest_days(away, rest_days_data, default_away_rest)
         
-        # Calculate edge with all 6 factors
         analysis = calculate_edge(
             home, away, kalshi_price,
             home_rest=auto_home_rest,
@@ -515,6 +516,22 @@ else:
             away_travel_miles=away_travel,
             weights=weights
         )
+        games_with_analysis.append((game, analysis, home_injury_list, away_injury_list, auto_home_rest, auto_away_rest, away_travel))
+    
+    # Count by category
+    high_edge_count = sum(1 for _, a, *_ in games_with_analysis if a['recommendation'] != 'NO EDGE' and a['confidence'] == 'HIGH' and abs(a['edge']) >= min_edge)
+    all_edge_count = sum(1 for _, a, *_ in games_with_analysis if a['recommendation'] != 'NO EDGE' and abs(a['edge']) >= min_edge)
+    
+    st.success(f"✅ Found **{len(games)} NBA games** on Kalshi | 🔥 **{high_edge_count} high-edge** | ✅ **{all_edge_count} with edge**")
+    
+    # Display games
+    displayed_count = 0
+    for game, analysis, home_injury_list, away_injury_list, auto_home_rest, auto_away_rest, away_travel in games_with_analysis:
+        home = game['home_team']
+        away = game['away_team']
+        kalshi_price = game['yes_price']
+        home_injury_count = len(home_injury_list)
+        away_injury_count = len(away_injury_list)
         
         # Skip if below minimum edge and not showing all
         if not show_all and abs(analysis['edge']) < min_edge:
@@ -653,6 +670,11 @@ else:
             # Trade link
             st.markdown("---")
             st.markdown(f"[📈 **Trade this game on Kalshi**](https://kalshi.com/markets/kxnbagame/professional-basketball-game/{game['ticker'].lower()})")
+        
+        displayed_count += 1
+    
+    if displayed_count == 0:
+        st.info(f"No games match your filter. Try switching to 'All with Edge' or 'All Games'.")
 
 # ========== SUMMARY TABLE ==========
 st.markdown("---")
