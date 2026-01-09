@@ -269,6 +269,21 @@ st.markdown("""
         border-radius: 10px;
         padding: 10px;
         text-align: center;
+        margin: 0 auto;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    .edge-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+    .edge-label {
+        font-size: 0.875rem;
+        color: rgba(250, 250, 250, 0.6);
+        margin-bottom: 4px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -375,8 +390,12 @@ with tab_ml:
             c1.metric("Kalshi Price", f"{g['yes_price']:.0f}¢ {home}")
             c2.metric("Model Prob", f"{analysis['prob']:.1f}%")
             with c3:
-                st.markdown("**Edge**")
-                st.markdown(f'<div class="edge-box"><span class="orange-edge">{analysis["edge"]:+.1f}%</span></div>', unsafe_allow_html=True)
+                st.markdown(f'''
+                <div class="edge-container">
+                    <div class="edge-label">Edge</div>
+                    <div class="edge-box"><span class="orange-edge">{analysis["edge"]:+.1f}%</span></div>
+                </div>
+                ''', unsafe_allow_html=True)
             c4.metric("Prediction", f"{color} {pred_team}")
             
             # Kelly (informational only)
