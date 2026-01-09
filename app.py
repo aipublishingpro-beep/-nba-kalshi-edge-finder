@@ -153,6 +153,26 @@ def fetch_kalshi_nba_games():
                     # Get game time
                     close_time = market.get('close_time', '')
                     
+                    # Parse game date from ticker (format: KXNBAGAME-25JAN09TORBOS)
+                    # 25 = year, JAN09 = month/day
+                    game_date_str = ""
+                    try:
+                        date_part = game_code[:-6]  # Remove team codes, get "25JAN09"
+                        if len(date_part) >= 7:
+                            year_short = date_part[:2]  # "25"
+                            month_str = date_part[2:5]  # "JAN"
+                            day_str = date_part[5:7]    # "09"
+                            
+                            month_map = {
+                                'JAN': 'Jan', 'FEB': 'Feb', 'MAR': 'Mar', 'APR': 'Apr',
+                                'MAY': 'May', 'JUN': 'Jun', 'JUL': 'Jul', 'AUG': 'Aug',
+                                'SEP': 'Sep', 'OCT': 'Oct', 'NOV': 'Nov', 'DEC': 'Dec'
+                            }
+                            month_formatted = month_map.get(month_str.upper(), month_str)
+                            game_date_str = f"{month_formatted} {day_str}"
+                    except:
+                        game_date_str = ""
+                    
                     games.append({
                         'ticker': ticker,
                         'title': title,
@@ -166,6 +186,7 @@ def fetch_kalshi_nba_games():
                         'yes_ask': yes_ask,
                         'volume': market.get('volume', 0),
                         'close_time': close_time,
+                        'game_date': game_date_str,
                         'subtitle': market.get('subtitle', ''),
                         'event_ticker': market.get('event_ticker', '')
                     })
@@ -499,6 +520,9 @@ else:
         if not show_all and abs(analysis['edge']) < min_edge:
             continue
         
+        # Parse game date from close_time
+        game_date_str = game.get('game_date', '')
+        
         # Color coding
         if analysis['recommendation'] == 'BUY YES':
             rec_color = "🟢"
@@ -506,15 +530,6 @@ else:
             rec_color = "🔴"
         else:
             rec_color = "⚪"
-        
-        # Parse game date from close_time
-        game_date_str = ""
-        if game['close_time']:
-            try:
-                game_dt = datetime.fromisoformat(game['close_time'].replace('Z', '+00:00'))
-                game_date_str = game_dt.strftime("%b %d")  # e.g., "Jan 09"
-            except:
-                game_date_str = ""
         
         with st.expander(f"{rec_color} {game_date_str} | {away} @ {home} | Edge: {analysis['edge']:+.1f}% | {analysis['recommendation']}", expanded=False):
             
