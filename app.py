@@ -232,11 +232,11 @@ def calculate_edge(home, away, kalshi_price, home_rest, away_rest, home_inj, awa
     edge = prob - kalshi_price
     
     if edge > 3:
-        rec, conf = "BUY YES", "HIGH" if edge > 6 else "MED"
+        rec, conf = "FAVORS HOME", "HIGH" if edge > 6 else "MED"
     elif edge < -3:
-        rec, conf = "BUY NO", "HIGH" if edge < -6 else "MED"
+        rec, conf = "FAVORS AWAY", "HIGH" if edge < -6 else "MED"
     else:
-        rec, conf = "NO TRADE", "LOW"
+        rec, conf = "NO EDGE", "LOW"
     
     return {"prob": prob, "edge": edge, "factors": factors, "raw": raw, "rec": rec, "conf": conf}
 
@@ -250,8 +250,8 @@ def calculate_kelly(win_prob, price, bankroll, fraction):
     return {"kelly": round(kelly * 100, 2), "adj_kelly": round(adj_kelly * 100, 2), "bet": round(bet, 2), "ev": round(ev, 2)}
 
 # ========== UI ==========
-st.title("🏀 NBA Kalshi Edge Finder")
-st.caption("12-Factor Model • Today's Games Only")
+st.title("🏀 NBA Edge Finder")
+st.caption("12-Factor Prediction Model • For Analysis Only • Not Financial Advice")
 
 # Sidebar
 st.sidebar.header("🎚️ Factor Weights")
@@ -278,8 +278,8 @@ with st.sidebar.expander("⚙️ Settings"):
     default_ref_bias = st.slider("Ref Bias (+ = home)", -3.0, 3.0, 0.0, 0.5)
     min_edge = st.slider("Min Edge", 0.0, 10.0, 1.0, 0.5)
 
-with st.sidebar.expander("💰 Kelly"):
-    bankroll = st.number_input("Bankroll ($)", 100, 100000, 1000)
+with st.sidebar.expander("📐 Position Sizing (Info Only)"):
+    bankroll = st.number_input("Hypothetical Bankroll ($)", 100, 100000, 1000)
     kelly_frac = st.slider("Kelly Fraction", 0.1, 1.0, 0.25, 0.05)
 
 if st.sidebar.button("🔄 Refresh"):
@@ -295,7 +295,7 @@ st.sidebar.write(f"**ML:** {len(markets['moneyline'])} | **TOT:** {len(markets['
 
 # Top 3 Edges
 st.markdown("---")
-st.subheader("🎯 Top 3 Edges Today")
+st.subheader("🎯 Top 3 Model Predictions")
 
 all_edges = []
 for g in markets['moneyline']:
@@ -305,9 +305,9 @@ for g in markets['moneyline']:
     analysis = calculate_edge(home, away, g['yes_price'], h_rest, a_rest, 0, 0, travel, default_ref_bias, weights)
     
     if abs(analysis['edge']) >= min_edge:
-        bet_team = home if analysis['rec'] == 'BUY YES' else away
-        kelly = calculate_kelly(analysis['prob'] if analysis['rec'] == 'BUY YES' else 100 - analysis['prob'], g['yes_price'] if analysis['rec'] == 'BUY YES' else 100 - g['yes_price'], bankroll, kelly_frac)
-        all_edges.append({"game": f"{away} @ {home}", "bet": bet_team, "edge": abs(analysis['edge']), "kelly": kelly['bet'], "rec": analysis['rec'], "conf": analysis['conf']})
+        pred_team = home if analysis['rec'] == 'FAVORS HOME' else away
+        kelly = calculate_kelly(analysis['prob'] if analysis['rec'] == 'FAVORS HOME' else 100 - analysis['prob'], g['yes_price'] if analysis['rec'] == 'FAVORS HOME' else 100 - g['yes_price'], bankroll, kelly_frac)
+        all_edges.append({"game": f"{away} @ {home}", "pred": pred_team, "edge": abs(analysis['edge']), "kelly": kelly['bet'], "rec": analysis['rec'], "conf": analysis['conf']})
 
 all_edges.sort(key=lambda x: x['edge'], reverse=True)
 
@@ -315,20 +315,20 @@ if all_edges[:3]:
     cols = st.columns(3)
     for i, e in enumerate(all_edges[:3]):
         with cols[i]:
-            color = "🟢" if "YES" in e['rec'] else "🔴"
-            st.metric(f"{color} {e['bet']}", f"+{e['edge']:.1f}%", f"${e['kelly']:.0f}")
-            st.caption(f"{e['game']} | {e['conf']}")
+            color = "🟢" if "HOME" in e['rec'] else "🔴"
+            st.metric(f"{color} {e['pred']}", f"+{e['edge']:.1f}% edge", f"Confidence: {e['conf']}")
+            st.caption(f"{e['game']}")
 else:
     st.info("No edges above threshold.")
 
 # Tabs
-tab_ml, tab_tot, tab_spr = st.tabs(["💰 Moneyline", "📊 Totals", "📏 Spreads"])
+tab_ml, tab_tot, tab_spr = st.tabs(["🏀 Winner", "📊 Totals", "📏 Spreads"])
 
 with tab_ml:
-    st.subheader("Moneyline Markets")
+    st.subheader("Game Winner Predictions")
     
     if not markets['moneyline']:
-        st.warning("No moneyline markets found for today.")
+        st.warning("No games found for today.")
     
     for idx, g in enumerate(markets['moneyline']):
         home, away = g['home'], g['away']
@@ -346,20 +346,20 @@ with tab_ml:
             inj_map = {0: 0, 1: 1.0, 2: 2.5, 3: 4.0}
             analysis = calculate_edge(home, away, g['yes_price'], h_rest, a_rest, inj_map[home_inj], inj_map[away_inj], travel, default_ref_bias, weights)
             
-            color = "🟢" if analysis['rec'] == 'BUY YES' else ("🔴" if analysis['rec'] == 'BUY NO' else "⚪")
-            bet_team = home if analysis['rec'] == 'BUY YES' else away
+            color = "🟢" if analysis['rec'] == 'FAVORS HOME' else ("🔴" if analysis['rec'] == 'FAVORS AWAY' else "⚪")
+            pred_team = home if analysis['rec'] == 'FAVORS HOME' else away
             
             # Metrics
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Kalshi", f"{g['yes_price']:.0f}¢ {home}")
-            c2.metric("Model", f"{analysis['prob']:.1f}%")
+            c1.metric("Kalshi Price", f"{g['yes_price']:.0f}¢ {home}")
+            c2.metric("Model Prob", f"{analysis['prob']:.1f}%")
             c3.metric("Edge", f"{analysis['edge']:+.1f}%")
-            c4.metric("Signal", f"{color} {analysis['rec']}")
+            c4.metric("Prediction", f"{color} {pred_team}")
             
-            # Kelly
-            if analysis['rec'] != "NO TRADE":
-                kelly = calculate_kelly(analysis['prob'] if analysis['rec'] == 'BUY YES' else 100 - analysis['prob'], g['yes_price'] if analysis['rec'] == 'BUY YES' else 100 - g['yes_price'], bankroll, kelly_frac)
-                st.success(f"💰 **Bet {bet_team}**: ${kelly['bet']:.2f} | Kelly: {kelly['adj_kelly']}% | EV: ${kelly['ev']:+.2f}")
+            # Kelly (informational only)
+            if analysis['rec'] != "NO EDGE":
+                kelly = calculate_kelly(analysis['prob'] if analysis['rec'] == 'FAVORS HOME' else 100 - analysis['prob'], g['yes_price'] if analysis['rec'] == 'FAVORS HOME' else 100 - g['yes_price'], bankroll, kelly_frac)
+                st.info(f"📊 **Model predicts {pred_team}** | Edge: {abs(analysis['edge']):.1f}% | Confidence: {analysis['conf']} | If wagering: ${kelly['bet']:.2f} (Kelly {kelly['adj_kelly']}%)")
             
             # 12-Factor Detail
             st.markdown("---")
@@ -390,10 +390,10 @@ with tab_ml:
             fc12.metric("🎯 3PT", f"{f['three_pt']:+.2f}", f"H:{r['home_3pt']:.1%} | A:{r['away_3pt']:.1%}")
 
 with tab_tot:
-    st.subheader("Over/Under Totals")
+    st.subheader("Total Points Predictions")
     
     if not markets['totals']:
-        st.warning("No totals markets found for today.")
+        st.warning("No totals data found for today.")
     
     for idx, g in enumerate(markets['totals']):
         home, away, line = g['home'], g['away'], g.get('line', 220)
@@ -404,26 +404,26 @@ with tab_tot:
         projected = combined_ppg - def_adj
         edge = projected - line
         
-        rec = "OVER" if edge > 2 else ("UNDER" if edge < -2 else "PASS")
+        rec = "OVER" if edge > 2 else ("UNDER" if edge < -2 else "NO EDGE")
         color = "🟢" if rec == "OVER" else ("🔴" if rec == "UNDER" else "⚪")
         
-        with st.expander(f"{color} {g['game_date']} | {away} @ {home} | O/U {line}"):
+        with st.expander(f"{color} {g['game_date']} | {away} @ {home} | Line: {line}"):
             c1, c2, c3 = st.columns(3)
             c1.metric("Kalshi Line", f"{line}")
-            c2.metric("Model Total", f"{projected:.1f}")
-            c3.metric("Edge", f"{edge:+.1f} pts")
+            c2.metric("Model Projects", f"{projected:.1f}")
+            c3.metric("Difference", f"{edge:+.1f} pts")
             
             st.markdown("**Factors:**")
             tc1, tc2, tc3 = st.columns(3)
             tc1.metric("📊 Combined PPG", f"{combined_ppg:.1f}")
             tc2.metric("🛡️ Def Adjustment", f"{def_adj:+.1f}")
-            tc3.metric("Signal", f"{color} {rec}")
+            tc3.metric("Prediction", f"{color} {rec}")
 
 with tab_spr:
-    st.subheader("Spread Markets")
+    st.subheader("Spread Predictions")
     
     if not markets['spreads']:
-        st.warning("No spread markets found for today.")
+        st.warning("No spread data found for today.")
     
     for idx, g in enumerate(markets['spreads']):
         home, away, line = g['home'], g['away'], g.get('line', 5)
@@ -434,20 +434,20 @@ with tab_spr:
         predicted = net_diff + 3.5
         edge = predicted - line
         
-        rec = "COVERS" if edge > 2 else ("MISSES" if edge < -2 else "PASS")
+        rec = "COVERS" if edge > 2 else ("MISSES" if edge < -2 else "NO EDGE")
         color = "🟢" if rec == "COVERS" else ("🔴" if rec == "MISSES" else "⚪")
         
         with st.expander(f"{color} {g['game_date']} | {away} @ {home} | {spread_team} -{line}"):
             c1, c2, c3 = st.columns(3)
             c1.metric("Kalshi Line", f"{spread_team} -{line}")
             c2.metric("Model Spread", f"{predicted:+.1f}")
-            c3.metric("Edge", f"{edge:+.1f} pts")
+            c3.metric("Difference", f"{edge:+.1f} pts")
             
             st.markdown("**Factors:**")
             tc1, tc2, tc3 = st.columns(3)
             tc1.metric("📊 Net Rating Diff", f"{net_diff:+.1f}")
             tc2.metric("🏠 Home Court", "+3.5")
-            tc3.metric("Signal", f"{color} {rec}")
+            tc3.metric("Prediction", f"{color} {rec}")
 
 st.markdown("---")
-st.caption("⚠️ Entertainment only. Not financial advice. You may lose money.")
+st.caption("⚠️ **DISCLAIMER:** This tool provides statistical analysis for educational purposes only. This is NOT financial advice. Predictions are based on historical data and may be incorrect. Past performance does not guarantee future results. If you choose to wager, only use funds you can afford to lose. The creators assume no liability for any decisions made based on this analysis.")
