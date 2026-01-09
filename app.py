@@ -1,184 +1,17 @@
 import streamlit as st
 import requests
-from bs4 import BeautifulSoup
 from datetime import datetime
 import math
 
 st.set_page_config(page_title="NBA Kalshi Edge Finder", page_icon="🏀", layout="wide")
 
-# ========== ESPN TEAM NAME MAPPING ==========
-ESPN_TEAM_MAP = {
-    "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
-    "Charlotte Hornets": "Charlotte", "Chicago Bulls": "Chicago", "Cleveland Cavaliers": "Cleveland",
-    "Dallas Mavericks": "Dallas", "Denver Nuggets": "Denver", "Detroit Pistons": "Detroit",
-    "Golden State Warriors": "Golden State", "Houston Rockets": "Houston", "Indiana Pacers": "Indiana",
-    "LA Clippers": "LA Clippers", "Los Angeles Clippers": "LA Clippers",
-    "LA Lakers": "LA Lakers", "Los Angeles Lakers": "LA Lakers",
-    "Memphis Grizzlies": "Memphis", "Miami Heat": "Miami", "Milwaukee Bucks": "Milwaukee",
-    "Minnesota Timberwolves": "Minnesota", "New Orleans Pelicans": "New Orleans",
-    "New York Knicks": "New York", "Oklahoma City Thunder": "Oklahoma City",
-    "Orlando Magic": "Orlando", "Philadelphia 76ers": "Philadelphia",
-    "Phoenix Suns": "Phoenix", "Portland Trail Blazers": "Portland",
-    "Sacramento Kings": "Sacramento", "San Antonio Spurs": "San Antonio",
-    "Toronto Raptors": "Toronto", "Utah Jazz": "Utah", "Washington Wizards": "Washington",
-}
-
-# ========== STAR PLAYERS DATABASE ==========
-STAR_PLAYERS = {
-    "Atlanta": {
-        "Trae Young": (3, "O"), "Dejounte Murray": (2, "B"), "Jalen Johnson": (2, "B"),
-        "De'Andre Hunter": (2, "O"), "Clint Capela": (1, "D"), "Bogdan Bogdanovic": (1, "O"),
-        "Onyeka Okongwu": (1, "D"), "Dyson Daniels": (1, "D"), "Zaccharie Risacher": (1, "O"),
-        "CJ McCollum": (2, "O"), "Corey Kispert": (1, "O"),
-    },
-    "Boston": {
-        "Jayson Tatum": (3, "B"), "Jaylen Brown": (3, "B"), "Derrick White": (2, "B"),
-        "Jrue Holiday": (2, "D"), "Kristaps Porzingis": (2, "B"), "Al Horford": (1, "D"),
-        "Payton Pritchard": (1, "O"), "Sam Hauser": (1, "O"),
-    },
-    "Brooklyn": {
-        "Cam Thomas": (2, "O"), "Mikal Bridges": (2, "B"), "Nic Claxton": (2, "D"),
-        "Ben Simmons": (1, "D"), "Dorian Finney-Smith": (1, "D"), "Cameron Johnson": (1, "O"),
-        "Dennis Schroder": (1, "O"), "Day'Ron Sharpe": (1, "D"),
-    },
-    "Charlotte": {
-        "LaMelo Ball": (3, "O"), "Brandon Miller": (2, "O"), "Miles Bridges": (2, "B"),
-        "Mark Williams": (2, "D"), "Nick Richards": (1, "D"), "Tre Mann": (1, "O"),
-        "Cody Martin": (1, "D"), "Josh Green": (1, "D"),
-    },
-    "Chicago": {
-        "Zach LaVine": (2, "O"), "DeMar DeRozan": (2, "O"), "Nikola Vucevic": (2, "B"),
-        "Coby White": (2, "O"), "Josh Giddey": (2, "O"), "Patrick Williams": (1, "D"), "Alex Caruso": (1, "D"),
-        "Ayo Dosunmu": (1, "B"), "Andre Drummond": (1, "D"), "Jalen Smith": (1, "D"), "Zach Collins": (1, "D"),
-    },
-    "Cleveland": {
-        "Donovan Mitchell": (3, "O"), "Darius Garland": (2, "O"), "Evan Mobley": (3, "D"),
-        "Jarrett Allen": (2, "D"), "Max Strus": (1, "O"), "Caris LeVert": (1, "O"),
-        "Isaac Okoro": (1, "D"), "Georges Niang": (1, "O"),
-    },
-    "Dallas": {
-        "Luka Doncic": (3, "O"), "Kyrie Irving": (3, "O"), "PJ Washington": (2, "B"),
-        "Daniel Gafford": (2, "D"), "Dereck Lively II": (2, "D"), "Tim Hardaway Jr": (1, "O"),
-        "Maxi Kleber": (1, "D"), "Josh Green": (1, "D"), "Dante Exum": (1, "B"),
-    },
-    "Denver": {
-        "Nikola Jokic": (3, "B"), "Jamal Murray": (3, "O"), "Michael Porter Jr": (2, "O"),
-        "Aaron Gordon": (2, "B"), "Jonas Valanciunas": (2, "D"), "Cameron Johnson": (2, "O"),
-        "Kentavious Caldwell-Pope": (1, "D"), "Reggie Jackson": (1, "O"),
-        "Christian Braun": (1, "B"), "Peyton Watson": (1, "D"),
-    },
-    "Detroit": {
-        "Cade Cunningham": (3, "O"), "Jaden Ivey": (2, "O"), "Ausar Thompson": (2, "D"),
-        "Jalen Duren": (2, "D"), "Bojan Bogdanovic": (1, "O"), "Alec Burks": (1, "O"),
-        "Isaiah Stewart": (1, "D"), "Killian Hayes": (1, "D"),
-    },
-    "Golden State": {
-        "Stephen Curry": (3, "O"), "Klay Thompson": (2, "O"), "Draymond Green": (2, "D"),
-        "Andrew Wiggins": (2, "B"), "Jonathan Kuminga": (2, "B"), "Kevon Looney": (1, "D"),
-        "Chris Paul": (1, "O"), "Brandin Podziemski": (1, "O"), "Gary Payton II": (1, "D"),
-    },
-    "Houston": {
-        "Jalen Green": (2, "O"), "Alperen Sengun": (2, "B"), "Fred VanVleet": (2, "B"),
-        "Jabari Smith Jr": (2, "B"), "Dillon Brooks": (1, "D"), "Amen Thompson": (1, "B"),
-        "Tari Eason": (1, "D"), "Cam Whitmore": (1, "O"), "Jeff Green": (1, "D"),
-    },
-    "Indiana": {
-        "Tyrese Haliburton": (3, "O"), "Pascal Siakam": (2, "B"), "Myles Turner": (2, "D"),
-        "Buddy Hield": (2, "O"), "Aaron Nesmith": (1, "B"), "TJ McConnell": (1, "O"),
-        "Obi Toppin": (1, "O"), "Bennedict Mathurin": (1, "O"), "Jalen Smith": (1, "D"),
-    },
-    "LA Clippers": {
-        "Kawhi Leonard": (3, "B"), "Paul George": (3, "B"), "James Harden": (2, "O"),
-        "Russell Westbrook": (1, "O"), "Ivica Zubac": (2, "D"), "Norman Powell": (1, "O"),
-        "Terance Mann": (1, "D"), "Bones Hyland": (1, "O"), "Mason Plumlee": (1, "D"),
-    },
-    "LA Lakers": {
-        "LeBron James": (3, "B"), "Anthony Davis": (3, "B"), "Austin Reaves": (2, "O"),
-        "D'Angelo Russell": (2, "O"), "Rui Hachimura": (1, "O"), "Jarred Vanderbilt": (1, "D"),
-        "Taurean Prince": (1, "O"), "Gabe Vincent": (1, "O"), "Christian Wood": (1, "O"),
-    },
-    "Memphis": {
-        "Ja Morant": (3, "O"), "Jaren Jackson Jr": (3, "D"), "Desmond Bane": (2, "O"),
-        "Marcus Smart": (2, "D"), "Luke Kennard": (1, "O"), "Santi Aldama": (1, "B"),
-        "Brandon Clarke": (1, "D"), "Vince Williams Jr": (1, "D"), "GG Jackson": (1, "O"),
-    },
-    "Miami": {
-        "Jimmy Butler": (3, "B"), "Bam Adebayo": (3, "D"), "Tyler Herro": (2, "O"),
-        "Terry Rozier": (2, "O"), "Caleb Martin": (1, "D"), "Duncan Robinson": (1, "O"),
-        "Kevin Love": (1, "O"), "Nikola Jovic": (1, "O"), "Haywood Highsmith": (1, "D"),
-    },
-    "Milwaukee": {
-        "Giannis Antetokounmpo": (3, "B"), "Damian Lillard": (3, "O"), "Khris Middleton": (2, "O"),
-        "Brook Lopez": (2, "D"), "Bobby Portis": (1, "B"), "Pat Connaughton": (1, "O"),
-        "Malik Beasley": (1, "O"), "MarJon Beauchamp": (1, "D"), "AJ Green": (1, "O"),
-    },
-    "Minnesota": {
-        "Anthony Edwards": (3, "O"), "Karl-Anthony Towns": (3, "O"), "Rudy Gobert": (3, "D"),
-        "Jaden McDaniels": (2, "D"), "Mike Conley": (2, "O"), "Naz Reid": (1, "B"),
-        "Nickeil Alexander-Walker": (1, "O"), "Kyle Anderson": (1, "D"), "Monte Morris": (1, "O"),
-    },
-    "New Orleans": {
-        "Zion Williamson": (3, "O"), "Brandon Ingram": (2, "O"), "CJ McCollum": (2, "O"),
-        "Herb Jones": (2, "D"), "Jonas Valanciunas": (2, "D"), "Trey Murphy III": (1, "O"),
-        "Larry Nance Jr": (1, "D"), "Jose Alvarado": (1, "D"), "Naji Marshall": (1, "B"),
-    },
-    "New York": {
-        "Jalen Brunson": (3, "O"), "Julius Randle": (2, "B"), "RJ Barrett": (2, "O"),
-        "OG Anunoby": (2, "D"), "Mitchell Robinson": (2, "D"), "Donte DiVincenzo": (1, "O"),
-        "Josh Hart": (1, "B"), "Immanuel Quickley": (1, "O"), "Isaiah Hartenstein": (1, "D"),
-    },
-    "Oklahoma City": {
-        "Shai Gilgeous-Alexander": (3, "B"), "Chet Holmgren": (3, "B"), "Jalen Williams": (2, "B"),
-        "Isaiah Hartenstein": (2, "D"), "Alex Caruso": (2, "D"), "Lu Dort": (2, "D"), "Cason Wallace": (1, "D"),
-        "Isaiah Joe": (1, "O"), "Kenrich Williams": (1, "D"), "Aaron Wiggins": (1, "B"),
-    },
-    "Orlando": {
-        "Paolo Banchero": (3, "O"), "Franz Wagner": (2, "B"), "Wendell Carter Jr": (2, "D"),
-        "Markelle Fultz": (1, "O"), "Cole Anthony": (1, "O"), "Gary Harris": (1, "D"),
-        "Jonathan Isaac": (1, "D"), "Moritz Wagner": (1, "O"), "Jalen Suggs": (1, "D"),
-    },
-    "Philadelphia": {
-        "Joel Embiid": (3, "B"), "Tyrese Maxey": (3, "O"), "Tobias Harris": (2, "O"),
-        "De'Anthony Melton": (1, "D"), "Kelly Oubre Jr": (1, "O"), "Nicolas Batum": (1, "D"),
-        "Buddy Hield": (1, "O"), "Paul Reed": (1, "D"), "Cameron Payne": (1, "O"),
-    },
-    "Phoenix": {
-        "Kevin Durant": (3, "O"), "Devin Booker": (3, "O"), "Bradley Beal": (2, "O"),
-        "Jusuf Nurkic": (2, "D"), "Grayson Allen": (1, "O"), "Eric Gordon": (1, "O"),
-        "Drew Eubanks": (1, "D"), "Nassir Little": (1, "D"), "Bol Bol": (1, "D"),
-        "Jalen Green": (2, "O"),
-    },
-    "Portland": {
-        "Damian Lillard": (3, "O"), "Anfernee Simons": (2, "O"), "Jerami Grant": (2, "B"), "Scoot Henderson": (2, "O"),
-        "Deandre Ayton": (2, "D"), "Jrue Holiday": (2, "D"), "Shaedon Sharpe": (1, "O"), "Malcolm Brogdon": (1, "O"),
-        "Robert Williams III": (1, "D"), "Matisse Thybulle": (1, "D"), "Toumani Camara": (1, "D"),
-    },
-    "Sacramento": {
-        "De'Aaron Fox": (3, "O"), "Domantas Sabonis": (3, "B"), "Keegan Murray": (2, "B"),
-        "Harrison Barnes": (2, "O"), "Malik Monk": (1, "O"), "Kevin Huerter": (1, "O"),
-        "Trey Lyles": (1, "D"), "Davion Mitchell": (1, "D"), "Alex Len": (1, "D"),
-    },
-    "San Antonio": {
-        "Victor Wembanyama": (3, "B"), "Devin Vassell": (2, "B"), "Keldon Johnson": (2, "O"),
-        "Jeremy Sochan": (2, "D"), "Tre Jones": (1, "O"), "Zach Collins": (1, "D"),
-        "Doug McDermott": (1, "O"), "Malaki Branham": (1, "O"), "Cedi Osman": (1, "O"),
-    },
-    "Toronto": {
-        "Scottie Barnes": (3, "B"), "Brandon Ingram": (2, "O"), "Pascal Siakam": (2, "B"), "OG Anunoby": (2, "D"),
-        "Gary Trent Jr": (2, "O"), "Jakob Poeltl": (2, "D"), "Immanuel Quickley": (1, "O"),
-        "Chris Boucher": (1, "D"), "Gradey Dick": (1, "O"), "Bruce Brown": (1, "D"),
-    },
-    "Utah": {
-        "Lauri Markkanen": (2, "O"), "Jordan Clarkson": (2, "O"), "Collin Sexton": (2, "O"),
-        "John Collins": (2, "B"), "Walker Kessler": (2, "D"), "Kelly Olynyk": (1, "O"),
-        "Talen Horton-Tucker": (1, "O"), "Ochai Agbaji": (1, "D"), "Keyonte George": (1, "O"),
-    },
-    "Washington": {
-        "Trae Young": (3, "O"), "Kyle Kuzma": (2, "O"), "Jordan Poole": (2, "O"), "Deni Avdija": (2, "B"),
-        "Tyus Jones": (1, "O"), "Daniel Gafford": (2, "D"), "Corey Kispert": (1, "O"),
-        "Marvin Bagley III": (1, "O"), "Landry Shamet": (1, "O"), "Anthony Gill": (1, "D"),
-        "Khris Middleton": (2, "O"),
-    },
+# ========== TEAM MAPPINGS ==========
+KALSHI_ABBREV_MAP = {
+    "ATL": "Atlanta", "BOS": "Boston", "BKN": "Brooklyn", "CHA": "Charlotte", "CHI": "Chicago", "CLE": "Cleveland",
+    "DAL": "Dallas", "DEN": "Denver", "DET": "Detroit", "GSW": "Golden State", "HOU": "Houston", "IND": "Indiana",
+    "LAC": "LA Clippers", "LAL": "LA Lakers", "MEM": "Memphis", "MIA": "Miami", "MIL": "Milwaukee", "MIN": "Minnesota",
+    "NOP": "New Orleans", "NYK": "New York", "OKC": "Oklahoma City", "ORL": "Orlando", "PHI": "Philadelphia",
+    "PHX": "Phoenix", "POR": "Portland", "SAC": "Sacramento", "SAS": "San Antonio", "TOR": "Toronto", "UTA": "Utah", "WAS": "Washington"
 }
 
 TEAM_STATS = {
@@ -214,14 +47,6 @@ TEAM_STATS = {
     "Washington": {"net_rating": -9.2, "off_rating": 107.8, "def_rating": 117.0, "def_rank": 30, "pace": 101.2, "ppg": 108.5, "opp_ppg": 117.7, "home_win_pct": 0.28, "away_win_pct": 0.15, "division": "Southeast", "three_pa": 35.5, "three_pct": 0.332, "oreb_pct": 26.0, "tov_pct": 15.2, "ft_rate": 0.21, "reb_rate": 47.5},
 }
 
-KALSHI_ABBREV_MAP = {
-    "ATL": "Atlanta", "BOS": "Boston", "BKN": "Brooklyn", "CHA": "Charlotte", "CHI": "Chicago", "CLE": "Cleveland",
-    "DAL": "Dallas", "DEN": "Denver", "DET": "Detroit", "GSW": "Golden State", "HOU": "Houston", "IND": "Indiana",
-    "LAC": "LA Clippers", "LAL": "LA Lakers", "MEM": "Memphis", "MIA": "Miami", "MIL": "Milwaukee", "MIN": "Minnesota",
-    "NOP": "New Orleans", "NYK": "New York", "OKC": "Oklahoma City", "ORL": "Orlando", "PHI": "Philadelphia",
-    "PHX": "Phoenix", "POR": "Portland", "SAC": "Sacramento", "SAS": "San Antonio", "TOR": "Toronto", "UTA": "Utah", "WAS": "Washington"
-}
-
 TEAM_LOCATIONS = {
     "Atlanta": (33.757, -84.396), "Boston": (42.366, -71.062), "Brooklyn": (40.683, -73.976), "Charlotte": (35.225, -80.839),
     "Chicago": (41.881, -87.674), "Cleveland": (41.496, -81.688), "Dallas": (32.790, -96.810), "Denver": (39.749, -105.010),
@@ -233,65 +58,21 @@ TEAM_LOCATIONS = {
     "Utah": (40.768, -111.901), "Washington": (38.898, -77.021),
 }
 
-# ========== STAR INJURY FUNCTIONS ==========
-def get_star_rating(player_name, team):
-    """Get star tier and type for a player - flexible matching"""
-    team_stars = STAR_PLAYERS.get(team, {})
-    player_name_lower = player_name.lower().strip()
-    player_parts = player_name_lower.split()
-    player_last = player_parts[-1] if player_parts else ""
-    player_first = player_parts[0] if player_parts else ""
-    
-    for star_name, (tier, ptype) in team_stars.items():
-        star_lower = star_name.lower()
-        star_parts = star_lower.split()
-        star_last = star_parts[-1] if star_parts else ""
-        star_first = star_parts[0] if star_parts else ""
-        
-        if star_lower == player_name_lower: return tier, ptype
-        if star_last == player_last and len(star_last) > 2: return tier, ptype
-        if star_first == player_first and player_last and star_last.startswith(player_last[0]): return tier, ptype
-        if star_lower in player_name_lower or player_name_lower in star_lower: return tier, ptype
-    
-    return 0, "B"
+# ========== INJURY REFERENCE (DISPLAY ONLY - NEVER TOUCHES MODEL) ==========
+INJURY_REFERENCE = {
+    "Boston": "Tatum (Achilles)", "Denver": "Jokic, Valanciunas, C.Johnson", 
+    "Dallas": "Kyrie, Lively, Exum, PJ Washington", "Indiana": "Haliburton, Toppin, Mathurin",
+    "Portland": "Lillard, Scoot, Grant, Holiday", "Houston": "VanVleet, Sengun",
+    "Sacramento": "Sabonis, K.Murray", "LA Lakers": "LeBron, Reaves, Hachimura",
+    "Orlando": "F.Wagner, Suggs, M.Wagner", "Detroit": "Cunningham, Duren, Harris",
+    "Memphis": "Ja, Edey, Clarke", "Minnesota": "Edwards (rest)", "Charlotte": "B.Miller",
+    "San Antonio": "Vassell", "Utah": "Kessler", "LA Clippers": "Beal, Bogdanovic",
+    "Cleveland": "Strus", "Chicago": "Giddey, White", "Washington": "T.Young, Middleton",
+    "Oklahoma City": "Hartenstein, Caruso", "New Orleans": "Murray, Jones, Murphy",
+    "Toronto": "Ingram, Poeltl", "Golden State": "GP2", "New York": "Hart", "Phoenix": "J.Green",
+}
 
-def calculate_weighted_injuries(team, injury_list):
-    """Calculate weighted injury score with star system"""
-    weighted_score, offensive_score, defensive_score, star_details = 0, 0, 0, []
-    
-    for injury_str in injury_list:
-        player_name = injury_str.split("(")[0].strip()
-        status = injury_str.split("(")[1].replace(")", "").strip() if "(" in injury_str else "Out"
-        tier, ptype = get_star_rating(player_name, team)
-        
-        weight = {3: 3.0, 2: 2.0, 1: 1.0}.get(tier, 0.5)
-        stars = {3: "⭐⭐⭐", 2: "⭐⭐", 1: "⭐"}.get(tier, "")
-        
-        if any(x in status for x in ["GTD", "Game Time", "Questionable", "Doubtful"]): weight *= 0.5
-        
-        weighted_score += weight
-        if ptype == "O": offensive_score += weight
-        elif ptype == "D": defensive_score += weight
-        else: offensive_score += weight * 0.5; defensive_score += weight * 0.5
-        
-        name_parts = player_name.split()
-        short_name = f"{name_parts[0][0]}. {name_parts[-1]}" if len(name_parts) >= 2 else player_name[:10]
-        
-        star_details.append({"name": player_name, "short_name": short_name, "status": status,
-            "tier": tier, "type": ptype, "stars": stars, "weight": weight})
-    
-    star_details.sort(key=lambda x: x['tier'], reverse=True)
-    return weighted_score, offensive_score, defensive_score, star_details
-
-def format_injury_delta(home_details, away_details, home_team, away_team):
-    """Format injury info for metric delta"""
-    all_injuries = [{"stars": p['stars'], "name": p['short_name'], "tier": p['tier']} for p in home_details + away_details]
-    if not all_injuries: return "None"
-    all_injuries.sort(key=lambda x: x['tier'], reverse=True)
-    display = [f"{p['stars']}{p['name']}" if p['stars'] else p['name'] for p in all_injuries[:2]]
-    return f"{', '.join(display)} +{len(all_injuries)-2}" if len(all_injuries) > 2 else ", ".join(display)
-
-# ========== URL BUILDER FUNCTIONS ==========
+# ========== HELPER FUNCTIONS ==========
 def build_moneyline_url(ticker): return f"https://kalshi.com/markets/kxnbagame/professional-basketball-game/{ticker.lower()}"
 def build_totals_url(ticker): return f"https://kalshi.com/markets/kxnbatotal/professional-basketball-game/{ticker.lower()}"
 def build_spread_url(ticker): return f"https://kalshi.com/markets/kxnbaspread/professional-basketball-game/{ticker.lower()}"
@@ -324,12 +105,17 @@ def calculate_live_rest_score(home_rest, away_rest):
     elif away_rest >= 3 and home_rest <= 1: return -3.5
     return max(-3, min(3, (home_rest - away_rest) * 1.0))
 
-def calculate_edge(home_team, away_team, kalshi_price, home_rest, away_rest, home_injury_data, away_injury_data, travel_miles, ref_bias, weights):
+def manual_to_injury_data(manual_score):
+    """Convert manual 0-3 selector to injury data tuple"""
+    # Map: 0=0, 1=1.0, 2=2.5, 3=4.0
+    inj_map = {0: 0, 1: 1.0, 2: 2.5, 3: 4.0}
+    score = inj_map.get(manual_score, 0)
+    # Return (total_score, off_score, def_score, details_list)
+    return (score, score * 0.5, score * 0.5, [])
+
+def calculate_edge(home_team, away_team, kalshi_price, home_rest, away_rest, home_inj_score, away_inj_score, travel_miles, ref_bias, weights):
     home = TEAM_STATS.get(home_team, {"net_rating": 0, "def_rank": 15, "pace": 99, "home_win_pct": 0.5, "away_win_pct": 0.5, "division": "", "ft_rate": 0.25, "reb_rate": 50, "three_pct": 0.35})
     away = TEAM_STATS.get(away_team, {"net_rating": 0, "def_rank": 15, "pace": 99, "home_win_pct": 0.5, "away_win_pct": 0.5, "division": "", "ft_rate": 0.25, "reb_rate": 50, "three_pct": 0.35})
-    
-    home_inj_score, home_off_inj, home_def_inj, home_star_details = home_injury_data
-    away_inj_score, away_off_inj, away_def_inj, away_star_details = away_injury_data
     
     rest_score = max(-6, min(6, (home_rest - away_rest) * 2))
     live_rest_score = calculate_live_rest_score(home_rest, away_rest)
@@ -377,16 +163,12 @@ def calculate_edge(home_team, away_team, kalshi_price, home_rest, away_rest, hom
             'home_def_rank': home.get('def_rank', 15), 'away_def_rank': away.get('def_rank', 15),
             'home_win_pct': home['home_win_pct'], 'away_win_pct': away['away_win_pct'],
             'home_rest': home_rest, 'away_rest': away_rest, 'home_b2b': home_rest == 0, 'away_b2b': away_rest == 0
-        },
-        'injury_details': {'home': home_star_details, 'away': away_star_details}
+        }
     }
 
-def calculate_total_points(home_team, away_team, home_rest, away_rest, home_injury_data, away_injury_data, travel_miles):
+def calculate_total_points(home_team, away_team, home_rest, away_rest, home_inj_score, away_inj_score, travel_miles):
     home = TEAM_STATS.get(home_team, {"ppg": 112, "opp_ppg": 112, "pace": 99, "def_rating": 112, "three_pa": 36, "three_pct": 0.35, "oreb_pct": 27, "tov_pct": 13, "net_rating": 0})
     away = TEAM_STATS.get(away_team, {"ppg": 112, "opp_ppg": 112, "pace": 99, "def_rating": 112, "three_pa": 36, "three_pct": 0.35, "oreb_pct": 27, "tov_pct": 13, "net_rating": 0})
-    
-    home_inj_score, home_off_inj, home_def_inj, home_star_details = home_injury_data
-    away_inj_score, away_off_inj, away_def_inj, away_star_details = away_injury_data
     
     base_total = ((home['ppg'] + away['opp_ppg']) / 2) + ((away['ppg'] + home['opp_ppg']) / 2)
     pace_adj = ((home['pace'] + away['pace']) / 2 - 99.5) * 0.5
@@ -397,9 +179,8 @@ def calculate_total_points(home_team, away_team, home_rest, away_rest, home_inju
     defense_adj = ((home['def_rating'] + away['def_rating']) / 2 - 112) * 0.4
     travel_adj = -3 if travel_miles > 2000 else (-2 if travel_miles > 1500 else (-1 if travel_miles > 1000 else 0))
     
-    total_off_inj = home_off_inj + away_off_inj
-    total_def_inj = home_def_inj + away_def_inj
-    injury_adj = -(total_off_inj * 1.5) + (total_def_inj * 1.0)
+    # Manual injury: negative = less scoring (star OUT), positive would mean defense out
+    injury_adj = -(home_inj_score + away_inj_score) * 1.0
     
     oreb_adj = ((home.get('oreb_pct', 27) + away.get('oreb_pct', 27)) / 2 - 27) * 0.3
     tov_adj = -((home.get('tov_pct', 13) + away.get('tov_pct', 13)) / 2 - 13) * 0.4
@@ -412,18 +193,14 @@ def calculate_total_points(home_team, away_team, home_rest, away_rest, home_inju
         'factors': {
             'base_total': round(base_total, 1), 'pace': round(pace_adj, 1), 'rest': round(rest_adj, 1),
             '3pt': round(three_adj, 1), 'defense': round(defense_adj, 1), 'travel': round(travel_adj, 1), 
-            'injury': round(injury_adj, 1), 'injury_off': round(-total_off_inj * 1.5, 1), 'injury_def': round(total_def_inj * 1.0, 1),
-            'oreb': round(oreb_adj, 1), 'turnover': round(tov_adj, 1), 'altitude': round(altitude_adj, 1), 'ot_prob': round(ot_adj, 1)
-        },
-        'injury_details': {'home': home_star_details, 'away': away_star_details}
+            'injury': round(injury_adj, 1), 'oreb': round(oreb_adj, 1), 'turnover': round(tov_adj, 1), 
+            'altitude': round(altitude_adj, 1), 'ot_prob': round(ot_adj, 1)
+        }
     }
 
-def calculate_spread(home_team, away_team, home_rest, away_rest, home_injury_data, away_injury_data, travel_miles):
+def calculate_spread(home_team, away_team, home_rest, away_rest, home_inj_score, away_inj_score, travel_miles):
     home = TEAM_STATS.get(home_team, {"net_rating": 0, "home_win_pct": 0.5, "away_win_pct": 0.5})
     away = TEAM_STATS.get(away_team, {"net_rating": 0, "home_win_pct": 0.5, "away_win_pct": 0.5})
-    
-    home_inj_score, home_off_inj, home_def_inj, home_star_details = home_injury_data
-    away_inj_score, away_off_inj, away_def_inj, away_star_details = away_injury_data
     
     net_diff, home_court = home['net_rating'] - away['net_rating'], 3.5
     rest_adj = (home_rest - away_rest) * 1.5
@@ -439,8 +216,7 @@ def calculate_spread(home_team, away_team, home_rest, away_rest, home_injury_dat
             'net_rating': round(net_diff, 1), 'home_court': home_court,
             'rest': round(rest_adj, 1), 'injury': round(injury_adj, 1), 
             'travel': round(travel_adj, 1), 'splits': round(split_adj, 1), 'live_rest': round(live_rest_adj, 1)
-        },
-        'injury_details': {'home': home_star_details, 'away': away_star_details}
+        }
     }
 
 def parse_game_code(game_code):
@@ -515,139 +291,6 @@ def fetch_kalshi_nba_markets():
     markets['moneyline'], markets['totals'], markets['spreads'] = sorted(seen.values(), key=date_sort_key), sorted(markets['totals'], key=date_sort_key), sorted(markets['spreads'], key=date_sort_key)
     return markets
 
-# ========== COVERS.COM TEAM NAME MAPPING ==========
-COVERS_TEAM_MAP = {
-    "atlanta": "Atlanta", "boston": "Boston", "brooklyn": "Brooklyn",
-    "charlotte": "Charlotte", "chicago": "Chicago", "cleveland": "Cleveland",
-    "dallas": "Dallas", "denver": "Denver", "detroit": "Detroit",
-    "golden state": "Golden State", "houston": "Houston", "indiana": "Indiana",
-    "la clippers": "LA Clippers", "l.a. clippers": "LA Clippers", "clippers": "LA Clippers",
-    "la lakers": "LA Lakers", "l.a. lakers": "LA Lakers", "los angeles lakers": "LA Lakers", "lakers": "LA Lakers",
-    "memphis": "Memphis", "miami": "Miami", "milwaukee": "Milwaukee",
-    "minnesota": "Minnesota", "new orleans": "New Orleans", "new york": "New York",
-    "oklahoma city": "Oklahoma City", "orlando": "Orlando", "philadelphia": "Philadelphia",
-    "phoenix": "Phoenix", "portland": "Portland", "sacramento": "Sacramento",
-    "san antonio": "San Antonio", "toronto": "Toronto", "utah": "Utah", "washington": "Washington",
-}
-
-@st.cache_data(ttl=600)
-def fetch_nba_injuries():
-    """Fetch injuries from Covers.com - AUTOMATIC"""
-    injuries = {}
-    
-    try:
-        resp = requests.get(
-            "https://www.covers.com/sport/basketball/nba/injuries",
-            headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-            },
-            timeout=15
-        )
-        soup = BeautifulSoup(resp.content, 'html.parser')
-        
-        # Find all tables - each team has a table with injuries
-        tables = soup.find_all('table')
-        
-        for table in tables:
-            # Look backwards to find team name
-            team_name = None
-            
-            # Check previous siblings and parents for team link
-            for prev in table.find_all_previous(['a', 'img'], limit=10):
-                # Check for team logo image
-                if prev.name == 'img' and prev.get('alt'):
-                    alt_text = prev.get('alt', '').lower()
-                    for key, val in COVERS_TEAM_MAP.items():
-                        if key in alt_text:
-                            team_name = val
-                            break
-                
-                # Check for team link
-                if prev.name == 'a':
-                    href = prev.get('href', '')
-                    text = prev.get_text(strip=True).lower()
-                    
-                    if '/nba/teams/' in href or 'basketball/nba' in href:
-                        for key, val in COVERS_TEAM_MAP.items():
-                            if key in text or key in href:
-                                team_name = val
-                                break
-                
-                if team_name:
-                    break
-            
-            if not team_name:
-                continue
-            
-            # Parse table rows for player injuries
-            players = []
-            rows = table.find_all('tr')
-            
-            for row in rows:
-                cells = row.find_all('td')
-                if len(cells) >= 3:
-                    # Get player name from first cell
-                    player_cell = cells[0]
-                    player_link = player_cell.find('a')
-                    if player_link:
-                        player_name = player_link.get_text(strip=True)
-                    else:
-                        player_name = player_cell.get_text(strip=True)
-                    
-                    # Get status from third cell (index 2)
-                    status = cells[2].get_text(strip=True)
-                    
-                    # Skip header rows
-                    if player_name and status and player_name.lower() not in ['player', 'name', '']:
-                        if 'Status' not in status and 'POS' not in status:
-                            players.append(f"{player_name} ({status})")
-            
-            if players and team_name:
-                if team_name in injuries:
-                    injuries[team_name].extend(players)
-                else:
-                    injuries[team_name] = players
-        
-    except Exception as e:
-        pass  # Fall through to fallback
-    
-    # If scraping got less than 10 teams, use fallback
-    if len(injuries) < 10:
-        return MANUAL_INJURIES.copy()
-    
-    return injuries
-
-# ========== MANUAL STAR INJURIES FALLBACK (Updated Jan 9, 2026) ==========
-MANUAL_INJURIES = {
-    "Boston": ["Jayson Tatum (Out - Achilles)"],
-    "Denver": ["Nikola Jokic (Out - Knee)", "Jonas Valanciunas (Out - Calf)", "Cameron Johnson (Out - Knee)"],
-    "Dallas": ["Kyrie Irving (Out - Knee)", "Dereck Lively II (Out For Season - Foot)", "Dante Exum (Out For Season - Knee)", "PJ Washington (Doubtful - Ankle)"],
-    "Indiana": ["Tyrese Haliburton (Out For Season - Achilles)", "Obi Toppin (Out - Foot)", "Bennedict Mathurin (Out - Thumb)"],
-    "Portland": ["Damian Lillard (Out For Season - Achilles)", "Scoot Henderson (Out - Hamstring)", "Jerami Grant (Day To Day - Achilles)", "Jrue Holiday (Day To Day - Calf)"],
-    "Houston": ["Fred VanVleet (Out For Season - ACL)", "Alperen Sengun (Day To Day - Ankle)"],
-    "Sacramento": ["Domantas Sabonis (Out - Knee)", "Keegan Murray (Out - Ankle)"],
-    "LA Lakers": ["LeBron James (Day To Day - Foot)", "Austin Reaves (Out - Calf)", "Rui Hachimura (Out - Calf)"],
-    "Orlando": ["Franz Wagner (Out - Ankle)", "Jalen Suggs (Day To Day - Knee)", "Moritz Wagner (Out - Knee)"],
-    "Detroit": ["Cade Cunningham (Day To Day - Wrist)", "Jalen Duren (Out - Ankle)", "Tobias Harris (Out - Hip)"],
-    "Memphis": ["Ja Morant (Day To Day - Calf)", "Zach Edey (Out - Ankle)", "Brandon Clarke (Out - Calf)"],
-    "Minnesota": ["Anthony Edwards (Day To Day - Rest)"],
-    "Charlotte": ["Brandon Miller (Day To Day - Knee)"],
-    "San Antonio": ["Devin Vassell (Out - Thigh)"],
-    "Utah": ["Walker Kessler (Out For Season - Shoulder)"],
-    "LA Clippers": ["Bradley Beal (Out For Season - Hip)", "Bogdan Bogdanovic (Out - Hamstring)"],
-    "Cleveland": ["Max Strus (Out - Foot)"],
-    "Chicago": ["Josh Giddey (Out - Hamstring)", "Coby White (Day To Day - Calf)"],
-    "Washington": ["Trae Young (Out - Quad)", "Khris Middleton (Day To Day)"],
-    "Oklahoma City": ["Isaiah Hartenstein (Day To Day - Calf)", "Alex Caruso (Day To Day - Back)"],
-    "New Orleans": ["Dejounte Murray (Out - Leg)", "Herb Jones (Day To Day - Ankle)", "Trey Murphy III (Day To Day - Back)"],
-    "Toronto": ["Brandon Ingram (Day To Day)", "Jakob Poeltl (Day To Day - Back)"],
-    "Golden State": ["Gary Payton II (Day To Day - Ankle)"],
-    "New York": ["Josh Hart (Day To Day - Ankle)"],
-    "Phoenix": ["Jalen Green (Out - Hamstring)"],
-}
-
 @st.cache_data(ttl=300)
 def fetch_rest_days():
     try:
@@ -666,41 +309,13 @@ def fetch_rest_days():
         return team_last_game
     except: return {}
 
-# ========== COLLECT ALL STAR INJURIES ==========
-def get_all_star_injuries(injuries):
-    """Extract all tier 2+ injured players across all teams"""
-    star_injuries = []
-    for team, injury_list in injuries.items():
-        for injury_str in injury_list:
-            player_name = injury_str.split("(")[0].strip()
-            status = injury_str.split("(")[1].replace(")", "").strip() if "(" in injury_str else "Out"
-            tier, ptype = get_star_rating(player_name, team)
-            if tier >= 2:  # Only show All-Stars and Superstars
-                stars = "⭐⭐⭐" if tier == 3 else "⭐⭐"
-                type_emoji = "🔥" if ptype == "O" else ("🛡️" if ptype == "D" else "⚖️")
-                star_injuries.append({
-                    "name": player_name,
-                    "team": team,
-                    "status": status,
-                    "tier": tier,
-                    "type": ptype,
-                    "stars": stars,
-                    "type_emoji": type_emoji
-                })
-    # Sort by tier (superstars first), then by team
-    star_injuries.sort(key=lambda x: (-x['tier'], x['team']))
-    return star_injuries
-
 # ========== UI ==========
 st.title("🏀 NBA Kalshi Edge Finder")
-st.markdown("**13-Factor Edge Model** — Moneyline • Totals • Spreads")
+st.markdown("**Manual Injury Control** — YOU set injuries, model responds deterministically")
 st.caption(f"📅 {datetime.now().strftime('%A, %B %d, %Y')} | 🟢 = BUY YES | 🔴 = BUY NO")
 
 # ========== SIDEBAR ==========
 st.sidebar.header("⚙️ Factor Weights")
-st.sidebar.caption("0 = off, 1 = normal, 2 = double")
-
-st.sidebar.markdown("---")
 with st.sidebar.expander("🏀 Core Factors", expanded=True):
     w_rest = st.slider("🛏️ Rest", 0.0, 2.0, 1.0, 0.1, key="w1")
     w_live_rest = st.slider("⏰ B2B Rest", 0.0, 2.0, 1.0, 0.1, key="w_live")
@@ -710,7 +325,7 @@ with st.sidebar.expander("🏀 Core Factors", expanded=True):
     w_net = st.slider("📊 Net Rating", 0.0, 2.0, 1.0, 0.1, key="w5")
     w_travel = st.slider("✈️ Travel", 0.0, 2.0, 1.0, 0.1, key="w6")
 
-with st.sidebar.expander("📈 Advanced Factors", expanded=True):
+with st.sidebar.expander("📈 Advanced Factors", expanded=False):
     w_splits = st.slider("🏠 Splits", 0.0, 2.0, 1.0, 0.1, key="w7")
     w_h2h = st.slider("⚔️ Division", 0.0, 2.0, 1.0, 0.1, key="w8")
     w_refs = st.slider("👨‍⚖️ Refs", 0.0, 2.0, 1.0, 0.1, key="w9")
@@ -724,185 +339,84 @@ weights = {'rest': w_rest, 'live_rest': w_live_rest, 'defense': w_def, 'injury':
 st.sidebar.markdown("---")
 st.sidebar.header("🎯 Settings")
 default_ref_bias = st.sidebar.slider("Ref Bias", 0.0, 2.0, 1.0, 0.1)
-min_edge = st.sidebar.slider("Min Edge %", 0, 25, 5)
+min_edge = st.sidebar.slider("Min Edge %", 0, 25, 0)
 
 st.sidebar.markdown("---")
 st.sidebar.header("💰 Kelly")
 bankroll = st.sidebar.number_input("Bankroll ($)", 100, 100000, 1000, 100)
 kelly_fraction = st.sidebar.slider("Kelly %", 1, 100, 10, 1) / 100
 
-if st.sidebar.button("🔄 Refresh", help="Fetch fresh data"):
+if st.sidebar.button("🔄 Refresh Data"):
     st.cache_data.clear()
     st.rerun()
 
 # Fetch data
 markets = fetch_kalshi_nba_markets()
-injuries = fetch_nba_injuries()
 rest_days = fetch_rest_days()
-
-# Check if we got real scraped data or fallback
-using_fallback = len(injuries) < 10
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📊 Status")
 st.sidebar.write(f"ML: {len(markets['moneyline'])} | TOT: {len(markets['totals'])} | SPR: {len(markets['spreads'])}")
-
-if using_fallback:
-    st.sidebar.warning(f"🏥 Using FALLBACK injuries (scraper failed)")
-else:
-    st.sidebar.success(f"🏥 AUTO: {len(injuries)} teams scraped from Covers.com")
-
 st.sidebar.write(f"⏰ Rest: {len(rest_days)} teams")
 
-# ========== ⭐ STAR INJURIES SECTION (TOP OF PAGE) ==========
-star_injuries = get_all_star_injuries(injuries)
+# ========== INJURY REFERENCE (DISPLAY ONLY) ==========
+with st.expander("📋 Injury Reference — VERIFY BEFORE SETTING", expanded=False):
+    st.caption("⚠️ This is REFERENCE ONLY. Use the per-game selectors to set actual impact.")
+    cols = st.columns(3)
+    teams = sorted(INJURY_REFERENCE.keys())
+    for i, team in enumerate(teams):
+        with cols[i % 3]:
+            st.write(f"**{team}**: {INJURY_REFERENCE[team]}")
+    st.link_button("🔗 Verify on ESPN", "https://www.espn.com/nba/injuries", use_container_width=True)
 
-if star_injuries:
-    if using_fallback:
-        st.markdown("### ⭐ STAR INJURIES — Major Absences Today")
-        st.caption("⚠️ Using fallback data - Covers.com scraper failed. Data may be stale.")
-    else:
-        st.markdown("### ⭐ STAR INJURIES — Major Absences Today")
-        st.caption("✅ LIVE data from Covers.com (auto-updates every 10 min)")
-    
-    # Superstars (Tier 3)
-    superstars = [p for p in star_injuries if p['tier'] == 3]
-    allstars = [p for p in star_injuries if p['tier'] == 2]
-    
-    if superstars:
-        st.markdown("**🌟 SUPERSTARS OUT (Tier 3 — Massive Impact)**")
-        cols = st.columns(min(len(superstars), 4))
-        for i, player in enumerate(superstars[:4]):
-            with cols[i]:
-                is_out = any(x in player['status'].lower() for x in ['out', 'injured'])
-                status_color = "🔴" if is_out else "🟡"
-                st.markdown(f"""
-                {player['stars']} **{player['name']}**  
-                {player['team']} {player['type_emoji']}  
-                {status_color} {player['status']}
-                """)
-    
-    if allstars:
-        st.markdown("**⭐ ALL-STARS OUT (Tier 2 — Significant Impact)**")
-        # Display in rows of 4
-        for row_start in range(0, len(allstars), 4):
-            row = allstars[row_start:row_start+4]
-            cols = st.columns(4)
-            for i, player in enumerate(row):
-                with cols[i]:
-                    is_out = any(x in player['status'].lower() for x in ['out', 'injured'])
-                    status_color = "🔴" if is_out else "🟡"
-                    st.markdown(f"""
-                    {player['stars']} **{player['name']}**  
-                    {player['team']} {player['type_emoji']}  
-                    {status_color} {player['status']}
-                    """)
-    
-    st.markdown("---")
-else:
-    st.info("🏥 No major star injuries detected — check ESPN source or refresh data")
-    st.markdown("---")
+st.markdown("---")
 
-# ========== TOP 3 EDGES ==========
-st.markdown("### 🔥 Top 3 Edges Today")
-
-top_edges = []
-for game in markets['moneyline']:
-    home, away = game['home_team'], game['away_team']
-    home_inj_list, away_inj_list = injuries.get(home, []), injuries.get(away, [])
-    home_injury_data = calculate_weighted_injuries(home, home_inj_list)
-    away_injury_data = calculate_weighted_injuries(away, away_inj_list)
-    travel = calculate_travel_distance(away, home)
-    home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
-    analysis = calculate_edge(home, away, game['yes_price'], home_rest, away_rest, home_injury_data, away_injury_data, travel, default_ref_bias, weights)
-    if analysis['recommendation'] != 'NO EDGE':
-        bet_team = home if analysis['recommendation'] == 'BUY YES' else away
-        kelly = calculate_kelly(analysis['home_win_prob'] if analysis['recommendation'] == 'BUY YES' else 100 - analysis['home_win_prob'], 
-                                game['yes_price'] if analysis['recommendation'] == 'BUY YES' else 100 - game['yes_price'], bankroll, kelly_fraction)
-        top_edges.append({'type': 'ML', 'game': f"{away} @ {home}", 'date': game['game_date'],
-            'edge': abs(analysis['edge']), 'rec': f"{bet_team} WINS", 'confidence': analysis['confidence'],
-            'bet_amount': kelly['bet_amount'], 'url': build_moneyline_url(game['ticker']), 
-            'color': '🟢' if analysis['recommendation'] == 'BUY YES' else '🔴'})
-
-for tm in markets['totals']:
-    home, away, line = tm['home_team'], tm['away_team'], tm['line']
-    home_inj_list, away_inj_list = injuries.get(home, []), injuries.get(away, [])
-    home_injury_data = calculate_weighted_injuries(home, home_inj_list)
-    away_injury_data = calculate_weighted_injuries(away, away_inj_list)
-    travel = calculate_travel_distance(away, home)
-    home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
-    totals = calculate_total_points(home, away, home_rest, away_rest, home_injury_data, away_injury_data, travel)
-    diff = totals['predicted_total'] - line
-    if abs(diff) > 3:
-        rec = "OVER" if diff > 3 else "UNDER"
-        win_prob = min(85, 50 + abs(diff) * 5)
-        kelly = calculate_kelly(win_prob, tm['yes_price'] if rec == "OVER" else 100 - tm['yes_price'], bankroll, kelly_fraction)
-        top_edges.append({'type': 'TOT', 'game': f"{away} @ {home}", 'date': tm['game_date'],
-            'edge': abs(diff), 'rec': f"{rec} {line}", 'confidence': 'HIGH' if abs(diff) > 6 else 'MEDIUM',
-            'bet_amount': kelly['bet_amount'], 'url': build_totals_url(tm['ticker']), 'color': '🟢' if rec == "OVER" else '🔴'})
-
-for sm in markets['spreads']:
-    home, away, line, spread_team = sm['home_team'], sm['away_team'], sm['line'], sm['spread_team']
-    home_inj_list, away_inj_list = injuries.get(home, []), injuries.get(away, [])
-    home_injury_data = calculate_weighted_injuries(home, home_inj_list)
-    away_injury_data = calculate_weighted_injuries(away, away_inj_list)
-    travel = calculate_travel_distance(away, home)
-    home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
-    spread = calculate_spread(home, away, home_rest, away_rest, home_injury_data, away_injury_data, travel)
-    predicted = spread['predicted_spread']
-    spread_diff = (predicted - line) if spread_team == home else (-predicted - line)
-    if abs(spread_diff) > 3:
-        if spread_diff > 3:
-            rec, win_prob = f"{spread_team} COVERS", min(80, 50 + spread_diff * 4)
-            kelly = calculate_kelly(win_prob, sm['yes_price'], bankroll, kelly_fraction)
-            color = '🟢'
-        else:
-            rec, win_prob = f"{spread_team} MISSES", min(80, 50 + abs(spread_diff) * 4)
-            kelly = calculate_kelly(win_prob, 100 - sm['yes_price'], bankroll, kelly_fraction)
-            color = '🔴'
-        top_edges.append({'type': 'SPR', 'game': f"{away} @ {home}", 'date': sm['game_date'],
-            'edge': abs(spread_diff), 'rec': rec, 'confidence': 'HIGH' if abs(spread_diff) > 6 else 'MEDIUM',
-            'bet_amount': kelly['bet_amount'], 'url': build_spread_url(sm['ticker']), 'color': color})
-
-top_edges = sorted(top_edges, key=lambda x: x['edge'], reverse=True)[:3]
-
-if top_edges:
-    for i, edge in enumerate(top_edges, 1):
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.markdown(f"**#{i} {edge['color']} [{edge['type']}] {edge['date']} | {edge['game']}** → **{edge['rec']}** ({edge['edge']:.1f}%) • {edge['confidence']}")
-        with col2:
-            st.link_button(f"${edge['bet_amount']:.0f}", edge['url'], use_container_width=True)
-    st.markdown("---")
-else:
-    st.info("No edges found. Adjust Min Edge % in sidebar.")
-    st.markdown("---")
+# Injury selector labels
+INJ_LABELS = {0: "0 - None", 1: "1 - Role player", 2: "2 - Star questionable", 3: "3 - Star OUT"}
 
 tab1, tab2, tab3 = st.tabs(["🎯 Moneyline", "📊 Totals", "📏 Spreads"])
 
-# TAB 1: MONEYLINE (abbreviated for space)
+# ========== TAB 1: MONEYLINE ==========
 with tab1:
-    st.markdown("### 🎯 Moneyline Analysis")
-    for game in markets['moneyline']:
+    st.markdown("### 🎯 Moneyline — Manual Injury Control")
+    
+    for idx, game in enumerate(markets['moneyline']):
         home, away = game['home_team'], game['away_team']
-        home_inj_list, away_inj_list = injuries.get(home, []), injuries.get(away, [])
-        home_injury_data = calculate_weighted_injuries(home, home_inj_list)
-        away_injury_data = calculate_weighted_injuries(away, away_inj_list)
         travel = calculate_travel_distance(away, home)
         home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
-        analysis = calculate_edge(home, away, game['yes_price'], home_rest, away_rest, home_injury_data, away_injury_data, travel, default_ref_bias, weights)
-        if abs(analysis['edge']) < min_edge: continue
+        gkey = f"ml_{idx}"
         
-        color = "🟢" if analysis['recommendation'] == 'BUY YES' else ("🔴" if analysis['recommendation'] == 'BUY NO' else "⚪")
-        bet_team = home if analysis['recommendation'] == 'BUY YES' else away
-        
-        with st.expander(f"{color} {game['game_date']} | {away} @ {home} | Edge: {analysis['edge']:+.1f}%"):
+        with st.expander(f"⚪ {game['game_date']} | {away} @ {home} | Kalshi: {game['yes_price']:.0f}¢"):
+            st.markdown("**🏥 Set Injury Impact**")
+            ic1, ic2 = st.columns(2)
+            with ic1:
+                home_inj = st.selectbox(f"🏠 {home}", [0, 1, 2, 3], format_func=lambda x: INJ_LABELS[x], key=f"{gkey}_h")
+                st.caption(f"Ref: {INJURY_REFERENCE.get(home, 'None listed')}")
+            with ic2:
+                away_inj = st.selectbox(f"✈️ {away}", [0, 1, 2, 3], format_func=lambda x: INJ_LABELS[x], key=f"{gkey}_a")
+                st.caption(f"Ref: {INJURY_REFERENCE.get(away, 'None listed')}")
+            
+            st.markdown("---")
+            
+            # Convert to scores
+            inj_map = {0: 0, 1: 1.0, 2: 2.5, 3: 4.0}
+            home_inj_score, away_inj_score = inj_map[home_inj], inj_map[away_inj]
+            
+            analysis = calculate_edge(home, away, game['yes_price'], home_rest, away_rest, home_inj_score, away_inj_score, travel, default_ref_bias, weights)
+            
+            color = "🟢" if analysis['recommendation'] == 'BUY YES' else ("🔴" if analysis['recommendation'] == 'BUY NO' else "⚪")
+            bet_team = home if analysis['recommendation'] == 'BUY YES' else away
+            
             c1, c2, c3 = st.columns(3)
             c1.metric("Kalshi", f"{game['yes_price']:.0f}¢ {home}")
             c2.metric("Model", f"{analysis['home_win_prob']:.1f}%")
-            c3.metric("Edge", f"{analysis['edge']:+.1f}%", analysis['confidence'])
+            c3.metric("Edge", f"{analysis['edge']:+.1f}%", f"{color} {analysis['confidence']}")
             
-            kelly = calculate_kelly(analysis['home_win_prob'], game['yes_price'], bankroll, kelly_fraction) if analysis['recommendation'] == 'BUY YES' else calculate_kelly(100 - analysis['home_win_prob'], 100 - game['yes_price'], bankroll, kelly_fraction)
+            kelly = calculate_kelly(
+                analysis['home_win_prob'] if analysis['recommendation'] == 'BUY YES' else 100 - analysis['home_win_prob'],
+                game['yes_price'] if analysis['recommendation'] == 'BUY YES' else 100 - game['yes_price'],
+                bankroll, kelly_fraction
+            )
             
             st.markdown("---")
             kc1, kc2, kc3, kc4 = st.columns(4)
@@ -912,176 +426,144 @@ with tab1:
             kc4.metric("EV", f"${kelly['ev_on_bet']:+.2f}")
             
             st.markdown("---")
-            st.markdown("**📈 13-Factor Breakdown**")
             f, r = analysis['factors'], analysis['raw']
-            inj_delta = format_injury_delta(analysis['injury_details']['home'], analysis['injury_details']['away'], home, away)
-            
             fc1, fc2, fc3, fc4, fc5, fc6 = st.columns(6)
             fc1.metric("🛏️ Rest", f"{f['rest']:+.2f}", f"H:{r['home_rest']}d A:{r['away_rest']}d")
-            fc2.metric("⏰ B2B", f"{f['live_rest']:+.2f}", "B2B!" if r.get('home_b2b') or r.get('away_b2b') else "OK")
-            fc3.metric("🛡️ Def", f"{f['defense']:+.2f}", f"H:#{r['home_def_rank']} A:#{r['away_def_rank']}")
-            fc4.metric("🏥 Injury", f"{f['injury']:+.2f}", inj_delta)
-            fc5.metric("⚡ Pace", f"{f['pace']:+.2f}", f"{r['pace_diff']:+.1f}")
-            fc6.metric("📊 Net", f"{f['net_rating']:+.2f}", f"{r['net_diff']:+.1f}")
+            fc2.metric("⏰ B2B", f"{f['live_rest']:+.2f}")
+            fc3.metric("🛡️ Def", f"{f['defense']:+.2f}")
+            fc4.metric("🏥 Inj", f"{f['injury']:+.2f}", f"H:{home_inj} A:{away_inj}")
+            fc5.metric("📊 Net", f"{f['net_rating']:+.2f}")
+            fc6.metric("✈️ Travel", f"{f['travel']:+.2f}", f"{r['travel_miles']}mi")
             
-            fc7, fc8, fc9, fc10, fc11, fc12 = st.columns(6)
-            fc7.metric("✈️ Travel", f"{f['travel']:+.2f}", f"{r['travel_miles']}mi")
-            fc8.metric("🏠 Splits", f"{f['splits']:+.2f}", f"H:{r['home_win_pct']:.0%}")
-            fc9.metric("⚔️ Div", f"{f['h2h']:+.2f}", "DIV" if r['same_div'] else "—")
-            fc10.metric("👨‍⚖️ Refs", f"{f['refs']:+.2f}")
-            fc11.metric("🎯 FT", f"{f['ft']:+.2f}")
-            fc12.metric("🏀 Reb", f"{f['reb']:+.2f}")
-            
-            st.caption(f"🏠 Home Court: +{f['home_court']} | 🎯 3PT: {f['three']:+.2f}")
-            
-            # Show injured stars for this game
-            home_stars = [p for p in analysis['injury_details']['home'] if p['tier'] >= 2]
-            away_stars = [p for p in analysis['injury_details']['away'] if p['tier'] >= 2]
-            if home_stars or away_stars:
-                st.markdown("**🏥 Key Injuries This Game:**")
-                injury_text = []
-                for p in home_stars:
-                    injury_text.append(f"{p['stars']} {p['name']} ({home}) - {p['status']}")
-                for p in away_stars:
-                    injury_text.append(f"{p['stars']} {p['name']} ({away}) - {p['status']}")
-                st.caption(" | ".join(injury_text) if injury_text else "None")
-            
-            url = build_moneyline_url(game['ticker'])
-            st.link_button(f"🎯 BET {bet_team.upper()} → ${kelly['bet_amount']:.2f}", url, use_container_width=True)
+            if analysis['recommendation'] != 'NO EDGE':
+                url = build_moneyline_url(game['ticker'])
+                st.link_button(f"🎯 BET {bet_team.upper()} → ${kelly['bet_amount']:.2f}", url, use_container_width=True)
 
-# TAB 2: TOTALS
+# ========== TAB 2: TOTALS ==========
 with tab2:
-    st.markdown("### 📊 Over/Under Totals")
-    for tm in markets['totals']:
-        home, away, line, yes_price = tm['home_team'], tm['away_team'], tm['line'], tm['yes_price']
-        home_inj_list, away_inj_list = injuries.get(home, []), injuries.get(away, [])
-        home_injury_data = calculate_weighted_injuries(home, home_inj_list)
-        away_injury_data = calculate_weighted_injuries(away, away_inj_list)
+    st.markdown("### 📊 Totals — Manual Injury Control")
+    st.caption("🔥 Offensive stars out → LOWER total | 🛡️ Defensive stars out → HIGHER total")
+    
+    for idx, tm in enumerate(markets['totals']):
+        home, away, line = tm['home_team'], tm['away_team'], tm['line']
         travel = calculate_travel_distance(away, home)
         home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
-        totals = calculate_total_points(home, away, home_rest, away_rest, home_injury_data, away_injury_data, travel)
-        predicted, diff = totals['predicted_total'], totals['predicted_total'] - line
+        gkey = f"tot_{idx}"
         
-        if diff > 3: rec, rec_color, win_prob = "OVER", "🟢", min(85, 50 + diff * 5)
-        elif diff < -3: rec, rec_color, win_prob = "UNDER", "🔴", min(85, 50 + abs(diff) * 5)
-        else: rec, rec_color, win_prob = "NO EDGE", "⚪", 50
-        if rec == "NO EDGE" and min_edge > 0: continue
-        
-        with st.expander(f"{rec_color} {tm['game_date']} | {away} @ {home} | {rec} ({diff:+.1f}pts)"):
+        with st.expander(f"⚪ {tm['game_date']} | {away} @ {home} | Line: {line}"):
+            st.markdown("**🏥 Set Injury Impact**")
+            ic1, ic2 = st.columns(2)
+            with ic1:
+                home_inj = st.selectbox(f"🏠 {home}", [0, 1, 2, 3], format_func=lambda x: INJ_LABELS[x], key=f"{gkey}_h")
+                st.caption(f"Ref: {INJURY_REFERENCE.get(home, 'None listed')}")
+            with ic2:
+                away_inj = st.selectbox(f"✈️ {away}", [0, 1, 2, 3], format_func=lambda x: INJ_LABELS[x], key=f"{gkey}_a")
+                st.caption(f"Ref: {INJURY_REFERENCE.get(away, 'None listed')}")
+            
+            st.markdown("---")
+            
+            inj_map = {0: 0, 1: 1.0, 2: 2.5, 3: 4.0}
+            home_inj_score, away_inj_score = inj_map[home_inj], inj_map[away_inj]
+            
+            totals = calculate_total_points(home, away, home_rest, away_rest, home_inj_score, away_inj_score, travel)
+            predicted, diff = totals['predicted_total'], totals['predicted_total'] - line
+            
+            if diff > 3: rec, rec_color, win_prob = "OVER", "🟢", min(85, 50 + diff * 5)
+            elif diff < -3: rec, rec_color, win_prob = "UNDER", "🔴", min(85, 50 + abs(diff) * 5)
+            else: rec, rec_color, win_prob = "NO EDGE", "⚪", 50
+            
             c1, c2, c3 = st.columns(3)
             c1.metric("Predicted", f"{predicted}")
             c2.metric("Line", f"{line}")
-            c3.metric("Edge", f"{diff:+.1f} pts")
+            c3.metric("Edge", f"{diff:+.1f} pts", f"{rec_color} {rec}")
             
-            kelly = calculate_kelly(win_prob, yes_price, bankroll, kelly_fraction) if rec == "OVER" else (calculate_kelly(win_prob, 100 - yes_price, bankroll, kelly_fraction) if rec == "UNDER" else {'bet_amount': 0, 'adj_kelly_pct': 0, 'ev_per_dollar': 0, 'ev_on_bet': 0})
+            kelly = calculate_kelly(win_prob, tm['yes_price'] if rec == "OVER" else 100 - tm['yes_price'], bankroll, kelly_fraction) if rec != "NO EDGE" else {'bet_amount': 0}
             
             st.markdown("---")
-            st.markdown("**📈 Totals Factor Breakdown**")
             f = totals['factors']
-            inj_delta = format_injury_delta(totals['injury_details']['home'], totals['injury_details']['away'], home, away)
-            
             fc1, fc2, fc3, fc4 = st.columns(4)
             fc1.metric("📊 Base", f"{f['base_total']}")
             fc2.metric("⚡ Pace", f"{f['pace']:+.1f}")
-            fc3.metric("🛏️ Rest", f"{f['rest']:+.1f}", f"H:{home_rest}d A:{away_rest}d")
-            fc4.metric("🎯 3PT", f"{f['3pt']:+.1f}")
+            fc3.metric("🛏️ Rest", f"{f['rest']:+.1f}")
+            fc4.metric("🏥 Injury", f"{f['injury']:+.1f}", f"H:{home_inj} A:{away_inj}")
             
             fc5, fc6, fc7, fc8 = st.columns(4)
             fc5.metric("🛡️ Defense", f"{f['defense']:+.1f}")
-            fc6.metric("✈️ Travel", f"{f['travel']:+.1f}", f"{travel}mi")
-            fc7.metric("🔥 Off Inj", f"{f['injury_off']:+.1f}")
-            fc8.metric("🛡️ Def Inj", f"{f['injury_def']:+.1f}")
+            fc6.metric("✈️ Travel", f"{f['travel']:+.1f}")
+            fc7.metric("🎯 3PT", f"{f['3pt']:+.1f}")
+            fc8.metric("⛰️ Altitude", f"{f['altitude']:+.1f}")
             
-            st.caption(f"🏥 Injuries: {inj_delta} | OREB: {f['oreb']:+.1f} | TOV: {f['turnover']:+.1f} | Altitude: {f['altitude']:+.1f} | OT Prob: {f['ot_prob']:+.1f}")
-            
-            # Show injured stars for this game
-            home_stars = [p for p in totals['injury_details']['home'] if p['tier'] >= 2]
-            away_stars = [p for p in totals['injury_details']['away'] if p['tier'] >= 2]
-            if home_stars or away_stars:
-                st.markdown("**🏥 Key Injuries This Game:**")
-                injury_text = []
-                for p in home_stars:
-                    injury_text.append(f"{p['stars']} {p['name']} ({home}) - {p['status']}")
-                for p in away_stars:
-                    injury_text.append(f"{p['stars']} {p['name']} ({away}) - {p['status']}")
-                st.caption(" | ".join(injury_text) if injury_text else "None")
-            
-            url = build_totals_url(tm['ticker'])
-            if rec == "OVER": st.link_button(f"🎯 BET OVER {line} → ${kelly['bet_amount']:.2f}", url, use_container_width=True)
-            elif rec == "UNDER": st.link_button(f"🎯 BET UNDER {line} → ${kelly['bet_amount']:.2f}", url, use_container_width=True)
+            if rec != "NO EDGE":
+                url = build_totals_url(tm['ticker'])
+                st.link_button(f"🎯 BET {rec} {line} → ${kelly['bet_amount']:.2f}", url, use_container_width=True)
 
-# TAB 3: SPREADS
+# ========== TAB 3: SPREADS ==========
 with tab3:
-    st.markdown("### 📏 Spread Analysis")
-    for sm in markets['spreads']:
-        home, away, line, yes_price, spread_team = sm['home_team'], sm['away_team'], sm['line'], sm['yes_price'], sm['spread_team']
-        home_inj_list, away_inj_list = injuries.get(home, []), injuries.get(away, [])
-        home_injury_data = calculate_weighted_injuries(home, home_inj_list)
-        away_injury_data = calculate_weighted_injuries(away, away_inj_list)
+    st.markdown("### 📏 Spreads — Manual Injury Control")
+    
+    for idx, sm in enumerate(markets['spreads']):
+        home, away, line, spread_team = sm['home_team'], sm['away_team'], sm['line'], sm['spread_team']
         travel = calculate_travel_distance(away, home)
         home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
-        spread = calculate_spread(home, away, home_rest, away_rest, home_injury_data, away_injury_data, travel)
-        predicted = spread['predicted_spread']
+        gkey = f"spr_{idx}"
         
-        if spread_team == home:
-            spread_diff = predicted - line
-            if spread_diff > 3: rec, win_prob, bet_team = f"{home} COVERS", min(80, 50 + spread_diff * 4), home
-            elif spread_diff < -3: rec, win_prob, bet_team = f"{home} MISSES", min(80, 50 + abs(spread_diff) * 4), away
-            else: rec, win_prob, bet_team = "NO EDGE", 50, None
-        else:
-            spread_diff = -predicted - line
-            if spread_diff > 3: rec, win_prob, bet_team = f"{away} COVERS", min(80, 50 + spread_diff * 4), away
-            elif spread_diff < -3: rec, win_prob, bet_team = f"{away} MISSES", min(80, 50 + abs(spread_diff) * 4), home
-            else: rec, win_prob, bet_team = "NO EDGE", 50, None
-        
-        rec_color = "🟢" if "COVERS" in rec else ("🔴" if "MISSES" in rec else "⚪")
-        if rec == "NO EDGE" and min_edge > 0: continue
-        
-        with st.expander(f"{rec_color} {sm['game_date']} | {away} @ {home} | {spread_team} -{line} | {rec}"):
+        with st.expander(f"⚪ {sm['game_date']} | {away} @ {home} | {spread_team} -{line}"):
+            st.markdown("**🏥 Set Injury Impact**")
+            ic1, ic2 = st.columns(2)
+            with ic1:
+                home_inj = st.selectbox(f"🏠 {home}", [0, 1, 2, 3], format_func=lambda x: INJ_LABELS[x], key=f"{gkey}_h")
+                st.caption(f"Ref: {INJURY_REFERENCE.get(home, 'None listed')}")
+            with ic2:
+                away_inj = st.selectbox(f"✈️ {away}", [0, 1, 2, 3], format_func=lambda x: INJ_LABELS[x], key=f"{gkey}_a")
+                st.caption(f"Ref: {INJURY_REFERENCE.get(away, 'None listed')}")
+            
+            st.markdown("---")
+            
+            inj_map = {0: 0, 1: 1.0, 2: 2.5, 3: 4.0}
+            home_inj_score, away_inj_score = inj_map[home_inj], inj_map[away_inj]
+            
+            spread = calculate_spread(home, away, home_rest, away_rest, home_inj_score, away_inj_score, travel)
+            predicted = spread['predicted_spread']
+            
+            if spread_team == home:
+                spread_diff = predicted - line
+                if spread_diff > 3: rec, win_prob, bet_team = f"{home} COVERS", min(80, 50 + spread_diff * 4), home
+                elif spread_diff < -3: rec, win_prob, bet_team = f"{home} MISSES", min(80, 50 + abs(spread_diff) * 4), away
+                else: rec, win_prob, bet_team = "NO EDGE", 50, None
+            else:
+                spread_diff = -predicted - line
+                if spread_diff > 3: rec, win_prob, bet_team = f"{away} COVERS", min(80, 50 + spread_diff * 4), away
+                elif spread_diff < -3: rec, win_prob, bet_team = f"{away} MISSES", min(80, 50 + abs(spread_diff) * 4), home
+                else: rec, win_prob, bet_team = "NO EDGE", 50, None
+            
+            rec_color = "🟢" if "COVERS" in rec else ("🔴" if "MISSES" in rec else "⚪")
+            
             c1, c2, c3 = st.columns(3)
             c1.metric("Model", f"{spread_team} {predicted:+.1f}" if spread_team == home else f"{spread_team} {-predicted:+.1f}")
             c2.metric("Kalshi", f"{spread_team} -{line}")
-            c3.metric("Edge", f"{spread_diff:+.1f} pts")
+            c3.metric("Edge", f"{spread_diff:+.1f} pts", f"{rec_color} {rec}")
             
             if "COVERS" in rec:
-                kelly = calculate_kelly(win_prob, yes_price, bankroll, kelly_fraction)
-                btn = f"🎯 BET {bet_team.upper()} COVERS → ${kelly['bet_amount']:.2f}"
+                kelly = calculate_kelly(win_prob, sm['yes_price'], bankroll, kelly_fraction)
             elif "MISSES" in rec:
-                kelly = calculate_kelly(win_prob, 100 - yes_price, bankroll, kelly_fraction)
-                btn = f"🎯 BET {spread_team.upper()} MISSES → ${kelly['bet_amount']:.2f}"
+                kelly = calculate_kelly(win_prob, 100 - sm['yes_price'], bankroll, kelly_fraction)
             else:
-                kelly, btn = {'bet_amount': 0}, None
+                kelly = {'bet_amount': 0}
             
             st.markdown("---")
-            st.markdown("**📈 Spread Factor Breakdown**")
             sf = spread['factors']
-            inj_delta = format_injury_delta(spread['injury_details']['home'], spread['injury_details']['away'], home, away)
-            
             sfc1, sfc2, sfc3, sfc4, sfc5, sfc6 = st.columns(6)
-            sfc1.metric("📊 Net Rtg", f"{sf['net_rating']:+.1f}")
+            sfc1.metric("📊 Net", f"{sf['net_rating']:+.1f}")
             sfc2.metric("🏠 Home", f"{sf['home_court']:+.1f}")
-            sfc3.metric("🛏️ Rest", f"{sf['rest']:+.1f}", f"H:{home_rest}d A:{away_rest}d")
-            sfc4.metric("🏥 Injury", f"{sf['injury']:+.1f}", inj_delta)
-            sfc5.metric("✈️ Travel", f"{sf['travel']:+.1f}", f"{travel}mi")
+            sfc3.metric("🛏️ Rest", f"{sf['rest']:+.1f}")
+            sfc4.metric("🏥 Injury", f"{sf['injury']:+.1f}", f"H:{home_inj} A:{away_inj}")
+            sfc5.metric("✈️ Travel", f"{sf['travel']:+.1f}")
             sfc6.metric("⏰ B2B", f"{sf['live_rest']:+.1f}")
             
-            st.caption(f"🏠 Splits: {sf['splits']:+.1f}")
-            
-            # Show injured stars for this game
-            home_stars = [p for p in spread['injury_details']['home'] if p['tier'] >= 2]
-            away_stars = [p for p in spread['injury_details']['away'] if p['tier'] >= 2]
-            if home_stars or away_stars:
-                st.markdown("**🏥 Key Injuries This Game:**")
-                injury_text = []
-                for p in home_stars:
-                    injury_text.append(f"{p['stars']} {p['name']} ({home}) - {p['status']}")
-                for p in away_stars:
-                    injury_text.append(f"{p['stars']} {p['name']} ({away}) - {p['status']}")
-                st.caption(" | ".join(injury_text) if injury_text else "None")
-            
-            if btn:
+            if rec != "NO EDGE":
                 url = build_spread_url(sm['ticker'])
-                st.link_button(btn, url, use_container_width=True)
+                btn_text = f"🎯 BET {bet_team.upper()} {'COVERS' if 'COVERS' in rec else 'WINS'} → ${kelly['bet_amount']:.2f}"
+                st.link_button(btn_text, url, use_container_width=True)
 
 st.markdown("---")
-st.caption("⚠️ Entertainment only. Not financial advice. | ⭐⭐⭐=Superstar ⭐⭐=All-Star | 🔥=Offense 🛡️=Defense")
+st.caption("⚠️ Entertainment only. Not financial advice. | Injuries are MANUAL — you control the model.")
