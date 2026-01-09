@@ -808,6 +808,41 @@ with tab1:
             kc3.metric("EV/$", f"${kelly['ev_per_dollar']:.3f}")
             kc4.metric("EV", f"${kelly['ev_on_bet']:+.2f}")
             
+            st.markdown("---")
+            st.markdown("**📈 13-Factor Breakdown**")
+            f, r = analysis['factors'], analysis['raw']
+            inj_delta = format_injury_delta(analysis['injury_details']['home'], analysis['injury_details']['away'], home, away)
+            
+            fc1, fc2, fc3, fc4, fc5, fc6 = st.columns(6)
+            fc1.metric("🛏️ Rest", f"{f['rest']:+.2f}", f"H:{r['home_rest']}d A:{r['away_rest']}d")
+            fc2.metric("⏰ B2B", f"{f['live_rest']:+.2f}", "B2B!" if r.get('home_b2b') or r.get('away_b2b') else "OK")
+            fc3.metric("🛡️ Def", f"{f['defense']:+.2f}", f"H:#{r['home_def_rank']} A:#{r['away_def_rank']}")
+            fc4.metric("🏥 Injury", f"{f['injury']:+.2f}", inj_delta)
+            fc5.metric("⚡ Pace", f"{f['pace']:+.2f}", f"{r['pace_diff']:+.1f}")
+            fc6.metric("📊 Net", f"{f['net_rating']:+.2f}", f"{r['net_diff']:+.1f}")
+            
+            fc7, fc8, fc9, fc10, fc11, fc12 = st.columns(6)
+            fc7.metric("✈️ Travel", f"{f['travel']:+.2f}", f"{r['travel_miles']}mi")
+            fc8.metric("🏠 Splits", f"{f['splits']:+.2f}", f"H:{r['home_win_pct']:.0%}")
+            fc9.metric("⚔️ Div", f"{f['h2h']:+.2f}", "DIV" if r['same_div'] else "—")
+            fc10.metric("👨‍⚖️ Refs", f"{f['refs']:+.2f}")
+            fc11.metric("🎯 FT", f"{f['ft']:+.2f}")
+            fc12.metric("🏀 Reb", f"{f['reb']:+.2f}")
+            
+            st.caption(f"🏠 Home Court: +{f['home_court']} | 🎯 3PT: {f['three']:+.2f}")
+            
+            # Show injured stars for this game
+            home_stars = [p for p in analysis['injury_details']['home'] if p['tier'] >= 2]
+            away_stars = [p for p in analysis['injury_details']['away'] if p['tier'] >= 2]
+            if home_stars or away_stars:
+                st.markdown("**🏥 Key Injuries This Game:**")
+                injury_text = []
+                for p in home_stars:
+                    injury_text.append(f"{p['stars']} {p['name']} ({home}) - {p['status']}")
+                for p in away_stars:
+                    injury_text.append(f"{p['stars']} {p['name']} ({away}) - {p['status']}")
+                st.caption(" | ".join(injury_text) if injury_text else "None")
+            
             url = build_moneyline_url(game['ticker'])
             st.link_button(f"🎯 BET {bet_team.upper()} → ${kelly['bet_amount']:.2f}", url, use_container_width=True)
 
@@ -835,7 +870,38 @@ with tab2:
             c2.metric("Line", f"{line}")
             c3.metric("Edge", f"{diff:+.1f} pts")
             
-            kelly = calculate_kelly(win_prob, yes_price, bankroll, kelly_fraction) if rec == "OVER" else (calculate_kelly(win_prob, 100 - yes_price, bankroll, kelly_fraction) if rec == "UNDER" else {'bet_amount': 0})
+            kelly = calculate_kelly(win_prob, yes_price, bankroll, kelly_fraction) if rec == "OVER" else (calculate_kelly(win_prob, 100 - yes_price, bankroll, kelly_fraction) if rec == "UNDER" else {'bet_amount': 0, 'adj_kelly_pct': 0, 'ev_per_dollar': 0, 'ev_on_bet': 0})
+            
+            st.markdown("---")
+            st.markdown("**📈 Totals Factor Breakdown**")
+            f = totals['factors']
+            inj_delta = format_injury_delta(totals['injury_details']['home'], totals['injury_details']['away'], home, away)
+            
+            fc1, fc2, fc3, fc4 = st.columns(4)
+            fc1.metric("📊 Base", f"{f['base_total']}")
+            fc2.metric("⚡ Pace", f"{f['pace']:+.1f}")
+            fc3.metric("🛏️ Rest", f"{f['rest']:+.1f}", f"H:{home_rest}d A:{away_rest}d")
+            fc4.metric("🎯 3PT", f"{f['3pt']:+.1f}")
+            
+            fc5, fc6, fc7, fc8 = st.columns(4)
+            fc5.metric("🛡️ Defense", f"{f['defense']:+.1f}")
+            fc6.metric("✈️ Travel", f"{f['travel']:+.1f}", f"{travel}mi")
+            fc7.metric("🔥 Off Inj", f"{f['injury_off']:+.1f}")
+            fc8.metric("🛡️ Def Inj", f"{f['injury_def']:+.1f}")
+            
+            st.caption(f"🏥 Injuries: {inj_delta} | OREB: {f['oreb']:+.1f} | TOV: {f['turnover']:+.1f} | Altitude: {f['altitude']:+.1f} | OT Prob: {f['ot_prob']:+.1f}")
+            
+            # Show injured stars for this game
+            home_stars = [p for p in totals['injury_details']['home'] if p['tier'] >= 2]
+            away_stars = [p for p in totals['injury_details']['away'] if p['tier'] >= 2]
+            if home_stars or away_stars:
+                st.markdown("**🏥 Key Injuries This Game:**")
+                injury_text = []
+                for p in home_stars:
+                    injury_text.append(f"{p['stars']} {p['name']} ({home}) - {p['status']}")
+                for p in away_stars:
+                    injury_text.append(f"{p['stars']} {p['name']} ({away}) - {p['status']}")
+                st.caption(" | ".join(injury_text) if injury_text else "None")
             
             url = build_totals_url(tm['ticker'])
             if rec == "OVER": st.link_button(f"🎯 BET OVER {line} → ${kelly['bet_amount']:.2f}", url, use_container_width=True)
@@ -882,6 +948,33 @@ with tab3:
                 btn = f"🎯 BET {spread_team.upper()} MISSES → ${kelly['bet_amount']:.2f}"
             else:
                 kelly, btn = {'bet_amount': 0}, None
+            
+            st.markdown("---")
+            st.markdown("**📈 Spread Factor Breakdown**")
+            sf = spread['factors']
+            inj_delta = format_injury_delta(spread['injury_details']['home'], spread['injury_details']['away'], home, away)
+            
+            sfc1, sfc2, sfc3, sfc4, sfc5, sfc6 = st.columns(6)
+            sfc1.metric("📊 Net Rtg", f"{sf['net_rating']:+.1f}")
+            sfc2.metric("🏠 Home", f"{sf['home_court']:+.1f}")
+            sfc3.metric("🛏️ Rest", f"{sf['rest']:+.1f}", f"H:{home_rest}d A:{away_rest}d")
+            sfc4.metric("🏥 Injury", f"{sf['injury']:+.1f}", inj_delta)
+            sfc5.metric("✈️ Travel", f"{sf['travel']:+.1f}", f"{travel}mi")
+            sfc6.metric("⏰ B2B", f"{sf['live_rest']:+.1f}")
+            
+            st.caption(f"🏠 Splits: {sf['splits']:+.1f}")
+            
+            # Show injured stars for this game
+            home_stars = [p for p in spread['injury_details']['home'] if p['tier'] >= 2]
+            away_stars = [p for p in spread['injury_details']['away'] if p['tier'] >= 2]
+            if home_stars or away_stars:
+                st.markdown("**🏥 Key Injuries This Game:**")
+                injury_text = []
+                for p in home_stars:
+                    injury_text.append(f"{p['stars']} {p['name']} ({home}) - {p['status']}")
+                for p in away_stars:
+                    injury_text.append(f"{p['stars']} {p['name']} ({away}) - {p['status']}")
+                st.caption(" | ".join(injury_text) if injury_text else "None")
             
             if btn:
                 url = build_spread_url(sm['ticker'])
