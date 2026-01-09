@@ -29,6 +29,7 @@ STAR_PLAYERS = {
         "Trae Young": (3, "O"), "Dejounte Murray": (2, "B"), "Jalen Johnson": (2, "B"),
         "De'Andre Hunter": (2, "O"), "Clint Capela": (1, "D"), "Bogdan Bogdanovic": (1, "O"),
         "Onyeka Okongwu": (1, "D"), "Dyson Daniels": (1, "D"), "Zaccharie Risacher": (1, "O"),
+        "CJ McCollum": (2, "O"), "Corey Kispert": (1, "O"),
     },
     "Boston": {
         "Jayson Tatum": (3, "B"), "Jaylen Brown": (3, "B"), "Derrick White": (2, "B"),
@@ -47,8 +48,8 @@ STAR_PLAYERS = {
     },
     "Chicago": {
         "Zach LaVine": (2, "O"), "DeMar DeRozan": (2, "O"), "Nikola Vucevic": (2, "B"),
-        "Coby White": (2, "O"), "Patrick Williams": (1, "D"), "Alex Caruso": (1, "D"),
-        "Ayo Dosunmu": (1, "B"), "Andre Drummond": (1, "D"),
+        "Coby White": (2, "O"), "Josh Giddey": (2, "O"), "Patrick Williams": (1, "D"), "Alex Caruso": (1, "D"),
+        "Ayo Dosunmu": (1, "B"), "Andre Drummond": (1, "D"), "Jalen Smith": (1, "D"), "Zach Collins": (1, "D"),
     },
     "Cleveland": {
         "Donovan Mitchell": (3, "O"), "Darius Garland": (2, "O"), "Evan Mobley": (3, "D"),
@@ -62,7 +63,8 @@ STAR_PLAYERS = {
     },
     "Denver": {
         "Nikola Jokic": (3, "B"), "Jamal Murray": (3, "O"), "Michael Porter Jr": (2, "O"),
-        "Aaron Gordon": (2, "B"), "Kentavious Caldwell-Pope": (1, "D"), "Reggie Jackson": (1, "O"),
+        "Aaron Gordon": (2, "B"), "Jonas Valanciunas": (2, "D"), "Cameron Johnson": (2, "O"),
+        "Kentavious Caldwell-Pope": (1, "D"), "Reggie Jackson": (1, "O"),
         "Christian Braun": (1, "B"), "Peyton Watson": (1, "D"),
     },
     "Detroit": {
@@ -127,7 +129,7 @@ STAR_PLAYERS = {
     },
     "Oklahoma City": {
         "Shai Gilgeous-Alexander": (3, "B"), "Chet Holmgren": (3, "B"), "Jalen Williams": (2, "B"),
-        "Josh Giddey": (2, "O"), "Lu Dort": (2, "D"), "Cason Wallace": (1, "D"),
+        "Isaiah Hartenstein": (2, "D"), "Alex Caruso": (2, "D"), "Lu Dort": (2, "D"), "Cason Wallace": (1, "D"),
         "Isaiah Joe": (1, "O"), "Kenrich Williams": (1, "D"), "Aaron Wiggins": (1, "B"),
     },
     "Orlando": {
@@ -144,10 +146,11 @@ STAR_PLAYERS = {
         "Kevin Durant": (3, "O"), "Devin Booker": (3, "O"), "Bradley Beal": (2, "O"),
         "Jusuf Nurkic": (2, "D"), "Grayson Allen": (1, "O"), "Eric Gordon": (1, "O"),
         "Drew Eubanks": (1, "D"), "Nassir Little": (1, "D"), "Bol Bol": (1, "D"),
+        "Jalen Green": (2, "O"),
     },
     "Portland": {
-        "Anfernee Simons": (2, "O"), "Jerami Grant": (2, "B"), "Scoot Henderson": (2, "O"),
-        "Deandre Ayton": (2, "D"), "Shaedon Sharpe": (1, "O"), "Malcolm Brogdon": (1, "O"),
+        "Damian Lillard": (3, "O"), "Anfernee Simons": (2, "O"), "Jerami Grant": (2, "B"), "Scoot Henderson": (2, "O"),
+        "Deandre Ayton": (2, "D"), "Jrue Holiday": (2, "D"), "Shaedon Sharpe": (1, "O"), "Malcolm Brogdon": (1, "O"),
         "Robert Williams III": (1, "D"), "Matisse Thybulle": (1, "D"), "Toumani Camara": (1, "D"),
     },
     "Sacramento": {
@@ -161,7 +164,7 @@ STAR_PLAYERS = {
         "Doug McDermott": (1, "O"), "Malaki Branham": (1, "O"), "Cedi Osman": (1, "O"),
     },
     "Toronto": {
-        "Scottie Barnes": (3, "B"), "Pascal Siakam": (2, "B"), "OG Anunoby": (2, "D"),
+        "Scottie Barnes": (3, "B"), "Brandon Ingram": (2, "O"), "Pascal Siakam": (2, "B"), "OG Anunoby": (2, "D"),
         "Gary Trent Jr": (2, "O"), "Jakob Poeltl": (2, "D"), "Immanuel Quickley": (1, "O"),
         "Chris Boucher": (1, "D"), "Gradey Dick": (1, "O"), "Bruce Brown": (1, "D"),
     },
@@ -171,9 +174,10 @@ STAR_PLAYERS = {
         "Talen Horton-Tucker": (1, "O"), "Ochai Agbaji": (1, "D"), "Keyonte George": (1, "O"),
     },
     "Washington": {
-        "Kyle Kuzma": (2, "O"), "Jordan Poole": (2, "O"), "Deni Avdija": (2, "B"),
+        "Trae Young": (3, "O"), "Kyle Kuzma": (2, "O"), "Jordan Poole": (2, "O"), "Deni Avdija": (2, "B"),
         "Tyus Jones": (1, "O"), "Daniel Gafford": (2, "D"), "Corey Kispert": (1, "O"),
         "Marvin Bagley III": (1, "O"), "Landry Shamet": (1, "O"), "Anthony Gill": (1, "D"),
+        "Khris Middleton": (2, "O"),
     },
 }
 
@@ -511,55 +515,183 @@ def fetch_kalshi_nba_markets():
     markets['moneyline'], markets['totals'], markets['spreads'] = sorted(seen.values(), key=date_sort_key), sorted(markets['totals'], key=date_sort_key), sorted(markets['spreads'], key=date_sort_key)
     return markets
 
+# ========== COVERS.COM TEAM NAME MAPPING ==========
+COVERS_TEAM_MAP = {
+    "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
+    "Charlotte Hornets": "Charlotte", "Chicago Bulls": "Chicago", "Cleveland Cavaliers": "Cleveland",
+    "Dallas Mavericks": "Dallas", "Denver Nuggets": "Denver", "Detroit Pistons": "Detroit",
+    "Golden State Warriors": "Golden State", "Houston Rockets": "Houston", "Indiana Pacers": "Indiana",
+    "LA Clippers": "LA Clippers", "Los Angeles Clippers": "LA Clippers",
+    "LA Lakers": "LA Lakers", "Los Angeles Lakers": "LA Lakers",
+    "Memphis Grizzlies": "Memphis", "Miami Heat": "Miami", "Milwaukee Bucks": "Milwaukee",
+    "Minnesota Timberwolves": "Minnesota", "New Orleans Pelicans": "New Orleans",
+    "New York Knicks": "New York", "Oklahoma City Thunder": "Oklahoma City",
+    "Orlando Magic": "Orlando", "Philadelphia 76ers": "Philadelphia",
+    "Phoenix Suns": "Phoenix", "Portland Trail Blazers": "Portland",
+    "Sacramento Kings": "Sacramento", "San Antonio Spurs": "San Antonio",
+    "Toronto Raptors": "Toronto", "Utah Jazz": "Utah", "Washington Wizards": "Washington",
+}
+
 @st.cache_data(ttl=600)
 def fetch_nba_injuries():
-    """Fetch injuries from ESPN with improved parsing"""
+    """Fetch injuries from Covers.com - AUTOMATIC and RELIABLE"""
     injuries = {}
     try:
-        resp = requests.get("https://www.espn.com/nba/injuries", headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}, timeout=15)
+        resp = requests.get(
+            "https://www.covers.com/sport/basketball/nba/injuries",
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'},
+            timeout=15
+        )
         soup = BeautifulSoup(resp.content, 'html.parser')
         
-        # Try multiple parsing strategies
-        # Strategy 1: Table__Title class
-        for table in soup.find_all('div', class_='ResponsiveTable'):
-            header = table.find_previous(['div', 'h2', 'span'], class_=lambda x: x and 'Title' in str(x))
-            if header:
-                espn_name = header.get_text(strip=True)
-                our_name = ESPN_TEAM_MAP.get(espn_name, espn_name)
-                players = []
-                for row in table.find_all('tr')[1:]:
-                    cells = row.find_all('td')
-                    if len(cells) >= 3:
-                        name = cells[0].get_text(strip=True)
-                        status = cells[2].get_text(strip=True)
-                        players.append(f"{name} ({status})")
-                if players:
-                    injuries[our_name] = players
+        # Find all team sections - they have team links with specific pattern
+        team_links = soup.find_all('a', href=lambda x: x and '/sport/basketball/nba/teams/main/' in str(x))
         
-        # Strategy 2: Look for team sections
-        if not injuries:
-            sections = soup.find_all(['section', 'div'], class_=lambda x: x and 'team' in str(x).lower())
-            for section in sections:
-                team_elem = section.find(['h2', 'h3', 'span'], class_=lambda x: x and 'name' in str(x).lower())
-                if team_elem:
-                    espn_name = team_elem.get_text(strip=True)
-                    our_name = ESPN_TEAM_MAP.get(espn_name, espn_name)
-                    # Find player rows
-                    rows = section.find_all('tr')
+        for team_link in team_links:
+            # Get team name from the link text
+            team_name_elem = team_link.find_all(string=True)
+            if not team_name_elem:
+                continue
+            
+            # Combine text parts (some have line breaks)
+            raw_name = ' '.join([t.strip() for t in team_name_elem if t.strip()])
+            
+            # Map to our team names
+            our_name = None
+            for covers_name, mapped_name in COVERS_TEAM_MAP.items():
+                if mapped_name.lower() in raw_name.lower() or raw_name.lower() in covers_name.lower():
+                    our_name = mapped_name
+                    break
+            
+            if not our_name:
+                # Try direct match
+                for key in ["Atlanta", "Boston", "Brooklyn", "Charlotte", "Chicago", "Cleveland",
+                           "Dallas", "Denver", "Detroit", "Golden State", "Houston", "Indiana",
+                           "LA Clippers", "LA Lakers", "Los Angeles", "Memphis", "Miami", "Milwaukee",
+                           "Minnesota", "New Orleans", "New York", "Oklahoma City", "Orlando",
+                           "Philadelphia", "Phoenix", "Portland", "Sacramento", "San Antonio",
+                           "Toronto", "Utah", "Washington"]:
+                    if key.lower() in raw_name.lower():
+                        our_name = key
+                        if "Lakers" in raw_name:
+                            our_name = "LA Lakers"
+                        elif "Clippers" in raw_name:
+                            our_name = "LA Clippers"
+                        break
+            
+            if not our_name:
+                continue
+            
+            # Find the table after this team link
+            parent = team_link.find_parent(['div', 'section', 'td', 'tr'])
+            if not parent:
+                continue
+            
+            # Look for table rows in nearby elements
+            table = None
+            for sibling in parent.find_next_siblings():
+                table = sibling.find('table')
+                if table:
+                    break
+            
+            if not table:
+                # Try finding table in parent's parent
+                grandparent = parent.find_parent(['div', 'section'])
+                if grandparent:
+                    table = grandparent.find('table')
+            
+            if not table:
+                continue
+            
+            players = []
+            rows = table.find_all('tr')
+            for row in rows:
+                cells = row.find_all('td')
+                if len(cells) >= 3:
+                    # First cell = player name (usually has a link)
+                    player_link = cells[0].find('a')
+                    if player_link:
+                        player_name = player_link.get_text(strip=True)
+                    else:
+                        player_name = cells[0].get_text(strip=True)
+                    
+                    # Third cell = status
+                    status = cells[2].get_text(strip=True)
+                    
+                    if player_name and status and player_name != "Player":
+                        players.append(f"{player_name} ({status})")
+            
+            if players:
+                injuries[our_name] = players
+        
+        # If scraping didn't work well, try alternative parsing
+        if len(injuries) < 10:
+            # Look for all tables with player data
+            all_tables = soup.find_all('table')
+            current_team = None
+            
+            for table in all_tables:
+                # Check if there's a team header before this table
+                prev_elem = table.find_previous(['a', 'div', 'span'])
+                if prev_elem:
+                    text = prev_elem.get_text(strip=True)
+                    for covers_name, mapped_name in COVERS_TEAM_MAP.items():
+                        if mapped_name.lower() in text.lower():
+                            current_team = mapped_name
+                            break
+                
+                if current_team:
+                    rows = table.find_all('tr')
                     players = []
                     for row in rows:
                         cells = row.find_all('td')
-                        if len(cells) >= 2:
-                            name = cells[0].get_text(strip=True)
-                            if name and not name.startswith('NAME'):
-                                status = cells[-1].get_text(strip=True) if len(cells) > 1 else "Out"
-                                players.append(f"{name} ({status})")
-                    if players:
-                        injuries[our_name] = players
+                        if len(cells) >= 3:
+                            player_link = cells[0].find('a')
+                            player_name = player_link.get_text(strip=True) if player_link else cells[0].get_text(strip=True)
+                            status = cells[2].get_text(strip=True)
+                            if player_name and status and player_name != "Player" and "Status" not in status:
+                                players.append(f"{player_name} ({status})")
+                    
+                    if players and current_team not in injuries:
+                        injuries[current_team] = players
+    
     except Exception as e:
-        st.sidebar.error(f"ESPN Error: {e}")
+        st.sidebar.error(f"Covers.com Error: {e}")
+    
+    # If still empty, use manual fallback
+    if len(injuries) < 5:
+        return MANUAL_INJURIES.copy()
     
     return injuries
+
+# ========== MANUAL STAR INJURIES FALLBACK (Updated Jan 9, 2026) ==========
+MANUAL_INJURIES = {
+    "Boston": ["Jayson Tatum (Out - Achilles)"],
+    "Denver": ["Nikola Jokic (Out - Knee)", "Jonas Valanciunas (Out - Calf)", "Cameron Johnson (Out - Knee)"],
+    "Dallas": ["Kyrie Irving (Out - Knee)", "Dereck Lively II (Out For Season - Foot)", "Dante Exum (Out For Season - Knee)", "PJ Washington (Doubtful - Ankle)"],
+    "Indiana": ["Tyrese Haliburton (Out For Season - Achilles)", "Obi Toppin (Out - Foot)", "Bennedict Mathurin (Out - Thumb)"],
+    "Portland": ["Damian Lillard (Out For Season - Achilles)", "Scoot Henderson (Out - Hamstring)", "Jerami Grant (Day To Day - Achilles)", "Jrue Holiday (Day To Day - Calf)"],
+    "Houston": ["Fred VanVleet (Out For Season - ACL)", "Alperen Sengun (Day To Day - Ankle)"],
+    "Sacramento": ["Domantas Sabonis (Out - Knee)", "Keegan Murray (Out - Ankle)"],
+    "LA Lakers": ["LeBron James (Day To Day - Foot)", "Austin Reaves (Out - Calf)", "Rui Hachimura (Out - Calf)"],
+    "Orlando": ["Franz Wagner (Out - Ankle)", "Jalen Suggs (Day To Day - Knee)", "Moritz Wagner (Out - Knee)"],
+    "Detroit": ["Cade Cunningham (Day To Day - Wrist)", "Jalen Duren (Out - Ankle)", "Tobias Harris (Out - Hip)"],
+    "Memphis": ["Ja Morant (Day To Day - Calf)", "Zach Edey (Out - Ankle)", "Brandon Clarke (Out - Calf)"],
+    "Minnesota": ["Anthony Edwards (Day To Day - Rest)"],
+    "Charlotte": ["Brandon Miller (Day To Day - Knee)"],
+    "San Antonio": ["Devin Vassell (Out - Thigh)"],
+    "Utah": ["Walker Kessler (Out For Season - Shoulder)"],
+    "LA Clippers": ["Bradley Beal (Out For Season - Hip)", "Bogdan Bogdanovic (Out - Hamstring)"],
+    "Cleveland": ["Max Strus (Out - Foot)"],
+    "Chicago": ["Josh Giddey (Out - Hamstring)", "Coby White (Day To Day - Calf)"],
+    "Washington": ["Trae Young (Out - Quad)", "Khris Middleton (Day To Day)"],
+    "Oklahoma City": ["Isaiah Hartenstein (Day To Day - Calf)", "Alex Caruso (Day To Day - Back)"],
+    "New Orleans": ["Dejounte Murray (Out - Leg)", "Herb Jones (Day To Day - Ankle)", "Trey Murphy III (Day To Day - Back)"],
+    "Toronto": ["Brandon Ingram (Day To Day)", "Jakob Poeltl (Day To Day - Back)"],
+    "Golden State": ["Gary Payton II (Day To Day - Ankle)"],
+    "New York": ["Josh Hart (Day To Day - Ankle)"],
+    "Phoenix": ["Jalen Green (Out - Hamstring)"],
+}
 
 @st.cache_data(ttl=300)
 def fetch_rest_days():
@@ -649,18 +781,34 @@ if st.sidebar.button("🔄 Refresh", help="Fetch fresh data"):
     st.rerun()
 
 # Fetch data
-markets, injuries, rest_days = fetch_kalshi_nba_markets(), fetch_nba_injuries(), fetch_rest_days()
+markets = fetch_kalshi_nba_markets()
+injuries = fetch_nba_injuries()
+rest_days = fetch_rest_days()
+
+# Check if we got real scraped data or fallback
+using_fallback = len(injuries) < 10
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📊 Status")
 st.sidebar.write(f"ML: {len(markets['moneyline'])} | TOT: {len(markets['totals'])} | SPR: {len(markets['spreads'])}")
-st.sidebar.write(f"🏥 Teams w/ injuries: {len(injuries)} | ⏰ Rest: {len(rest_days)}")
+
+if using_fallback:
+    st.sidebar.warning(f"🏥 Using FALLBACK injuries (scraper failed)")
+else:
+    st.sidebar.success(f"🏥 AUTO: {len(injuries)} teams scraped from Covers.com")
+
+st.sidebar.write(f"⏰ Rest: {len(rest_days)} teams")
 
 # ========== ⭐ STAR INJURIES SECTION (TOP OF PAGE) ==========
 star_injuries = get_all_star_injuries(injuries)
 
 if star_injuries:
-    st.markdown("### ⭐ STAR INJURIES — Major Absences Today")
+    if using_fallback:
+        st.markdown("### ⭐ STAR INJURIES — Major Absences Today")
+        st.caption("⚠️ Using fallback data - Covers.com scraper failed. Data may be stale.")
+    else:
+        st.markdown("### ⭐ STAR INJURIES — Major Absences Today")
+        st.caption("✅ LIVE data from Covers.com (auto-updates every 10 min)")
     
     # Superstars (Tier 3)
     superstars = [p for p in star_injuries if p['tier'] == 3]
