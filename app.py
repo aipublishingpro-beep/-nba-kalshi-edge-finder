@@ -321,7 +321,16 @@ else:
         else:
             rec_color = "⚪"
         
-        with st.expander(f"{rec_color} {away} @ {home} | Edge: {analysis['edge']:+.1f}% | {analysis['recommendation']}", expanded=False):
+        # Parse game date from close_time
+        game_date_str = ""
+        if game['close_time']:
+            try:
+                game_dt = datetime.fromisoformat(game['close_time'].replace('Z', '+00:00'))
+                game_date_str = game_dt.strftime("%b %d")  # e.g., "Jan 09"
+            except:
+                game_date_str = ""
+        
+        with st.expander(f"{rec_color} {game_date_str} | {away} @ {home} | Edge: {analysis['edge']:+.1f}% | {analysis['recommendation']}", expanded=False):
             
             # Row 1: Kalshi Prices | Our Model | Recommendation
             col1, col2, col3 = st.columns(3)
