@@ -231,17 +231,35 @@ TEAM_LOCATIONS = {
 
 # ========== STAR INJURY FUNCTIONS ==========
 def get_star_rating(player_name, team):
-    """Get star tier and type for a player"""
+    """Get star tier and type for a player - flexible matching"""
     team_stars = STAR_PLAYERS.get(team, {})
+    player_name_lower = player_name.lower().strip()
+    player_parts = player_name_lower.split()
+    player_last = player_parts[-1] if player_parts else ""
+    player_first = player_parts[0] if player_parts else ""
+    
     for star_name, (tier, ptype) in team_stars.items():
-        # Match by last name or full name
-        if star_name.lower() in player_name.lower() or player_name.lower() in star_name.lower():
+        star_lower = star_name.lower()
+        star_parts = star_lower.split()
+        star_last = star_parts[-1] if star_parts else ""
+        star_first = star_parts[0] if star_parts else ""
+        
+        # Exact match
+        if star_lower == player_name_lower:
             return tier, ptype
-        # Also check last name only
-        star_last = star_name.split()[-1].lower()
-        player_last = player_name.split()[-1].lower() if player_name else ""
+        
+        # Last name match (most reliable)
         if star_last == player_last and len(star_last) > 2:
             return tier, ptype
+        
+        # First + Last initial match (e.g., "LeBron J." matches "LeBron James")
+        if star_first == player_first and player_last and star_last.startswith(player_last[0]):
+            return tier, ptype
+            
+        # Partial contains
+        if star_lower in player_name_lower or player_name_lower in star_lower:
+            return tier, ptype
+    
     return 0, "B"  # Bench player
 
 def calculate_weighted_injuries(team, injury_list):
@@ -305,27 +323,33 @@ def calculate_weighted_injuries(team, injury_list):
     return weighted_score, offensive_score, defensive_score, star_details
 
 def format_injury_delta(home_details, away_details, home_team, away_team):
-    """Format injury info for metric delta - show top 2 stars + count"""
+    """Format injury info for metric delta - ALWAYS show names"""
     all_injuries = []
+    
+    # Collect ALL injuries with their star ratings
     for p in home_details:
-        if p['tier'] >= 1:
-            all_injuries.append(f"{p['stars']}{p['short_name']}")
+        all_injuries.append({"stars": p['stars'], "name": p['short_name'], "tier": p['tier']})
     for p in away_details:
-        if p['tier'] >= 1:
-            all_injuries.append(f"{p['stars']}{p['short_name']}")
+        all_injuries.append({"stars": p['stars'], "name": p['short_name'], "tier": p['tier']})
     
     if not all_injuries:
-        # Check for bench injuries
-        total_bench = len([p for p in home_details if p['tier'] == 0]) + len([p for p in away_details if p['tier'] == 0])
-        if total_bench > 0:
-            return f"{total_bench} bench"
         return "None"
     
-    # Show top 2 + count if more
-    if len(all_injuries) <= 2:
-        return ", ".join(all_injuries)
+    # Sort by tier (stars first)
+    all_injuries.sort(key=lambda x: x['tier'], reverse=True)
+    
+    # Format: show top 2 names with stars, + count if more
+    display = []
+    for p in all_injuries[:2]:
+        if p['stars']:
+            display.append(f"{p['stars']}{p['name']}")
+        else:
+            display.append(p['name'])
+    
+    if len(all_injuries) > 2:
+        return f"{', '.join(display)} +{len(all_injuries)-2}"
     else:
-        return f"{all_injuries[0]}, {all_injuries[1]} +{len(all_injuries)-2}"
+        return ", ".join(display)
 
 # ========== URL BUILDER FUNCTIONS ==========
 def build_moneyline_url(ticker):
@@ -654,6 +678,19 @@ st.sidebar.markdown("### 📊 Status")
 markets, injuries, rest_days = fetch_kalshi_nba_markets(), fetch_nba_injuries(), fetch_rest_days()
 st.sidebar.write(f"ML: {len(markets['moneyline'])} | TOT: {len(markets['totals'])} | SPR: {len(markets['spreads'])}")
 st.sidebar.write(f"🏥 Injuries: {len(injuries)} teams | ⏰ Rest: {len(rest_days)} teams")
+
+# Debug: Show what ESPN returned
+with st.sidebar.expander("🔍 Debug Injuries"):
+    if injuries:
+        for team, players in list(injuries.items())[:5]:  # Show first 5 teams
+            st.write(f"**{team}:**")
+            for p in players[:3]:  # Show first 3 players per team
+                name = p.split("(")[0].strip()
+                tier, ptype = get_star_rating(name, team)
+                star_str = "⭐" * tier if tier > 0 else "bench"
+                st.write(f"  {p} → {star_str}")
+    else:
+        st.write("No injuries loaded")
 
 # ========== TOP 3 EDGES ==========
 st.markdown("### 🔥 Top 3 Edges Today")
