@@ -6,6 +6,18 @@ from datetime import datetime
 import time
 
 st.set_page_config(page_title="KALSHI NBA EDGE FINDER", layout="wide")
+
+import streamlit.components.v1 as components
+components.html("""
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-F6WSR1EZBS"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-F6WSR1EZBS');
+</script>
+""", height=0)
+
 st.title("🎯 NBA Spread Predictor for Kalshi")
 st.write("**Real Today's Games • Real Injury Data • NO Fake Data**")
 
@@ -27,28 +39,35 @@ _cache_time = 0
 CACHE_DURATION = 14400
 
 def fetch_nba_injuries():
+    """Scrape ESPN NBA injury report"""
     url = "https://www.espn.com/nba/injuries"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     try:
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.content, 'html.parser')
         injuries = {}
-        tables = soup.find_all('div', class_='ResponsiveTable')
-        for table in tables:
-            header = table.find_previous('div', class_='Table__Title')
-            if not header:
+        
+        team_sections = soup.find_all('div', class_='Table__Title')
+        
+        for team_header in team_sections:
+            team_name = team_header.text.strip()
+            table = team_header.find_next('table')
+            if not table:
                 continue
-            team_name = header.text.strip()
+            
             players = []
             rows = table.find_all('tr')
+            
             for row in rows:
                 cells = row.find_all('td')
-                if len(cells) >= 2:
+                if len(cells) >= 1:
                     player = cells[0].text.strip()
-                    if player and player != "NAME":
+                    if player and player.lower() != "name" and len(player) > 1:
                         players.append(player)
-            if players:
+            
+            if players and team_name:
                 injuries[team_name] = players
+        
         return injuries
     except Exception as e:
         st.warning(f"⚠️ Could not fetch live injuries: {e}")
@@ -202,7 +221,7 @@ if injuries_data:
     injury_count = sum(len(v) for v in injuries_data.values())
     st.success(f"📊 Tracking {injury_count} injuries across {len(injuries_data)} teams")
     with st.expander("View All Injuries"):
-        for team, players in injuries_data.items():
+        for team, players in sorted(injuries_data.items()):
             st.write(f"**{team}:** {', '.join(players)}")
 else:
     st.warning("⚠️ Could not load injury data.")
@@ -288,4 +307,4 @@ st.sidebar.write(f"• Games: {len(todays_games)}")
 st.sidebar.write(f"• Injuries: {len(injuries_data)} teams tracked")
 st.sidebar.write(f"• Updated: {datetime.now().strftime('%I:%M %p')}")
 st.markdown("---")
-st.caption("⚠️ For entertainment purposes only. Not financial advice. Please gamble responsibly.")
+st.caption("⚠️ DISCLAIMER: For entertainment and educational purposes only. Not financial advice. Past performance does not guarantee future results. You may lose money. Only bet what you can afford to lose. The creator assumes no liability for any losses.")
