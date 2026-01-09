@@ -116,13 +116,11 @@ def fetch_markets():
                 yes_ask = m.get('yes_ask', 0) or 0
                 yes_price = (yes_bid + yes_ask) / 2 if yes_bid and yes_ask else yes_ask or yes_bid or 50
                 
-                # Format date display
-                if game_date.date() == today.date():
-                    date_display = "TODAY"
-                elif game_date.date() == (today + timedelta(days=1)).date():
-                    date_display = "TOMORROW"
-                else:
-                    date_display = game_date.strftime('%b %d')
+                # Format date display - ALWAYS show actual date
+                date_display = game_date.strftime('%b %d')
+                
+                # Track if today for Top 3 filtering
+                is_today = game_date.date() == today.date()
                 
                 info = {
                     'ticker': ticker, 
@@ -130,7 +128,8 @@ def fetch_markets():
                     'away': away, 
                     'yes_price': yes_price, 
                     'game_date': date_display,
-                    'game_dt': game_date,  # For sorting
+                    'game_dt': game_date,
+                    'is_today': is_today,
                 }
                 
                 if mtype == 'totals':
@@ -368,21 +367,20 @@ st.sidebar.write(f"**ML:** {len(markets['moneyline'])} | **TOT:** {len(markets['
 
 # Top 3 Edges
 st.markdown("---")
-st.subheader("🎯 Top 3 Edges TODAY")
+st.subheader("🎯 Top 3 Edges")
 
 all_edges = []
-seen_games = set()  # Prevent duplicates
+seen_games = set()
 for g in markets['moneyline']:
     home, away = g['home'], g['away']
     game_key = f"{away} @ {home}"
     
-    # Skip duplicates
     if game_key in seen_games:
         continue
     seen_games.add(game_key)
     
     # Only include TODAY's games in top edges
-    if g['game_date'] != "TODAY":
+    if not g.get('is_today', False):
         continue
     
     travel = calculate_travel_distance(away, home)
@@ -420,7 +418,7 @@ if all_edges[:3]:
             </a>
             ''', unsafe_allow_html=True)
 else:
-    st.info("No edges above threshold for TODAY's games.")
+    st.info("No edges above threshold for today's games.")
 
 # Tabs
 tab_ml, tab_tot, tab_spr = st.tabs(["🏀 Winner", "📊 Totals", "📏 Spreads"])
@@ -429,14 +427,13 @@ with tab_ml:
     st.subheader("Game Winner Predictions")
     
     if not markets['moneyline']:
-        st.warning("No games found for today.")
+        st.warning("No games found.")
     
-    seen_games_ml = set()  # Prevent duplicates
+    seen_games_ml = set()
     for idx, g in enumerate(markets['moneyline']):
         home, away = g['home'], g['away']
         game_key = f"{away} @ {home}"
         
-        # Skip duplicates
         if game_key in seen_games_ml:
             continue
         seen_games_ml.add(game_key)
@@ -444,7 +441,6 @@ with tab_ml:
         travel = calculate_travel_distance(away, home)
         h_rest, a_rest = rest_days.get(home, 2), rest_days.get(away, 2)
         
-        # Pre-calculate edge for expander title
         preview_analysis = calculate_edge(home, away, g['yes_price'], h_rest, a_rest, 0, 0, travel, default_ref_bias, weights)
         preview_team = home if preview_analysis['rec'] == 'FAVORS HOME' else away
         
@@ -458,16 +454,13 @@ with tab_ml:
             indicator = "⚪"
             rec_text = "NO EDGE"
         
-        # Check if this game was clicked from top 3
         game_key = f"{away} @ {home}"
         game_encoded = game_key.replace(' ', '_').replace('@', 'at')
         should_expand = (clicked_game == game_encoded)
         
-        # Add anchor div for this game
         st.markdown(f'<div id="game-{game_encoded}" style="scroll-margin-top:100px;"></div>', unsafe_allow_html=True)
         
         with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | {preview_analysis['edge']:+.1f}% | {rec_text}", expanded=should_expand):
-            # Manual injury inputs
             ic1, ic2 = st.columns(2)
             with ic1:
                 home_inj = st.select_slider(f"🏥 {home}", [0,1,2,3], 0, format_func=lambda x: ["HEALTHY","MINOR","STAR GTD","STAR OUT"][x], key=f"ml_h_{idx}")
@@ -480,7 +473,6 @@ with tab_ml:
             pred_team = home if analysis['rec'] == 'FAVORS HOME' else away
             edge_sign = "+" if analysis['edge'] > 0 else ""
             
-            # Prediction Banner - Clean and prominent
             if analysis['rec'] != "NO EDGE":
                 kelly = calculate_kelly(analysis['prob'] if analysis['rec'] == 'FAVORS HOME' else 100 - analysis['prob'], g['yes_price'] if analysis['rec'] == 'FAVORS HOME' else 100 - g['yes_price'], bankroll, kelly_frac)
                 st.markdown(f'''
@@ -498,12 +490,10 @@ with tab_ml:
                 </div>
                 ''', unsafe_allow_html=True)
             
-            # 12-Factor Detail
             st.markdown("---")
             st.markdown("**📈 12-Factor Breakdown**")
             f, r = analysis['factors'], analysis['raw']
             
-            # Row 1
             fc1, fc2, fc3, fc4 = st.columns(4)
             b2b_h = "⚠️B2B" if r['home_rest'] <= 1 else ""
             b2b_a = "⚠️B2B" if r['away_rest'] <= 1 else ""
@@ -512,14 +502,12 @@ with tab_ml:
             fc3.metric("🛡️ Defense", f"{f['defense']:+.2f}", f"H:#{r['home_def']} | A:#{r['away_def']}")
             fc4.metric("🏃 Pace", f"{f['pace']:+.2f}", f"H:{r['home_pace']:.1f} | A:{r['away_pace']:.1f}")
             
-            # Row 2
             fc5, fc6, fc7, fc8 = st.columns(4)
             fc5.metric("📊 Net Rtg", f"{f['net_rating']:+.2f}", f"H:{r['home_net']:+.1f} | A:{r['away_net']:+.1f}")
             fc6.metric("✈️ Travel", f"{f['travel']:+.2f}", f"{r['travel']} mi")
             fc7.metric("🏠 Splits", f"{f['splits']:+.2f}", f"H:{r['home_pct']:.0%} | A:{r['away_pct']:.0%}")
             fc8.metric("⚔️ Div", f"{f['division']:+.2f}", "Yes" if r['is_division'] else "No")
             
-            # Row 3
             fc9, fc10, fc11, fc12 = st.columns(4)
             fc9.metric("👨‍⚖️ Refs", f"{f['refs']:+.2f}", f"Bias:{r['ref_bias']:+.1f}")
             fc10.metric("🎯 FT", f"{f['ft_rate']:+.2f}", f"H:{r['home_ft']:.2f} | A:{r['away_ft']:.2f}")
@@ -530,14 +518,13 @@ with tab_tot:
     st.subheader("Total Points Predictions")
     
     if not markets['totals']:
-        st.warning("No totals data found for today.")
+        st.warning("No totals data found.")
     
-    seen_games_tot = set()  # Prevent duplicates
+    seen_games_tot = set()
     for idx, g in enumerate(markets['totals']):
         home, away, line = g['home'], g['away'], g.get('line', 220)
         game_key = f"{away} @ {home}"
         
-        # Skip duplicates
         if game_key in seen_games_tot:
             continue
         seen_games_tot.add(game_key)
@@ -574,14 +561,13 @@ with tab_spr:
     st.subheader("Spread Predictions")
     
     if not markets['spreads']:
-        st.warning("No spread data found for today.")
+        st.warning("No spread data found.")
     
-    seen_games_spr = set()  # Prevent duplicates
+    seen_games_spr = set()
     for idx, g in enumerate(markets['spreads']):
         home, away, line = g['home'], g['away'], g.get('line', 5)
         game_key = f"{away} @ {home}"
         
-        # Skip duplicates
         if game_key in seen_games_spr:
             continue
         seen_games_spr.add(game_key)
