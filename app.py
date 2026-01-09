@@ -275,6 +275,10 @@ def calculate_kelly(win_prob, price, bankroll, fraction):
 st.title("🏀 NBA Edge Finder")
 st.caption("12-Factor Prediction Model • For Analysis Only • Not Financial Advice")
 
+# Initialize session state for clicked game
+if 'clicked_game' not in st.session_state:
+    st.session_state.clicked_game = None
+
 # Custom CSS for orange edge highlight
 st.markdown("""
 <style>
@@ -399,16 +403,17 @@ if all_edges[:3]:
     cols = st.columns(3)
     for i, e in enumerate(all_edges[:3]):
         with cols[i]:
+            # Use button to set session state and expand the game
             st.markdown(f'''
-            <a class="card-link" href="#{e["anchor"]}">
-                <div class="prediction-banner" style="cursor: pointer;">
-                    <span class="prediction-team">{e["pred"]}</span><br>
-                    <span class="prediction-edge">+{e["edge"]:.1f}%</span>
-                    <div class="prediction-details">{e["date"]} • {e["game"]} • {e["conf"]}</div>
-                    <div class="click-hint">🔗 Click to see 12-factor breakdown</div>
-                </div>
-            </a>
+            <div class="prediction-banner">
+                <span class="prediction-team">{e["pred"]}</span><br>
+                <span class="prediction-edge">+{e["edge"]:.1f}%</span>
+                <div class="prediction-details">{e["date"]} • {e["game"]} • {e["conf"]}</div>
+            </div>
             ''', unsafe_allow_html=True)
+            if st.button(f"🔗 View 12-Factor Breakdown", key=f"btn_{e['anchor']}", use_container_width=True):
+                st.session_state.clicked_game = e['anchor']
+                st.rerun()
 else:
     st.info("No edges above threshold.")
 
@@ -420,6 +425,19 @@ with tab_ml:
     
     if not markets['moneyline']:
         st.warning("No games found for today.")
+    
+    # Add scroll script if a game was clicked
+    if st.session_state.clicked_game:
+        st.markdown(f'''
+        <script>
+            setTimeout(function() {{
+                var element = document.getElementById("{st.session_state.clicked_game}");
+                if (element) {{
+                    element.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                }}
+            }}, 500);
+        </script>
+        ''', unsafe_allow_html=True)
     
     for idx, g in enumerate(markets['moneyline']):
         home, away = g['home'], g['away']
@@ -442,9 +460,13 @@ with tab_ml:
         
         # Add anchor for linking from top 3
         anchor_id = f"{away.lower().replace(' ', '-')}-{home.lower().replace(' ', '-')}"
+        
+        # Check if this game was clicked from top 3
+        should_expand = (st.session_state.clicked_game == anchor_id)
+        
         st.markdown(f'<div id="{anchor_id}" class="game-anchor"></div>', unsafe_allow_html=True)
         
-        with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | {preview_analysis['edge']:+.1f}% | {rec_text}", expanded=False):
+        with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | {preview_analysis['edge']:+.1f}% | {rec_text}", expanded=should_expand):
             # Manual injury inputs
             ic1, ic2 = st.columns(2)
             with ic1:
