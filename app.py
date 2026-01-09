@@ -250,74 +250,58 @@ def fetch_team_last_games():
         return {}
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour  
-def fetch_rest_days_espn():
-    """Fetch rest days from ESPN schedule"""
+def fetch_rest_days():
+    """Calculate rest days using Kalshi's recently settled NBA games"""
     try:
-        team_rest = {}
+        team_last_game = {}
         today = datetime.now()
         
-        # Scrape ESPN schedule for last 5 days
-        for days_ago in range(1, 6):
-            check_date = today - timedelta(days=days_ago)
-            date_str = check_date.strftime("%Y%m%d")
-            
-            url = f"https://www.espn.com/nba/schedule/_/date/{date_str}"
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            
-            try:
-                resp = requests.get(url, headers=headers, timeout=10)
-                soup = BeautifulSoup(resp.content, 'lxml')
-                
-                # Find all team links in the schedule
-                team_links = soup.find_all('a', class_='AnchorLink')
-                for link in team_links:
-                    href = link.get('href', '')
-                    if '/nba/team/' in href:
-                        team_name = link.text.strip()
-                        # Map ESPN names to our names
-                        team_mapped = map_espn_team_name(team_name)
-                        if team_mapped and team_mapped not in team_rest:
-                            team_rest[team_mapped] = days_ago
-            except:
-                continue
+        # Get recently settled NBA games from Kalshi
+        url = "https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXNBAGAME&status=settled&limit=200"
+        resp = requests.get(url, timeout=10)
         
-        return team_rest
-    except:
+        if resp.status_code == 200:
+            data = resp.json()
+            markets = data.get('markets', [])
+            
+            for market in markets:
+                ticker = market.get('ticker', '')
+                close_time = market.get('close_time', '')
+                
+                if not close_time:
+                    continue
+                    
+                # Parse close time to calculate days ago
+                try:
+                    game_dt = datetime.fromisoformat(close_time.replace('Z', '+00:00'))
+                    game_date = game_dt.replace(tzinfo=None)
+                    days_ago = (today - game_date).days
+                    
+                    # Only count games from last 5 days
+                    if days_ago < 0 or days_ago > 5:
+                        continue
+                    
+                    # Parse teams from ticker (format: KXNBAGAME-25JAN08TORBOS)
+                    if '-' in ticker:
+                        game_code = ticker.split('-')[1] if len(ticker.split('-')) > 1 else ''
+                        if len(game_code) >= 6:
+                            away_abbrev = game_code[-6:-3].upper()
+                            home_abbrev = game_code[-3:].upper()
+                            
+                            away_name = KALSHI_ABBREV_MAP.get(away_abbrev)
+                            home_name = KALSHI_ABBREV_MAP.get(home_abbrev)
+                            
+                            # Only record most recent game per team
+                            if away_name and away_name not in team_last_game:
+                                team_last_game[away_name] = days_ago
+                            if home_name and home_name not in team_last_game:
+                                team_last_game[home_name] = days_ago
+                except:
+                    continue
+        
+        return team_last_game
+    except Exception as e:
         return {}
-
-def map_espn_team_name(espn_name):
-    """Map ESPN team names to our standard names"""
-    espn_map = {
-        "Hawks": "Atlanta", "Celtics": "Boston", "Nets": "Brooklyn",
-        "Hornets": "Charlotte", "Bulls": "Chicago", "Cavaliers": "Cleveland",
-        "Mavericks": "Dallas", "Nuggets": "Denver", "Pistons": "Detroit",
-        "Warriors": "Golden State", "Rockets": "Houston", "Pacers": "Indiana",
-        "Clippers": "LA Clippers", "Lakers": "LA Lakers", "Grizzlies": "Memphis",
-        "Heat": "Miami", "Bucks": "Milwaukee", "Timberwolves": "Minnesota",
-        "Pelicans": "New Orleans", "Knicks": "New York", "Thunder": "Oklahoma City",
-        "Magic": "Orlando", "76ers": "Philadelphia", "Suns": "Phoenix",
-        "Trail Blazers": "Portland", "Blazers": "Portland", "Kings": "Sacramento",
-        "Spurs": "San Antonio", "Raptors": "Toronto", "Jazz": "Utah",
-        "Wizards": "Washington",
-        # Full names
-        "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston",
-        "Brooklyn Nets": "Brooklyn", "Charlotte Hornets": "Charlotte",
-        "Chicago Bulls": "Chicago", "Cleveland Cavaliers": "Cleveland",
-        "Dallas Mavericks": "Dallas", "Denver Nuggets": "Denver",
-        "Detroit Pistons": "Detroit", "Golden State Warriors": "Golden State",
-        "Houston Rockets": "Houston", "Indiana Pacers": "Indiana",
-        "LA Clippers": "LA Clippers", "Los Angeles Clippers": "LA Clippers",
-        "LA Lakers": "LA Lakers", "Los Angeles Lakers": "LA Lakers",
-        "Memphis Grizzlies": "Memphis", "Miami Heat": "Miami",
-        "Milwaukee Bucks": "Milwaukee", "Minnesota Timberwolves": "Minnesota",
-        "New Orleans Pelicans": "New Orleans", "New York Knicks": "New York",
-        "Oklahoma City Thunder": "Oklahoma City", "Orlando Magic": "Orlando",
-        "Philadelphia 76ers": "Philadelphia", "Phoenix Suns": "Phoenix",
-        "Portland Trail Blazers": "Portland", "Sacramento Kings": "Sacramento",
-        "San Antonio Spurs": "San Antonio", "Toronto Raptors": "Toronto",
-        "Utah Jazz": "Utah", "Washington Wizards": "Washington"
-    }
-    return espn_map.get(espn_name, None)
 
 def get_team_rest_days(team_name, rest_data, default=2):
     """Get rest days for a team, with fallback to default"""
@@ -466,13 +450,12 @@ if st.sidebar.button("🔄 Refresh Data"):
 with st.spinner("Fetching Kalshi NBA markets..."):
     games = fetch_kalshi_nba_games()
     injuries = fetch_nba_injuries()
-    rest_days_data = fetch_rest_days_espn()
+    rest_days_data = fetch_rest_days()
 
 if rest_days_data:
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🛏️ Auto Rest Days")
-    st.sidebar.caption(f"Found rest data for {len(rest_days_data)} teams")
-    st.sidebar.caption("(Days since last game)")
+    st.sidebar.markdown("### 🛏️ Rest Days (from Kalshi)")
+    st.sidebar.caption(f"Found {len(rest_days_data)} teams with recent games")
 else:
     st.sidebar.caption("Rest days: using defaults")
 
