@@ -73,9 +73,9 @@ INJURY_REFERENCE = {
 }
 
 # ========== HELPER FUNCTIONS ==========
-def build_moneyline_url(ticker): return f"https://kalshi.com/markets/{ticker.lower()}"
-def build_totals_url(ticker): return f"https://kalshi.com/markets/{ticker.lower()}"
-def build_spread_url(ticker): return f"https://kalshi.com/markets/{ticker.lower()}"
+def build_moneyline_url(ticker): return f"https://kalshi.com/markets/kxnbagame/professional-basketball-game/{ticker.lower()}"
+def build_totals_url(ticker): return f"https://kalshi.com/markets/kxnbatotal/professional-basketball-game/{ticker.lower()}"
+def build_spread_url(ticker): return f"https://kalshi.com/markets/kxnbaspread/professional-basketball-game/{ticker.lower()}"
 
 def calculate_travel_distance(team1, team2):
     loc1, loc2 = TEAM_LOCATIONS.get(team1), TEAM_LOCATIONS.get(team2)
