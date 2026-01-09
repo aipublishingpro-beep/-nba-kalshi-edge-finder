@@ -554,7 +554,7 @@ else:
                 weights=weights
             )
             
-            st.markdown("---
+            st.markdown("---")
             
             with col1:
                 st.markdown("### 📊 Kalshi Prices")
