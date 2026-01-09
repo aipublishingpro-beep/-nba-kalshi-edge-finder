@@ -356,9 +356,10 @@ else:
             if abs(r['net_diff']) > 5: factors.append(f"Net {r['net_diff']:+.1f}")
             if r['same_div']: factors.append("Division")
             why = ", ".join(factors[:3]) if factors else "Multiple factors"
-            icon = "🟢" if analysis['recommendation'] == 'BUY YES' else "🔴"
-            bet_on = home if analysis['recommendation'] == 'BUY YES' else away
-            st.markdown(f"{icon} **{away} @ {home}** → **{analysis['recommendation']}** ({analysis['edge']:+.1f}%) — *{why}*")
+            if analysis['recommendation'] == 'BUY YES':
+                st.markdown(f"🟢 **{away} @ {home}** → BUY <span style='color:#22c55e; font-weight:bold'>{home}</span> YES ({analysis['edge']:+.1f}%) — *{why}*", unsafe_allow_html=True)
+            else:
+                st.markdown(f"🔴 **{away} @ {home}** → BUY <span style='color:#ef4444; font-weight:bold'>{away}</span> NO ({analysis['edge']:+.1f}%) — *{why}*", unsafe_allow_html=True)
         st.markdown("---")
     
     # ========== GAME CARDS ==========
