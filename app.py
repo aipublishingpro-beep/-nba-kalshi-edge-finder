@@ -256,34 +256,27 @@ st.caption("12-Factor Prediction Model • For Analysis Only • Not Financial A
 # Custom CSS for orange edge highlight
 st.markdown("""
 <style>
-    .orange-edge {
-        background: linear-gradient(90deg, #FF6B35 0%, #F7931E 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-size: 2.5rem;
+    .prediction-banner {
+        background: linear-gradient(135deg, rgba(255, 107, 53, 0.2) 0%, rgba(247, 147, 30, 0.1) 100%);
+        border-left: 4px solid #FF6B35;
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin: 10px 0;
+    }
+    .prediction-team {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #FAFAFA;
+    }
+    .prediction-edge {
+        font-size: 2.2rem;
         font-weight: 800;
+        color: #FF6B35;
     }
-    .edge-box {
-        background: rgba(255, 107, 53, 0.15);
-        border: 2px solid #FF6B35;
-        border-radius: 10px;
-        padding: 10px;
-        text-align: center;
-        margin: 0 auto;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
-    .edge-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
-    }
-    .edge-label {
-        font-size: 0.875rem;
-        color: rgba(250, 250, 250, 0.6);
-        margin-bottom: 4px;
+    .prediction-details {
+        color: rgba(250, 250, 250, 0.7);
+        font-size: 0.95rem;
+        margin-top: 4px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -350,10 +343,13 @@ if all_edges[:3]:
     cols = st.columns(3)
     for i, e in enumerate(all_edges[:3]):
         with cols[i]:
-            color = "🟢" if "HOME" in e['rec'] else "🔴"
-            st.markdown(f"### {color} {e['pred']}")
-            st.markdown(f'<div class="edge-box"><span class="orange-edge">+{e["edge"]:.1f}%</span></div>', unsafe_allow_html=True)
-            st.caption(f"{e['game']} | {e['conf']}")
+            st.markdown(f'''
+            <div class="prediction-banner">
+                <span class="prediction-team">{e["pred"]}</span><br>
+                <span class="prediction-edge">+{e["edge"]:.1f}%</span>
+                <div class="prediction-details">{e["game"]} • {e["conf"]}</div>
+            </div>
+            ''', unsafe_allow_html=True)
 else:
     st.info("No edges above threshold.")
 
@@ -382,26 +378,26 @@ with tab_ml:
             inj_map = {0: 0, 1: 1.0, 2: 2.5, 3: 4.0}
             analysis = calculate_edge(home, away, g['yes_price'], h_rest, a_rest, inj_map[home_inj], inj_map[away_inj], travel, default_ref_bias, weights)
             
-            color = "🟢" if analysis['rec'] == 'FAVORS HOME' else ("🔴" if analysis['rec'] == 'FAVORS AWAY' else "⚪")
             pred_team = home if analysis['rec'] == 'FAVORS HOME' else away
+            edge_sign = "+" if analysis['edge'] > 0 else ""
             
-            # Metrics
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Kalshi Price", f"{g['yes_price']:.0f}¢ {home}")
-            c2.metric("Model Prob", f"{analysis['prob']:.1f}%")
-            with c3:
-                st.markdown(f'''
-                <div class="edge-container">
-                    <div class="edge-label">Edge</div>
-                    <div class="edge-box"><span class="orange-edge">{analysis["edge"]:+.1f}%</span></div>
-                </div>
-                ''', unsafe_allow_html=True)
-            c4.metric("Prediction", f"{color} {pred_team}")
-            
-            # Kelly (informational only)
+            # Prediction Banner - Clean and prominent
             if analysis['rec'] != "NO EDGE":
                 kelly = calculate_kelly(analysis['prob'] if analysis['rec'] == 'FAVORS HOME' else 100 - analysis['prob'], g['yes_price'] if analysis['rec'] == 'FAVORS HOME' else 100 - g['yes_price'], bankroll, kelly_frac)
-                st.info(f"📊 **Model predicts {pred_team}** | Edge: {abs(analysis['edge']):.1f}% | Confidence: {analysis['conf']} | If wagering: ${kelly['bet']:.2f} (Kelly {kelly['adj_kelly']}%)")
+                st.markdown(f'''
+                <div class="prediction-banner">
+                    <span class="prediction-team">🏀 Model Predicts: {pred_team}</span>
+                    <span class="prediction-edge" style="float: right;">{edge_sign}{analysis["edge"]:.1f}% EDGE</span>
+                    <div class="prediction-details">Confidence: {analysis["conf"]} • Model: {analysis["prob"]:.1f}% vs Kalshi: {g["yes_price"]:.0f}¢ • If wagering: ${kelly["bet"]:.2f} (Kelly {kelly["adj_kelly"]}%)</div>
+                </div>
+                ''', unsafe_allow_html=True)
+            else:
+                st.markdown(f'''
+                <div class="prediction-banner" style="border-left-color: #666;">
+                    <span class="prediction-team">⚪ No Clear Edge</span>
+                    <div class="prediction-details">Model: {analysis["prob"]:.1f}% vs Kalshi: {g["yes_price"]:.0f}¢ • Edge too small to act on</div>
+                </div>
+                ''', unsafe_allow_html=True)
             
             # 12-Factor Detail
             st.markdown("---")
