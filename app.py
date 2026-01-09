@@ -33,7 +33,6 @@ team_mapping = {
     "Toronto Raptors": "TOR", "Utah Jazz": "UTA", "Washington Wizards": "WAS"
 }
 
-# Team locations: lat, lon, altitude (feet), timezone offset from ET
 team_locations = {
     "Atlanta Hawks": {"lat": 33.757, "lon": -84.396, "altitude": 1050, "tz": 0},
     "Boston Celtics": {"lat": 42.366, "lon": -71.062, "altitude": 20, "tz": 0},
@@ -78,12 +77,11 @@ def injury_points(level):
     return {0: 0.0, 1: 1.0, 2: 2.5, 3: 4.0}.get(level, 0.0)
 
 def calculate_distance(team1, team2):
-    """Calculate distance in miles between two teams"""
     loc1 = team_locations.get(team1)
     loc2 = team_locations.get(team2)
     if not loc1 or not loc2:
         return 0
-    R = 3959  # Earth's radius in miles
+    R = 3959
     lat1, lon1 = radians(loc1["lat"]), radians(loc1["lon"])
     lat2, lon2 = radians(loc2["lat"]), radians(loc2["lon"])
     dlat = lat2 - lat1
@@ -93,26 +91,23 @@ def calculate_distance(team1, team2):
     return R * c
 
 def get_altitude_advantage(home_team):
-    """Returns altitude advantage for high-altitude home teams"""
     loc = team_locations.get(home_team)
     if not loc:
         return 0
     altitude = loc["altitude"]
-    if altitude >= 5000:  # Denver
+    if altitude >= 5000:
         return 1.5
-    elif altitude >= 4000:  # Utah
+    elif altitude >= 4000:
         return 0.75
     return 0
 
 def get_timezone_disadvantage(home_team, away_team):
-    """Calculate timezone disadvantage for away team"""
     home_loc = team_locations.get(home_team)
     away_loc = team_locations.get(away_team)
     if not home_loc or not away_loc:
         return 0
     tz_diff = abs(home_loc["tz"] - away_loc["tz"])
-    # West team traveling East for early game = disadvantage
-    if away_loc["tz"] < home_loc["tz"]:  # West team going East
+    if away_loc["tz"] < home_loc["tz"]:
         return tz_diff * 0.3
     return 0
 
@@ -149,7 +144,6 @@ def fetch_todays_games():
         return []
 
 def fetch_team_rest_days():
-    """Fetch recent schedule and calculate rest days for all teams"""
     try:
         url = "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"
         headers = {
@@ -160,22 +154,18 @@ def fetch_team_rest_days():
         if response.status_code == 200:
             data = response.json()
             today = datetime.now().date()
-            
-            # Track last game date for each team
             last_game = {}
             
-            # Parse game dates
             for game_date in data.get('leagueSchedule', {}).get('gameDates', []):
-                date_str = game_date.get('gameDate', '')[:10]  # Get YYYY-MM-DD
+                date_str = game_date.get('gameDate', '')[:10]
                 try:
-                    game_day = datetime.strptime(date_str, '%m/%d/%Y').date()
+                    game_day = datetime.strptime(date_str, '%m/%d/%Y %H:%M:%S').date()
                 except:
                     try:
                         game_day = datetime.strptime(date_str, '%Y-%m-%d').date()
                     except:
                         continue
                 
-                # Only look at past games
                 if game_day >= today:
                     continue
                     
@@ -183,7 +173,6 @@ def fetch_team_rest_days():
                     home_name = game.get('homeTeam', {}).get('teamName', '')
                     away_name = game.get('awayTeam', {}).get('teamName', '')
                     
-                    # Match to full team names
                     for full_name in team_mapping.keys():
                         if home_name in full_name:
                             if full_name not in last_game or game_day > last_game[full_name]:
@@ -192,13 +181,11 @@ def fetch_team_rest_days():
                             if full_name not in last_game or game_day > last_game[full_name]:
                                 last_game[full_name] = game_day
             
-            # Calculate rest days (days since last game - 1)
-            # Played yesterday = 0 rest days (back-to-back)
-            # Played 2 days ago = 1 rest day
+            # Calculate rest days: played yesterday = 0 rest, played 2 days ago = 1 rest
             rest_days = {}
             for team, last_date in last_game.items():
                 days_since = (today - last_date).days
-                rest = max(0, days_since - 1)  # Subtract 1, minimum 0
+                rest = max(0, days_since - 1)
                 rest_days[team] = rest
             
             return rest_days
@@ -208,11 +195,9 @@ def fetch_team_rest_days():
 
 @st.cache_data(ttl=3600)
 def get_cached_rest_days():
-    """Cache rest days for 1 hour"""
     return fetch_team_rest_days()
 
 def fetch_team_record():
-    """Fetch team standings for recent form"""
     try:
         url = "https://cdn.nba.com/static/json/liveData/standings/standings_00.json"
         headers = {
@@ -224,15 +209,11 @@ def fetch_team_record():
             data = response.json()
             records = {}
             for team in data.get('standings', []):
-                team_name = team.get('teamCity', '') + ' ' + team.get('teamName', '')
-                # Match to our team names
                 for full_name in team_mapping.keys():
                     if team.get('teamName', '') in full_name:
-                        l10_record = team.get('last10HomeWins', 0) + team.get('last10RoadWins', 0)
-                        streak = team.get('streak', 0)
                         records[full_name] = {
-                            'l10_wins': team.get('last10Wins', 5),
-                            'streak': team.get('currentStreak', 0),
+                            'l10_wins': team.get('L10Win', 5),
+                            'streak': team.get('strCurrentStreak', ''),
                             'win_pct': team.get('winPct', 0.5)
                         }
                         break
@@ -241,7 +222,6 @@ def fetch_team_record():
     except:
         return {}
 
-# Cache standings data
 @st.cache_data(ttl=3600)
 def get_cached_standings():
     return fetch_team_record()
@@ -285,12 +265,10 @@ def calculate_kalshi_edge(home_team, away_team, market_spread, home_rest, away_r
     home_stats = team_stats.get(home_team, {"net_rating": 0, "def_rank": 15, "pace": 95})
     away_stats = team_stats.get(away_team, {"net_rating": 0, "def_rank": 15, "pace": 95})
     
-    # Get standings for form
     standings = get_cached_standings()
     home_form = standings.get(home_team, {'l10_wins': 5, 'streak': 0})
     away_form = standings.get(away_team, {'l10_wins': 5, 'streak': 0})
     
-    # Original factors
     rest_advantage = (home_rest - away_rest) * st.session_state.get('rest_weight', 0.75)
     defense_advantage = (away_stats["def_rank"] - home_stats["def_rank"]) * 0.2 * st.session_state.get('defense_weight', 1.0)
     pace_advantage = (home_stats["pace"] - away_stats["pace"]) * 0.015 * st.session_state.get('pace_weight', 0.6)
@@ -301,18 +279,14 @@ def calculate_kalshi_edge(home_team, away_team, market_spread, home_rest, away_r
     
     net_rating_advantage = (home_stats["net_rating"] - away_stats["net_rating"]) * 0.1
     
-    # NEW FACTORS
-    # 1. Altitude advantage (Denver/Utah)
     altitude_advantage = get_altitude_advantage(home_team) * st.session_state.get('altitude_weight', 1.0)
     
-    # 2. Back-to-back penalty
     b2b_impact = 0
     if home_b2b:
         b2b_impact -= 1.5 * st.session_state.get('b2b_weight', 1.0)
     if away_b2b:
         b2b_impact += 1.5 * st.session_state.get('b2b_weight', 1.0)
     
-    # 3. Travel distance (>1500 miles = fatigue for away team)
     distance = calculate_distance(away_team, home_team)
     travel_impact = 0
     if distance > 2000:
@@ -320,11 +294,11 @@ def calculate_kalshi_edge(home_team, away_team, market_spread, home_rest, away_r
     elif distance > 1500:
         travel_impact = 0.4 * st.session_state.get('travel_weight', 0.8)
     
-    # 4. Recent form (last 10 games)
-    form_diff = (home_form['l10_wins'] - away_form['l10_wins']) * 0.15
+    home_l10 = home_form.get('l10_wins', 5) if isinstance(home_form.get('l10_wins'), (int, float)) else 5
+    away_l10 = away_form.get('l10_wins', 5) if isinstance(away_form.get('l10_wins'), (int, float)) else 5
+    form_diff = (home_l10 - away_l10) * 0.15
     form_impact = form_diff * st.session_state.get('form_weight', 0.7)
     
-    # Total adjustment
     total_adjustment = (rest_advantage + defense_advantage + pace_advantage + 
                        net_injury_impact + net_rating_advantage + altitude_advantage +
                        b2b_impact + travel_impact + form_impact)
@@ -397,6 +371,14 @@ st.session_state.b2b_weight = st.sidebar.slider("Back-to-Back", 0.0, 2.0, 1.0)
 st.session_state.travel_weight = st.sidebar.slider("Travel Distance", 0.0, 2.0, 0.8)
 st.session_state.form_weight = st.sidebar.slider("Recent Form (L10)", 0.0, 2.0, 0.7)
 
+# Get auto rest days
+rest_data = get_cached_rest_days()
+
+# Cache clear button
+if st.sidebar.button("🔄 Refresh Rest Data"):
+    st.cache_data.clear()
+    st.rerun()
+
 # Today's Games
 st.header("📅 Today's NBA Games")
 todays_games = fetch_todays_games()
@@ -408,14 +390,6 @@ else:
     for i, game in enumerate(todays_games):
         st.write(f"**Game {i+1}:** {game['away_team']} @ {game['home_team']} - {game['game_time']}")
 
-# Get auto rest days
-rest_data = get_cached_rest_days()
-
-# Cache clear button
-if st.sidebar.button("🔄 Refresh Rest Data"):
-    st.cache_data.clear()
-    st.rerun()
-
 # Manual Analysis
 st.header("🔍 Game Analysis")
 st.write("**Select teams • Rest days auto-detected • Injury status manual**")
@@ -425,9 +399,8 @@ with col1:
     st.subheader("🏠 Home Team")
     manual_home = st.selectbox("Home Team", list(team_mapping.keys()), index=13)
     
-    # Auto-detect rest days
     auto_home_rest = rest_data.get(manual_home, 1)
-    home_is_b2b = auto_home_rest == 0  # 0 rest days = back-to-back
+    home_is_b2b = auto_home_rest == 0
     manual_home_rest = st.number_input("Home Rest Days", 0, 7, min(auto_home_rest, 7), 
                                         help=f"Auto-detected: {auto_home_rest} days")
     home_injury_level = st.selectbox(
@@ -442,9 +415,8 @@ with col2:
     st.subheader("✈️ Away Team")
     manual_away = st.selectbox("Away Team", list(team_mapping.keys()), index=9)
     
-    # Auto-detect rest days
     auto_away_rest = rest_data.get(manual_away, 1)
-    away_is_b2b = auto_away_rest == 0  # 0 rest days = back-to-back
+    away_is_b2b = auto_away_rest == 0
     manual_away_rest = st.number_input("Away Rest Days", 0, 7, min(auto_away_rest, 7),
                                         help=f"Auto-detected: {auto_away_rest} days")
     away_injury_level = st.selectbox(
@@ -455,7 +427,6 @@ with col2:
     )
     away_b2b = st.checkbox("Away team on BACK-TO-BACK", value=away_is_b2b, key="away_b2b")
 
-# Show auto-calculated info
 distance = calculate_distance(manual_away, manual_home)
 altitude = team_locations.get(manual_home, {}).get("altitude", 0)
 st.info(f"📍 Travel distance: **{distance:.0f} miles** | 🏔️ Home altitude: **{altitude:,} ft**")
@@ -513,7 +484,6 @@ if st.button("📈 Analyze Game", type="primary"):
         st.write(f"• ✈️ Travel Fatigue: {factors['travel']:+.2f}")
         st.write(f"• 📈 Recent Form (L10): {factors['form']:+.2f}")
 
-# Sidebar info
 st.sidebar.markdown("---")
 st.sidebar.header("💡 Guide")
 st.sidebar.write("• EV > 5¢ = Good trade")
