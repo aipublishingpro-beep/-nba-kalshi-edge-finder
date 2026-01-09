@@ -73,9 +73,9 @@ INJURY_REFERENCE = {
 }
 
 # ========== HELPER FUNCTIONS ==========
-def build_moneyline_url(ticker): return f"https://kalshi.com/markets/kxnbagame/professional-basketball-game/{ticker.lower()}"
-def build_totals_url(ticker): return f"https://kalshi.com/markets/kxnbatotal/professional-basketball-game/{ticker.lower()}"
-def build_spread_url(ticker): return f"https://kalshi.com/markets/kxnbaspread/professional-basketball-game/{ticker.lower()}"
+def build_moneyline_url(ticker): return f"https://kalshi.com/markets/kxnbagame/professional-basketball-game/{ticker}"
+def build_totals_url(ticker): return f"https://kalshi.com/markets/kxnbatotal/professional-basketball-game/{ticker}"
+def build_spread_url(ticker): return f"https://kalshi.com/markets/kxnbaspread/professional-basketball-game/{ticker}"
 
 def calculate_travel_distance(team1, team2):
     loc1, loc2 = TEAM_LOCATIONS.get(team1), TEAM_LOCATIONS.get(team2)
@@ -246,6 +246,32 @@ def parse_event_ticker(event_ticker):
 def fetch_kalshi_nba_markets():
     markets = {'moneyline': [], 'totals': [], 'spreads': []}
     month_order = {'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6, 'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12}
+    
+    # Get today's date for filtering
+    today = datetime.now()
+    today_day = today.day
+    today_month = today.month
+    
+    def is_today_or_future(game_date_str):
+        """Check if game is today or in future"""
+        try:
+            parts = game_date_str.split()
+            if len(parts) < 2: return False
+            month = month_order.get(parts[0], 0)
+            day = int(parts[1])
+            # Same month: check day >= today
+            if month == today_month:
+                return day >= today_day
+            # Future month
+            elif month > today_month:
+                return True
+            # Past month (handle year wrap)
+            elif month < today_month and today_month >= 11 and month <= 2:
+                return True  # Jan/Feb next year
+            return False
+        except:
+            return True  # Keep if can't parse
+    
     def date_sort_key(g):
         try: return (month_order.get(g['game_date'].split()[0], 0), int(g['game_date'].split()[1]))
         except: return (99, 99)
@@ -256,6 +282,7 @@ def fetch_kalshi_nba_markets():
             if '-' not in ticker: continue
             game_date, away_team, home_team = parse_game_code(ticker.split('-')[1])
             if not home_team: continue
+            if not is_today_or_future(game_date): continue  # SKIP PAST GAMES
             yes_bid, yes_ask = m.get('yes_bid', 0) or 0, m.get('yes_ask', 0) or 0
             markets['moneyline'].append({'ticker': ticker, 'away_team': away_team, 'home_team': home_team,
                 'yes_price': (yes_bid + yes_ask) / 2 if yes_bid and yes_ask else yes_ask or yes_bid, 'volume': m.get('volume', 0), 'game_date': game_date})
@@ -265,6 +292,7 @@ def fetch_kalshi_nba_markets():
         for m in requests.get("https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXNBATOTAL&status=open&limit=200", timeout=10).json().get('markets', []):
             game_date, away_team, home_team = parse_event_ticker(m.get('event_ticker', ''))
             if not home_team: continue
+            if not is_today_or_future(game_date): continue  # SKIP PAST GAMES
             yes_bid, yes_ask = m.get('yes_bid', 0) or 0, m.get('yes_ask', 0) or 0
             markets['totals'].append({'ticker': m.get('ticker', ''), 'title': m.get('title', ''), 'away_team': away_team, 'home_team': home_team,
                 'line': m.get('floor_strike', 0), 'yes_price': (yes_bid + yes_ask) / 2 if yes_bid and yes_ask else yes_ask or yes_bid, 'volume': m.get('volume', 0), 'game_date': game_date})
@@ -274,6 +302,7 @@ def fetch_kalshi_nba_markets():
         for m in requests.get("https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXNBASPREAD&status=open&limit=200", timeout=10).json().get('markets', []):
             game_date, away_team, home_team = parse_event_ticker(m.get('event_ticker', ''))
             if not home_team: continue
+            if not is_today_or_future(game_date): continue  # SKIP PAST GAMES
             ticker, title = m.get('ticker', ''), m.get('title', '')
             yes_bid, yes_ask = m.get('yes_bid', 0) or 0, m.get('yes_ask', 0) or 0
             spread_team = KALSHI_ABBREV_MAP.get(ticker.split('-')[-1][:3].upper()) if len(ticker.split('-')) >= 3 else None
