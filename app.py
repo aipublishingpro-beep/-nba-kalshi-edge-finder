@@ -192,11 +192,14 @@ def fetch_team_rest_days():
                             if full_name not in last_game or game_day > last_game[full_name]:
                                 last_game[full_name] = game_day
             
-            # Calculate rest days
+            # Calculate rest days (days since last game - 1)
+            # Played yesterday = 0 rest days (back-to-back)
+            # Played 2 days ago = 1 rest day
             rest_days = {}
             for team, last_date in last_game.items():
-                days = (today - last_date).days
-                rest_days[team] = days
+                days_since = (today - last_date).days
+                rest = max(0, days_since - 1)  # Subtract 1, minimum 0
+                rest_days[team] = rest
             
             return rest_days
         return {}
@@ -418,9 +421,9 @@ with col1:
     manual_home = st.selectbox("Home Team", list(team_mapping.keys()), index=13)
     
     # Auto-detect rest days
-    auto_home_rest = rest_data.get(manual_home, 2)
-    home_is_b2b = auto_home_rest == 1
-    manual_home_rest = st.number_input("Home Rest Days", 1, 7, min(auto_home_rest, 7), 
+    auto_home_rest = rest_data.get(manual_home, 1)
+    home_is_b2b = auto_home_rest == 0  # 0 rest days = back-to-back
+    manual_home_rest = st.number_input("Home Rest Days", 0, 7, min(auto_home_rest, 7), 
                                         help=f"Auto-detected: {auto_home_rest} days")
     home_injury_level = st.selectbox(
         "Home Injury Status",
@@ -435,9 +438,9 @@ with col2:
     manual_away = st.selectbox("Away Team", list(team_mapping.keys()), index=9)
     
     # Auto-detect rest days
-    auto_away_rest = rest_data.get(manual_away, 2)
-    away_is_b2b = auto_away_rest == 1
-    manual_away_rest = st.number_input("Away Rest Days", 1, 7, min(auto_away_rest, 7),
+    auto_away_rest = rest_data.get(manual_away, 1)
+    away_is_b2b = auto_away_rest == 0  # 0 rest days = back-to-back
+    manual_away_rest = st.number_input("Away Rest Days", 0, 7, min(auto_away_rest, 7),
                                         help=f"Auto-detected: {auto_away_rest} days")
     away_injury_level = st.selectbox(
         "Away Injury Status",
