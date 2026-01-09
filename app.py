@@ -556,6 +556,9 @@ else:
             
             st.markdown("---")
             
+            # Row 1: Kalshi Prices | Our Model | Recommendation
+            col1, col2, col3 = st.columns(3)
+            
             with col1:
                 st.markdown("### 📊 Kalshi Prices")
                 st.metric(f"{home} (YES)", f"{kalshi_price:.0f}¢")
