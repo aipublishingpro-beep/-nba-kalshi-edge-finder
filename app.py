@@ -371,6 +371,83 @@ with st.expander("📋 Injury Reference — VERIFY BEFORE SETTING", expanded=Fal
 
 st.markdown("---")
 
+# ========== TOP 3 EDGES ==========
+st.markdown("### 🔥 Top 3 Edges Today")
+st.caption("⚠️ Assumes healthy teams — adjust injuries in game expanders below")
+
+top_edges = []
+for game in markets['moneyline']:
+    home, away = game['home_team'], game['away_team']
+    travel = calculate_travel_distance(away, home)
+    home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
+    analysis = calculate_edge(home, away, game['yes_price'], home_rest, away_rest, 0, 0, travel, default_ref_bias, weights)
+    if analysis['recommendation'] != 'NO EDGE':
+        bet_team = home if analysis['recommendation'] == 'BUY YES' else away
+        kelly = calculate_kelly(
+            analysis['home_win_prob'] if analysis['recommendation'] == 'BUY YES' else 100 - analysis['home_win_prob'],
+            game['yes_price'] if analysis['recommendation'] == 'BUY YES' else 100 - game['yes_price'],
+            bankroll, kelly_fraction
+        )
+        top_edges.append({
+            'type': 'ML', 'game': f"{away} @ {home}", 'date': game['game_date'],
+            'edge': abs(analysis['edge']), 'rec': f"{bet_team} WINS", 'bet_team': bet_team,
+            'bet_amount': kelly['bet_amount'], 'url': build_moneyline_url(game['ticker']),
+            'color': '🟢' if analysis['recommendation'] == 'BUY YES' else '🔴'
+        })
+
+for tm in markets['totals']:
+    home, away, line = tm['home_team'], tm['away_team'], tm['line']
+    travel = calculate_travel_distance(away, home)
+    home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
+    totals = calculate_total_points(home, away, home_rest, away_rest, 0, 0, travel)
+    diff = totals['predicted_total'] - line
+    if abs(diff) > 3:
+        rec = "OVER" if diff > 3 else "UNDER"
+        win_prob = min(85, 50 + abs(diff) * 5)
+        kelly = calculate_kelly(win_prob, tm['yes_price'] if rec == "OVER" else 100 - tm['yes_price'], bankroll, kelly_fraction)
+        top_edges.append({
+            'type': 'TOT', 'game': f"{away} @ {home}", 'date': tm['game_date'],
+            'edge': abs(diff), 'rec': f"{rec} {line}", 'bet_team': rec,
+            'bet_amount': kelly['bet_amount'], 'url': build_totals_url(tm['ticker']),
+            'color': '🟢' if rec == "OVER" else '🔴'
+        })
+
+for sm in markets['spreads']:
+    home, away, line, spread_team = sm['home_team'], sm['away_team'], sm['line'], sm['spread_team']
+    travel = calculate_travel_distance(away, home)
+    home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
+    spread = calculate_spread(home, away, home_rest, away_rest, 0, 0, travel)
+    predicted = spread['predicted_spread']
+    spread_diff = (predicted - line) if spread_team == home else (-predicted - line)
+    if abs(spread_diff) > 3:
+        if spread_diff > 3:
+            rec, win_prob = f"{spread_team} COVERS", min(80, 50 + spread_diff * 4)
+            kelly = calculate_kelly(win_prob, sm['yes_price'], bankroll, kelly_fraction)
+            color = '🟢'
+        else:
+            rec, win_prob = f"{spread_team} MISSES", min(80, 50 + abs(spread_diff) * 4)
+            kelly = calculate_kelly(win_prob, 100 - sm['yes_price'], bankroll, kelly_fraction)
+            color = '🔴'
+        top_edges.append({
+            'type': 'SPR', 'game': f"{away} @ {home}", 'date': sm['game_date'],
+            'edge': abs(spread_diff), 'rec': rec, 'bet_team': spread_team,
+            'bet_amount': kelly['bet_amount'], 'url': build_spread_url(sm['ticker']), 'color': color
+        })
+
+top_edges = sorted(top_edges, key=lambda x: x['edge'], reverse=True)[:3]
+
+if top_edges:
+    for i, edge in enumerate(top_edges, 1):
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            st.markdown(f"**#{i} {edge['color']} [{edge['type']}] {edge['game']}** → {edge['rec']} ({edge['edge']:.1f}%)")
+        with col2:
+            st.link_button(f"🎯 BET {edge['bet_team'].upper()} → ${edge['bet_amount']:.0f}", edge['url'], use_container_width=True)
+else:
+    st.info("No edges found")
+
+st.markdown("---")
+
 tab1, tab2, tab3 = st.tabs(["🎯 Moneyline", "📊 Totals", "📏 Spreads"])
 
 # ========== TAB 1: MONEYLINE ==========
