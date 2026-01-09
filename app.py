@@ -201,7 +201,7 @@ def fetch_team_rest_days():
     except Exception as e:
         return {}
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=300)
 def get_cached_rest_days():
     return fetch_team_rest_days()
 
@@ -379,13 +379,13 @@ st.session_state.b2b_weight = st.sidebar.slider("Back-to-Back", 0.0, 2.0, 1.0)
 st.session_state.travel_weight = st.sidebar.slider("Travel Distance", 0.0, 2.0, 0.8)
 st.session_state.form_weight = st.sidebar.slider("Recent Form (L10)", 0.0, 2.0, 0.7)
 
-# Get auto rest days
+# Get auto rest days (fresh on each session start)
 rest_data = get_cached_rest_days()
 
-# Cache clear button
-if st.sidebar.button("🔄 Refresh Rest Data"):
+# If rest data is empty, try fetching fresh
+if not rest_data:
     st.cache_data.clear()
-    st.rerun()
+    rest_data = fetch_team_rest_days()
 
 # Today's Games
 st.header("📅 Today's NBA Games")
