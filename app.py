@@ -253,6 +253,26 @@ def calculate_kelly(win_prob, price, bankroll, fraction):
 st.title("🏀 NBA Edge Finder")
 st.caption("12-Factor Prediction Model • For Analysis Only • Not Financial Advice")
 
+# Custom CSS for orange edge highlight
+st.markdown("""
+<style>
+    .orange-edge {
+        background: linear-gradient(90deg, #FF6B35 0%, #F7931E 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 2.5rem;
+        font-weight: 800;
+    }
+    .edge-box {
+        background: rgba(255, 107, 53, 0.15);
+        border: 2px solid #FF6B35;
+        border-radius: 10px;
+        padding: 10px;
+        text-align: center;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Sidebar
 st.sidebar.header("🎚️ Factor Weights")
 
@@ -316,8 +336,9 @@ if all_edges[:3]:
     for i, e in enumerate(all_edges[:3]):
         with cols[i]:
             color = "🟢" if "HOME" in e['rec'] else "🔴"
-            st.metric(f"{color} {e['pred']}", f"+{e['edge']:.1f}% edge", f"Confidence: {e['conf']}")
-            st.caption(f"{e['game']}")
+            st.markdown(f"### {color} {e['pred']}")
+            st.markdown(f'<div class="edge-box"><span class="orange-edge">+{e["edge"]:.1f}%</span></div>', unsafe_allow_html=True)
+            st.caption(f"{e['game']} | {e['conf']}")
 else:
     st.info("No edges above threshold.")
 
@@ -353,7 +374,9 @@ with tab_ml:
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Kalshi Price", f"{g['yes_price']:.0f}¢ {home}")
             c2.metric("Model Prob", f"{analysis['prob']:.1f}%")
-            c3.metric("Edge", f"{analysis['edge']:+.1f}%")
+            with c3:
+                st.markdown("**Edge**")
+                st.markdown(f'<div class="edge-box"><span class="orange-edge">{analysis["edge"]:+.1f}%</span></div>', unsafe_allow_html=True)
             c4.metric("Prediction", f"{color} {pred_team}")
             
             # Kelly (informational only)
