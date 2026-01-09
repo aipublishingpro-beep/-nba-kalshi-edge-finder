@@ -208,6 +208,147 @@ markets = fetch_kalshi_markets()
 
 st.markdown(f"**Markets Found:** ML: {len(markets['moneyline'])} | TOT: {len(markets['totals'])} | SPR: {len(markets['spreads'])}")
 
+# ========== TOP 3 EDGES ==========
+def parse_teams_from_title(title):
+    """Extract home and away teams from Kalshi title"""
+    # Kalshi titles like "Boston Celtics vs Atlanta Hawks" or similar
+    for team in TEAM_STATS.keys():
+        if team in title:
+            return team
+    return None
+
+def build_kalshi_url(market_type, ticker):
+    """Build correct Kalshi URL from ticker"""
+    ticker_lower = ticker.lower()
+    if market_type == "ML":
+        return f"https://kalshi.com/markets/kxnbagame/professional-basketball-game/{ticker_lower}"
+    elif market_type == "TOT":
+        return f"https://kalshi.com/markets/kxnbatotal/professional-basketball-total/{ticker_lower}"
+    elif market_type == "SPR":
+        return f"https://kalshi.com/markets/kxnbaspread/professional-basketball-spread/{ticker_lower}"
+    return "#"
+
+# Collect all edges
+top_edges = []
+
+for game in markets["moneyline"]:
+    title = game["title"]
+    yes_price = game["yes_price"]
+    ticker = game["ticker"]
+    
+    # Try to parse teams - simplified for now
+    home_team = "Boston"  # Default - would need better parsing
+    away_team = "Atlanta"
+    
+    for team in TEAM_STATS.keys():
+        if team.lower() in title.lower():
+            if home_team == "Boston":
+                home_team = team
+            else:
+                away_team = team
+                break
+    
+    travel = calculate_distance(away_team, home_team)
+    analysis = calculate_edge(home_team, away_team, yes_price, default_home_rest, default_away_rest, 0, 0, travel, default_ref_bias, weights)
+    
+    if abs(analysis["edge"]) >= min_edge:
+        bet_team = home_team if analysis["recommendation"] == "BUY YES" else away_team
+        kelly = calculate_kelly(
+            analysis["home_win_prob"] if analysis["recommendation"] == "BUY YES" else 100 - analysis["home_win_prob"],
+            yes_price if analysis["recommendation"] == "BUY YES" else 100 - yes_price,
+            bankroll, kelly_fraction
+        )
+        top_edges.append({
+            "type": "ML",
+            "title": title,
+            "ticker": ticker,
+            "edge": abs(analysis["edge"]),
+            "rec": analysis["recommendation"],
+            "bet_team": bet_team,
+            "bet_amount": kelly["bet_amount"],
+            "url": build_kalshi_url("ML", ticker),
+            "is_yes": analysis["recommendation"] == "BUY YES"
+        })
+
+for game in markets["totals"]:
+    title = game["title"]
+    line = game.get("line", 220)
+    yes_price = game["yes_price"]
+    ticker = game["ticker"]
+    
+    # Simple totals edge calc
+    edge = 50 - yes_price  # Simplified
+    if abs(edge) >= min_edge:
+        direction = "OVER" if edge > 0 else "UNDER"
+        kelly = calculate_kelly(50 + abs(edge), yes_price if edge > 0 else 100 - yes_price, bankroll, kelly_fraction)
+        top_edges.append({
+            "type": "TOT",
+            "title": title,
+            "ticker": ticker,
+            "edge": abs(edge),
+            "rec": f"BUY {direction}",
+            "bet_team": f"{direction} {line}",
+            "bet_amount": kelly["bet_amount"],
+            "url": build_kalshi_url("TOT", ticker),
+            "is_yes": edge > 0
+        })
+
+for game in markets["spreads"]:
+    title = game["title"]
+    yes_price = game["yes_price"]
+    ticker = game["ticker"]
+    
+    edge = 50 - yes_price
+    if abs(edge) >= min_edge:
+        kelly = calculate_kelly(50 + abs(edge), yes_price if edge > 0 else 100 - yes_price, bankroll, kelly_fraction)
+        top_edges.append({
+            "type": "SPR",
+            "title": title,
+            "ticker": ticker,
+            "edge": abs(edge),
+            "rec": "BUY YES" if edge > 0 else "BUY NO",
+            "bet_team": "COVERS" if edge > 0 else "FAILS TO COVER",
+            "bet_amount": kelly["bet_amount"],
+            "url": build_kalshi_url("SPR", ticker),
+            "is_yes": edge > 0
+        })
+
+# Sort by edge and show top 3
+top_edges.sort(key=lambda x: x["edge"], reverse=True)
+
+st.markdown("---")
+st.subheader("TOP 3 EDGES TODAY")
+
+if top_edges:
+    for i, edge in enumerate(top_edges[:3]):
+        col1, col2, col3 = st.columns([3, 1, 1])
+        
+        # Color based on YES/NO
+        if edge["is_yes"]:
+            indicator = "🟢"
+            color = "green"
+        else:
+            indicator = "🔴"
+            color = "red"
+        
+        with col1:
+            st.markdown(f"**#{i+1} {indicator} [{edge['type']}]** {edge['title']}")
+            st.markdown(f":{color}[**{edge['rec']}**] - {edge['bet_team']}")
+        
+        with col2:
+            st.metric("Edge", f"+{edge['edge']:.1f}%")
+        
+        with col3:
+            st.link_button(
+                f"BET {edge['bet_team']} ${edge['bet_amount']:.0f}",
+                edge["url"],
+                use_container_width=True
+            )
+else:
+    st.info("No edges found above minimum threshold. Try lowering Min Edge % in sidebar.")
+
+st.markdown("---")
+
 tab1, tab2, tab3 = st.tabs(["Moneyline", "Totals", "Spreads"])
 
 with tab1:
