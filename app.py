@@ -352,10 +352,13 @@ else:
                 st.metric("Edge", f"{edge_val:+.1f}%", delta=f"{analysis['confidence']} confidence")
                 st.metric("Expected Value", f"{analysis['expected_value']:+.2f}¢")
                 
+                # Clickable trade button
+                kalshi_url = f"https://kalshi.com/markets/kxnbagame/professional-basketball-game/{game['ticker'].lower()}"
+                
                 if analysis['recommendation'] == 'BUY YES':
-                    st.success(f"**{analysis['recommendation']}** on {home}")
+                    st.link_button(f"🟢 BUY YES on {home}", kalshi_url, use_container_width=True)
                 elif analysis['recommendation'] == 'BUY NO':
-                    st.error(f"**{analysis['recommendation']}** (bet {away})")
+                    st.link_button(f"🔴 BUY NO (bet {away})", kalshi_url, use_container_width=True)
                 else:
                     st.info("No significant edge")
             
