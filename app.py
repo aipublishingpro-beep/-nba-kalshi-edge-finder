@@ -309,7 +309,8 @@ st.sidebar.markdown("---")
 st.sidebar.header("📅 Defaults")
 default_home_rest = st.sidebar.number_input("Default Home Rest", 1, 7, 2)
 default_away_rest = st.sidebar.number_input("Default Away Rest", 1, 7, 2)
-default_ref_bias = st.sidebar.slider("Default Ref Bias", 0.0, 2.0, 0.5, 0.1, help="Higher = more home-friendly refs")
+st.sidebar.caption("0=Away-friendly | 0.5=Neutral | 1+=Home-friendly")
+default_ref_bias = st.sidebar.slider("Default Ref Bias", 0.0, 2.0, 0.5, 0.1)
 
 if st.sidebar.button("🔄 Refresh Data"):
     st.cache_data.clear()
@@ -385,6 +386,7 @@ else:
             c1, c2, c3 = st.columns(3)
             g_away_rest = c1.number_input(f"{away} rest", 0, 7, away_rest, key=f"ar_{game['ticker']}")
             g_home_rest = c2.number_input(f"{home} rest", 0, 7, home_rest, key=f"hr_{game['ticker']}")
+            c3.caption("0=Away-friendly | 0.5=Neutral | 1+=Home-friendly")
             g_ref_bias = c3.slider("Ref bias", 0.0, 2.0, default_ref_bias, 0.1, key=f"ref_{game['ticker']}")
             
             if g_away_rest != away_rest or g_home_rest != home_rest or g_ref_bias != default_ref_bias:
