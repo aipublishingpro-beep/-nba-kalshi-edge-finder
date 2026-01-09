@@ -120,6 +120,7 @@ def parse_teams(ticker):
 @st.cache_data(ttl=300)
 def fetch_markets():
     markets = {'moneyline': [], 'totals': [], 'spreads': []}
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     
     for mtype, series in [('moneyline', 'KXNBAGAME'), ('totals', 'KXNBATOTAL'), ('spreads', 'KXNBASPREAD')]:
         try:
@@ -132,10 +133,15 @@ def fetch_markets():
                 
                 close_time = m.get('close_time', '')
                 game_date = ''
+                
+                # FILTER: Only include games from TODAY onward
                 try:
-                    game_date = datetime.fromisoformat(close_time.replace('Z', '+00:00')).strftime('%b %d')
+                    game_dt = datetime.fromisoformat(close_time.replace('Z', '+00:00')).replace(tzinfo=None)
+                    if game_dt < today_start:
+                        continue  # Skip yesterday's games
+                    game_date = game_dt.strftime('%b %d')
                 except:
-                    pass
+                    continue  # Skip if can't parse date
                 
                 info = {'ticker': ticker, 'home': home, 'away': away, 'yes_price': m.get('yes_ask', 50), 'date': game_date, 'close_time': close_time}
                 
