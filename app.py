@@ -314,18 +314,6 @@ st.markdown("""
         color: rgba(255, 107, 53, 0.8);
         margin-top: 8px;
     }
-    .game-anchor {
-        scroll-margin-top: 100px;
-        padding-top: 10px;
-    }
-    a.card-link {
-        text-decoration: none !important;
-        color: inherit !important;
-        display: block;
-    }
-    a.card-link:hover {
-        text-decoration: none !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -360,6 +348,7 @@ with st.sidebar.expander("📐 Position Sizing (Info Only)"):
 
 if st.sidebar.button("🔄 Refresh"):
     st.cache_data.clear()
+    st.session_state.clicked_game = None
     st.rerun()
 
 # Load data
@@ -371,11 +360,23 @@ st.sidebar.write(f"**ML:** {len(markets['moneyline'])} | **TOT:** {len(markets['
 
 # Top 3 Edges
 st.markdown("---")
-st.subheader("🎯 Top 3 Model Predictions")
+st.subheader("🎯 Top 3 Edges TODAY")
 
 all_edges = []
+seen_games = set()  # Prevent duplicates
 for g in markets['moneyline']:
     home, away = g['home'], g['away']
+    game_key = f"{away} @ {home}"
+    
+    # Skip duplicates
+    if game_key in seen_games:
+        continue
+    seen_games.add(game_key)
+    
+    # Only include TODAY's games in top edges
+    if g['game_date'] != "TODAY":
+        continue
+    
     travel = calculate_travel_distance(away, home)
     h_rest, a_rest = rest_days.get(home, 2), rest_days.get(away, 2)
     analysis = calculate_edge(home, away, g['yes_price'], h_rest, a_rest, 0, 0, travel, default_ref_bias, weights)
@@ -383,18 +384,14 @@ for g in markets['moneyline']:
     if abs(analysis['edge']) >= min_edge:
         pred_team = home if analysis['rec'] == 'FAVORS HOME' else away
         kelly = calculate_kelly(analysis['prob'] if analysis['rec'] == 'FAVORS HOME' else 100 - analysis['prob'], g['yes_price'] if analysis['rec'] == 'FAVORS HOME' else 100 - g['yes_price'], bankroll, kelly_frac)
-        # Create anchor ID from game matchup
-        anchor_id = f"{away.lower().replace(' ', '-')}-{home.lower().replace(' ', '-')}"
         all_edges.append({
-            "game": f"{away} @ {home}", 
+            "game": game_key, 
             "pred": pred_team, 
             "edge": abs(analysis['edge']), 
             "kelly": kelly['bet'], 
             "rec": analysis['rec'], 
             "conf": analysis['conf'],
-            "ticker": g['ticker'],
-            "date": g['game_date'],
-            "anchor": anchor_id
+            "date": g['game_date']
         })
 
 all_edges.sort(key=lambda x: x['edge'], reverse=True)
@@ -403,7 +400,6 @@ if all_edges[:3]:
     cols = st.columns(3)
     for i, e in enumerate(all_edges[:3]):
         with cols[i]:
-            # Use button to set session state and expand the game
             st.markdown(f'''
             <div class="prediction-banner">
                 <span class="prediction-team">{e["pred"]}</span><br>
@@ -411,11 +407,11 @@ if all_edges[:3]:
                 <div class="prediction-details">{e["date"]} • {e["game"]} • {e["conf"]}</div>
             </div>
             ''', unsafe_allow_html=True)
-            if st.button(f"🔗 View 12-Factor Breakdown", key=f"btn_{e['anchor']}", use_container_width=True):
-                st.session_state.clicked_game = e['anchor']
+            if st.button(f"🔗 View 12-Factor Breakdown", key=f"top3_btn_{i}", use_container_width=True):
+                st.session_state.clicked_game = e['game']
                 st.rerun()
 else:
-    st.info("No edges above threshold.")
+    st.info("No edges above threshold for TODAY's games.")
 
 # Tabs
 tab_ml, tab_tot, tab_spr = st.tabs(["🏀 Winner", "📊 Totals", "📏 Spreads"])
@@ -426,21 +422,16 @@ with tab_ml:
     if not markets['moneyline']:
         st.warning("No games found for today.")
     
-    # Add scroll script if a game was clicked
-    if st.session_state.clicked_game:
-        st.markdown(f'''
-        <script>
-            setTimeout(function() {{
-                var element = document.getElementById("{st.session_state.clicked_game}");
-                if (element) {{
-                    element.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-                }}
-            }}, 500);
-        </script>
-        ''', unsafe_allow_html=True)
-    
+    seen_games_ml = set()  # Prevent duplicates
     for idx, g in enumerate(markets['moneyline']):
         home, away = g['home'], g['away']
+        game_key = f"{away} @ {home}"
+        
+        # Skip duplicates
+        if game_key in seen_games_ml:
+            continue
+        seen_games_ml.add(game_key)
+        
         travel = calculate_travel_distance(away, home)
         h_rest, a_rest = rest_days.get(home, 2), rest_days.get(away, 2)
         
@@ -459,12 +450,10 @@ with tab_ml:
             rec_text = "NO EDGE"
         
         # Add anchor for linking from top 3
-        anchor_id = f"{away.lower().replace(' ', '-')}-{home.lower().replace(' ', '-')}"
+        game_key = f"{away} @ {home}"
         
         # Check if this game was clicked from top 3
-        should_expand = (st.session_state.clicked_game == anchor_id)
-        
-        st.markdown(f'<div id="{anchor_id}" class="game-anchor"></div>', unsafe_allow_html=True)
+        should_expand = (st.session_state.clicked_game == game_key)
         
         with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | {preview_analysis['edge']:+.1f}% | {rec_text}", expanded=should_expand):
             # Manual injury inputs
@@ -532,8 +521,16 @@ with tab_tot:
     if not markets['totals']:
         st.warning("No totals data found for today.")
     
+    seen_games_tot = set()  # Prevent duplicates
     for idx, g in enumerate(markets['totals']):
         home, away, line = g['home'], g['away'], g.get('line', 220)
+        game_key = f"{away} @ {home}"
+        
+        # Skip duplicates
+        if game_key in seen_games_tot:
+            continue
+        seen_games_tot.add(game_key)
+        
         hs, aws = TEAM_STATS.get(home, {}), TEAM_STATS.get(away, {})
         
         combined_ppg = hs.get('ppg', 110) + aws.get('ppg', 110)
@@ -568,8 +565,16 @@ with tab_spr:
     if not markets['spreads']:
         st.warning("No spread data found for today.")
     
+    seen_games_spr = set()  # Prevent duplicates
     for idx, g in enumerate(markets['spreads']):
         home, away, line = g['home'], g['away'], g.get('line', 5)
+        game_key = f"{away} @ {home}"
+        
+        # Skip duplicates
+        if game_key in seen_games_spr:
+            continue
+        seen_games_spr.add(game_key)
+        
         spread_team = g.get('spread_team', home)
         hs, aws = TEAM_STATS.get(home, {}), TEAM_STATS.get(away, {})
         
