@@ -394,16 +394,17 @@ if all_edges[:3]:
     cols = st.columns(3)
     for i, e in enumerate(all_edges[:3]):
         with cols[i]:
-            st.markdown(f'''
-            <div class="prediction-banner">
-                <span class="prediction-team">{e["pred"]}</span><br>
-                <span class="prediction-edge">+{e["edge"]:.1f}%</span>
-                <div class="prediction-details">{e["date"]} • {e["game"]} • {e["conf"]}</div>
-            </div>
-            ''', unsafe_allow_html=True)
-            # Simple link using query param
             game_encoded = e['game'].replace(' ', '_').replace('@', 'at')
-            st.markdown(f'<a href="?game={game_encoded}" target="_self"><button style="width:100%; padding:10px; background:#FF6B35; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">🔗 View 12-Factor Breakdown</button></a>', unsafe_allow_html=True)
+            st.markdown(f'''
+            <a href="?game={game_encoded}" style="text-decoration:none;">
+                <div class="prediction-banner" style="cursor:pointer;">
+                    <span class="prediction-team">{e["pred"]}</span><br>
+                    <span class="prediction-edge">+{e["edge"]:.1f}%</span>
+                    <div class="prediction-details">{e["date"]} • {e["game"]} • {e["conf"]}</div>
+                    <div style="font-size:0.75rem; color:#FF6B35; margin-top:8px;">👆 Click for 12-factor breakdown</div>
+                </div>
+            </a>
+            ''', unsafe_allow_html=True)
 else:
     st.info("No edges above threshold for TODAY's games.")
 
