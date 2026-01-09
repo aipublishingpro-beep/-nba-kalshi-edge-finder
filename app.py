@@ -517,149 +517,104 @@ def fetch_kalshi_nba_markets():
 
 # ========== COVERS.COM TEAM NAME MAPPING ==========
 COVERS_TEAM_MAP = {
-    "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
-    "Charlotte Hornets": "Charlotte", "Chicago Bulls": "Chicago", "Cleveland Cavaliers": "Cleveland",
-    "Dallas Mavericks": "Dallas", "Denver Nuggets": "Denver", "Detroit Pistons": "Detroit",
-    "Golden State Warriors": "Golden State", "Houston Rockets": "Houston", "Indiana Pacers": "Indiana",
-    "LA Clippers": "LA Clippers", "Los Angeles Clippers": "LA Clippers",
-    "LA Lakers": "LA Lakers", "Los Angeles Lakers": "LA Lakers",
-    "Memphis Grizzlies": "Memphis", "Miami Heat": "Miami", "Milwaukee Bucks": "Milwaukee",
-    "Minnesota Timberwolves": "Minnesota", "New Orleans Pelicans": "New Orleans",
-    "New York Knicks": "New York", "Oklahoma City Thunder": "Oklahoma City",
-    "Orlando Magic": "Orlando", "Philadelphia 76ers": "Philadelphia",
-    "Phoenix Suns": "Phoenix", "Portland Trail Blazers": "Portland",
-    "Sacramento Kings": "Sacramento", "San Antonio Spurs": "San Antonio",
-    "Toronto Raptors": "Toronto", "Utah Jazz": "Utah", "Washington Wizards": "Washington",
+    "atlanta": "Atlanta", "boston": "Boston", "brooklyn": "Brooklyn",
+    "charlotte": "Charlotte", "chicago": "Chicago", "cleveland": "Cleveland",
+    "dallas": "Dallas", "denver": "Denver", "detroit": "Detroit",
+    "golden state": "Golden State", "houston": "Houston", "indiana": "Indiana",
+    "la clippers": "LA Clippers", "l.a. clippers": "LA Clippers", "clippers": "LA Clippers",
+    "la lakers": "LA Lakers", "l.a. lakers": "LA Lakers", "los angeles lakers": "LA Lakers", "lakers": "LA Lakers",
+    "memphis": "Memphis", "miami": "Miami", "milwaukee": "Milwaukee",
+    "minnesota": "Minnesota", "new orleans": "New Orleans", "new york": "New York",
+    "oklahoma city": "Oklahoma City", "orlando": "Orlando", "philadelphia": "Philadelphia",
+    "phoenix": "Phoenix", "portland": "Portland", "sacramento": "Sacramento",
+    "san antonio": "San Antonio", "toronto": "Toronto", "utah": "Utah", "washington": "Washington",
 }
 
 @st.cache_data(ttl=600)
 def fetch_nba_injuries():
-    """Fetch injuries from Covers.com - AUTOMATIC and RELIABLE"""
+    """Fetch injuries from Covers.com - AUTOMATIC"""
     injuries = {}
+    
     try:
         resp = requests.get(
             "https://www.covers.com/sport/basketball/nba/injuries",
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'},
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+            },
             timeout=15
         )
         soup = BeautifulSoup(resp.content, 'html.parser')
         
-        # Find all team sections - they have team links with specific pattern
-        team_links = soup.find_all('a', href=lambda x: x and '/sport/basketball/nba/teams/main/' in str(x))
+        # Find all tables - each team has a table with injuries
+        tables = soup.find_all('table')
         
-        for team_link in team_links:
-            # Get team name from the link text
-            team_name_elem = team_link.find_all(string=True)
-            if not team_name_elem:
-                continue
+        for table in tables:
+            # Look backwards to find team name
+            team_name = None
             
-            # Combine text parts (some have line breaks)
-            raw_name = ' '.join([t.strip() for t in team_name_elem if t.strip()])
-            
-            # Map to our team names
-            our_name = None
-            for covers_name, mapped_name in COVERS_TEAM_MAP.items():
-                if mapped_name.lower() in raw_name.lower() or raw_name.lower() in covers_name.lower():
-                    our_name = mapped_name
+            # Check previous siblings and parents for team link
+            for prev in table.find_all_previous(['a', 'img'], limit=10):
+                # Check for team logo image
+                if prev.name == 'img' and prev.get('alt'):
+                    alt_text = prev.get('alt', '').lower()
+                    for key, val in COVERS_TEAM_MAP.items():
+                        if key in alt_text:
+                            team_name = val
+                            break
+                
+                # Check for team link
+                if prev.name == 'a':
+                    href = prev.get('href', '')
+                    text = prev.get_text(strip=True).lower()
+                    
+                    if '/nba/teams/' in href or 'basketball/nba' in href:
+                        for key, val in COVERS_TEAM_MAP.items():
+                            if key in text or key in href:
+                                team_name = val
+                                break
+                
+                if team_name:
                     break
             
-            if not our_name:
-                # Try direct match
-                for key in ["Atlanta", "Boston", "Brooklyn", "Charlotte", "Chicago", "Cleveland",
-                           "Dallas", "Denver", "Detroit", "Golden State", "Houston", "Indiana",
-                           "LA Clippers", "LA Lakers", "Los Angeles", "Memphis", "Miami", "Milwaukee",
-                           "Minnesota", "New Orleans", "New York", "Oklahoma City", "Orlando",
-                           "Philadelphia", "Phoenix", "Portland", "Sacramento", "San Antonio",
-                           "Toronto", "Utah", "Washington"]:
-                    if key.lower() in raw_name.lower():
-                        our_name = key
-                        if "Lakers" in raw_name:
-                            our_name = "LA Lakers"
-                        elif "Clippers" in raw_name:
-                            our_name = "LA Clippers"
-                        break
-            
-            if not our_name:
+            if not team_name:
                 continue
             
-            # Find the table after this team link
-            parent = team_link.find_parent(['div', 'section', 'td', 'tr'])
-            if not parent:
-                continue
-            
-            # Look for table rows in nearby elements
-            table = None
-            for sibling in parent.find_next_siblings():
-                table = sibling.find('table')
-                if table:
-                    break
-            
-            if not table:
-                # Try finding table in parent's parent
-                grandparent = parent.find_parent(['div', 'section'])
-                if grandparent:
-                    table = grandparent.find('table')
-            
-            if not table:
-                continue
-            
+            # Parse table rows for player injuries
             players = []
             rows = table.find_all('tr')
+            
             for row in rows:
                 cells = row.find_all('td')
                 if len(cells) >= 3:
-                    # First cell = player name (usually has a link)
-                    player_link = cells[0].find('a')
+                    # Get player name from first cell
+                    player_cell = cells[0]
+                    player_link = player_cell.find('a')
                     if player_link:
                         player_name = player_link.get_text(strip=True)
                     else:
-                        player_name = cells[0].get_text(strip=True)
+                        player_name = player_cell.get_text(strip=True)
                     
-                    # Third cell = status
+                    # Get status from third cell (index 2)
                     status = cells[2].get_text(strip=True)
                     
-                    if player_name and status and player_name != "Player":
-                        players.append(f"{player_name} ({status})")
+                    # Skip header rows
+                    if player_name and status and player_name.lower() not in ['player', 'name', '']:
+                        if 'Status' not in status and 'POS' not in status:
+                            players.append(f"{player_name} ({status})")
             
-            if players:
-                injuries[our_name] = players
+            if players and team_name:
+                if team_name in injuries:
+                    injuries[team_name].extend(players)
+                else:
+                    injuries[team_name] = players
         
-        # If scraping didn't work well, try alternative parsing
-        if len(injuries) < 10:
-            # Look for all tables with player data
-            all_tables = soup.find_all('table')
-            current_team = None
-            
-            for table in all_tables:
-                # Check if there's a team header before this table
-                prev_elem = table.find_previous(['a', 'div', 'span'])
-                if prev_elem:
-                    text = prev_elem.get_text(strip=True)
-                    for covers_name, mapped_name in COVERS_TEAM_MAP.items():
-                        if mapped_name.lower() in text.lower():
-                            current_team = mapped_name
-                            break
-                
-                if current_team:
-                    rows = table.find_all('tr')
-                    players = []
-                    for row in rows:
-                        cells = row.find_all('td')
-                        if len(cells) >= 3:
-                            player_link = cells[0].find('a')
-                            player_name = player_link.get_text(strip=True) if player_link else cells[0].get_text(strip=True)
-                            status = cells[2].get_text(strip=True)
-                            if player_name and status and player_name != "Player" and "Status" not in status:
-                                players.append(f"{player_name} ({status})")
-                    
-                    if players and current_team not in injuries:
-                        injuries[current_team] = players
-    
     except Exception as e:
-        st.sidebar.error(f"Covers.com Error: {e}")
+        pass  # Fall through to fallback
     
-    # If still empty, use manual fallback
-    if len(injuries) < 5:
+    # If scraping got less than 10 teams, use fallback
+    if len(injuries) < 10:
         return MANUAL_INJURIES.copy()
     
     return injuries
