@@ -322,12 +322,13 @@ bankroll = st.sidebar.number_input("Bankroll ($)", 100, 100000, 1000, 100)
 kelly_fraction = st.sidebar.slider("Kelly Fraction %", 1, 100, 10, 1)
 kelly_fraction = kelly_fraction / 100  # Convert to decimal
 st.sidebar.markdown(f"""
-**How Kelly Works:**
-1. Model finds edge (e.g. 67%)
-2. Full Kelly says "bet $930"
-3. Your {int(kelly_fraction*100)}% Kelly = $930 × {int(kelly_fraction*100)}% = **$93**
+**What is Kelly?**
 
-*Bigger edge = bigger bet. Smaller edge = smaller bet.*
+Kelly tells you how much of your bankroll to risk when you have an edge, so you grow fastest without blowing up.
+
+Not *if* you should bet — *how big* the bet should be.
+
+**Your setting:** {int(kelly_fraction*100)}% Kelly (lower = safer)
 """)
 
 if st.sidebar.button("🔄 Refresh Data"): st.cache_data.clear(); st.rerun()
