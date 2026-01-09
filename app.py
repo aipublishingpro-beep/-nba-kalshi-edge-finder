@@ -59,10 +59,7 @@ CITY_COORDS = {
     "Toronto": (43.643, -79.379), "Utah": (40.768, -111.901), "Washington": (38.898, -77.021)
 }
 
-# SERIES URLS - Kalshi does NOT support game-specific deep links
-URL_ML = "https://kalshi.com/markets/kxnbagame"
-URL_TOT = "https://kalshi.com/markets/kxnbatotal"
-URL_SPR = "https://kalshi.com/markets/kxnbaspread"
+# APP PURPOSE: Edge finder only - not a Kalshi bridge
 
 def calc_travel(away, home):
     if away not in CITY_COORDS or home not in CITY_COORDS:
@@ -210,7 +207,7 @@ for g in mkts['ml']:
         team = home if a['rec'] == 'BUY YES' else away
         prob = a['prob'] if a['rec'] == 'BUY YES' else 100 - a['prob']
         px = price if a['rec'] == 'BUY YES' else 100 - price
-        edges.append({'t': 'ML', 'g': f"{away} @ {home}", 'd': g['date'], 'e': abs(a['edge']), 'team': team, 'amt': calc_kelly(prob, px, bank, kf), 'url': URL_ML, 'c': '🟢' if a['rec'] == 'BUY YES' else '🔴'})
+        edges.append({'t': 'ML', 'g': f"{away} @ {home}", 'd': g['date'], 'e': abs(a['edge']), 'team': team, 'amt': calc_kelly(prob, px, bank, kf), 'c': '🟢' if a['rec'] == 'BUY YES' else '🔴'})
 
 for g in mkts['tot']:
     home, away, price, line = g['home'], g['away'], g['price'], g.get('line', 220)
@@ -219,14 +216,14 @@ for g in mkts['tot']:
     diff = proj - line
     if abs(diff) >= min_e:
         rec = "OVER" if diff > 0 else "UNDER"
-        edges.append({'t': 'TOT', 'g': f"{away} @ {home}", 'd': g['date'], 'e': abs(diff), 'team': f"{rec} {line}", 'amt': calc_kelly(50 + abs(diff), price if diff > 0 else 100 - price, bank, kf), 'url': URL_TOT, 'c': '🟢' if diff > 0 else '🔴'})
+        edges.append({'t': 'TOT', 'g': f"{away} @ {home}", 'd': g['date'], 'e': abs(diff), 'team': f"{rec} {line}", 'amt': calc_kelly(50 + abs(diff), price if diff > 0 else 100 - price, bank, kf), 'c': '🟢' if diff > 0 else '🔴'})
 
 for g in mkts['spr']:
     home, away, price = g['home'], g['away'], g['price']
     diff = 50 - price
     if abs(diff) >= min_e:
         team = f"{home} COVERS" if diff > 0 else f"{away} COVERS"
-        edges.append({'t': 'SPR', 'g': f"{away} @ {home}", 'd': g['date'], 'e': abs(diff), 'team': team, 'amt': calc_kelly(50 + abs(diff), price if diff > 0 else 100 - price, bank, kf), 'url': URL_SPR, 'c': '🟢' if diff > 0 else '🔴'})
+        edges.append({'t': 'SPR', 'g': f"{away} @ {home}", 'd': g['date'], 'e': abs(diff), 'team': team, 'amt': calc_kelly(50 + abs(diff), price if diff > 0 else 100 - price, bank, kf), 'c': '🟢' if diff > 0 else '🔴'})
 
 edges.sort(key=lambda x: x['e'], reverse=True)
 
@@ -237,8 +234,7 @@ if edges:
         c1.markdown(f"**#{i+1} {e['c']} [{e['t']}] {e['g']}**")
         c1.caption(f"{e['d']} | Edge: {e['e']:.1f}%")
         c2.markdown(f"**→ {e['team']}**")
-        c2.caption(f"Bet ${e['amt']:.0f}")
-        c3.markdown(f"### [🎯 OPEN KALSHI]({e['url']})")
+        c3.metric("BET", f"${e['amt']:.0f}")
 else:
     st.info("No edges found today")
 
@@ -263,7 +259,6 @@ with tab1:
                 px = price if a['rec'] == 'BUY YES' else 100 - price
                 c3.markdown(f"**{a['rec']}**")
                 c3.metric("Bet", f"${calc_kelly(prob, px, bank, kf):.0f}")
-                c3.markdown(f"[🎯 OPEN KALSHI]({URL_ML})")
 
 with tab2:
     for g in mkts['tot'][:15]:
@@ -281,7 +276,6 @@ with tab2:
                 rec = "OVER" if diff > 0 else "UNDER"
                 c3.markdown(f"**BUY {rec}**")
                 c3.metric("Bet", f"${calc_kelly(50 + abs(diff), price if diff > 0 else 100 - price, bank, kf):.0f}")
-                c3.markdown(f"[🎯 OPEN KALSHI]({URL_TOT})")
 
 with tab3:
     for g in mkts['spr'][:15]:
@@ -296,7 +290,6 @@ with tab3:
                 team = home if diff > 0 else away
                 c3.markdown(f"**{team} COVERS**")
                 c3.metric("Bet", f"${calc_kelly(50 + abs(diff), price if diff > 0 else 100 - price, bank, kf):.0f}")
-                c3.markdown(f"[🎯 OPEN KALSHI]({URL_SPR})")
 
 with st.expander("🔧 Debug"):
     st.write(f"**Today:** {datetime.now().date()}")
