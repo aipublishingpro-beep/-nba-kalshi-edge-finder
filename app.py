@@ -144,52 +144,60 @@ def fetch_todays_games():
         return []
 
 def fetch_team_rest_days():
+    """Check last 5 days of ESPN scoreboards to find when each team last played"""
     try:
-        url = "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json"
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Referer': 'https://www.nba.com/'
+        today = datetime.now().date()
+        last_game = {}
+        
+        # ESPN team abbreviation to full name mapping
+        espn_teams = {
+            "ATL": "Atlanta Hawks", "BOS": "Boston Celtics", "BKN": "Brooklyn Nets",
+            "CHA": "Charlotte Hornets", "CHI": "Chicago Bulls", "CLE": "Cleveland Cavaliers",
+            "DAL": "Dallas Mavericks", "DEN": "Denver Nuggets", "DET": "Detroit Pistons",
+            "GS": "Golden State Warriors", "GSW": "Golden State Warriors",
+            "HOU": "Houston Rockets", "IND": "Indiana Pacers",
+            "LAC": "LA Clippers", "LAL": "Los Angeles Lakers", "MEM": "Memphis Grizzlies",
+            "MIA": "Miami Heat", "MIL": "Milwaukee Bucks", "MIN": "Minnesota Timberwolves",
+            "NO": "New Orleans Pelicans", "NOP": "New Orleans Pelicans",
+            "NY": "New York Knicks", "NYK": "New York Knicks",
+            "OKC": "Oklahoma City Thunder", "ORL": "Orlando Magic",
+            "PHI": "Philadelphia 76ers", "PHX": "Phoenix Suns", "POR": "Portland Trail Blazers",
+            "SAC": "Sacramento Kings", "SA": "San Antonio Spurs", "SAS": "San Antonio Spurs",
+            "TOR": "Toronto Raptors", "UTA": "Utah Jazz", "UTAH": "Utah Jazz",
+            "WAS": "Washington Wizards", "WSH": "Washington Wizards"
         }
-        response = requests.get(url, headers=headers, timeout=15)
-        if response.status_code == 200:
-            data = response.json()
-            today = datetime.now().date()
-            last_game = {}
+        
+        # Check last 5 days
+        for days_ago in range(1, 6):
+            check_date = today - timedelta(days=days_ago)
+            date_str = check_date.strftime('%Y%m%d')
             
-            for game_date in data.get('leagueSchedule', {}).get('gameDates', []):
-                date_str = game_date.get('gameDate', '')[:10]
-                try:
-                    game_day = datetime.strptime(date_str, '%m/%d/%Y %H:%M:%S').date()
-                except:
-                    try:
-                        game_day = datetime.strptime(date_str, '%Y-%m-%d').date()
-                    except:
-                        continue
-                
-                if game_day >= today:
-                    continue
+            url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={date_str}"
+            
+            try:
+                response = requests.get(url, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
                     
-                for game in game_date.get('games', []):
-                    home_name = game.get('homeTeam', {}).get('teamName', '')
-                    away_name = game.get('awayTeam', {}).get('teamName', '')
-                    
-                    for full_name in team_mapping.keys():
-                        if home_name in full_name:
-                            if full_name not in last_game or game_day > last_game[full_name]:
-                                last_game[full_name] = game_day
-                        if away_name in full_name:
-                            if full_name not in last_game or game_day > last_game[full_name]:
-                                last_game[full_name] = game_day
-            
-            # Calculate rest days: played yesterday = 0 rest, played 2 days ago = 1 rest
-            rest_days = {}
-            for team, last_date in last_game.items():
-                days_since = (today - last_date).days
-                rest = max(0, days_since - 1)
-                rest_days[team] = rest
-            
-            return rest_days
-        return {}
+                    for event in data.get('events', []):
+                        for comp in event.get('competitions', []):
+                            for team in comp.get('competitors', []):
+                                abbrev = team.get('team', {}).get('abbreviation', '')
+                                full_name = espn_teams.get(abbrev)
+                                
+                                if full_name and full_name not in last_game:
+                                    last_game[full_name] = check_date
+            except:
+                continue
+        
+        # Calculate rest days: played yesterday = 0 rest, played 2 days ago = 1 rest
+        rest_days = {}
+        for team, last_date in last_game.items():
+            days_since = (today - last_date).days
+            rest = max(0, days_since - 1)
+            rest_days[team] = rest
+        
+        return rest_days
     except Exception as e:
         return {}
 
