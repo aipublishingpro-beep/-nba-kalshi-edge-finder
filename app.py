@@ -323,8 +323,6 @@ weights = {'rest': w_rest, 'defense': w_def, 'injury': w_inj, 'pace': w_pace, 'n
 
 st.sidebar.markdown("---")
 st.sidebar.header("🎯 Settings")
-default_home_rest = st.sidebar.number_input("Default Home Rest", 0, 7, 2)
-default_away_rest = st.sidebar.number_input("Default Away Rest", 0, 7, 2)
 st.sidebar.caption("Ref Bias: 0=Away | 1=Neutral | 2=Home")
 default_ref_bias = st.sidebar.slider("Default Ref Bias", 0.0, 2.0, 1.0, 0.1)
 min_edge = st.sidebar.slider("Min Edge %", 0, 25, 5)
@@ -364,7 +362,7 @@ for game in markets['moneyline']:
     home, away = game['home_team'], game['away_team']
     home_inj, away_inj = len(injuries.get(home, [])), len(injuries.get(away, []))
     travel = calculate_travel_distance(away, home)
-    home_rest, away_rest = rest_days.get(home, default_home_rest), rest_days.get(away, default_away_rest)
+    home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
     analysis = calculate_edge(home, away, game['yes_price'], home_rest, away_rest, home_inj, away_inj, travel, default_ref_bias, weights)
     if analysis['recommendation'] != 'NO EDGE':
         bet_team = home if analysis['recommendation'] == 'BUY YES' else away
@@ -384,7 +382,7 @@ for tm in markets['totals']:
     home, away, line = tm['home_team'], tm['away_team'], tm['line']
     home_inj, away_inj = len(injuries.get(home, [])), len(injuries.get(away, []))
     travel = calculate_travel_distance(away, home)
-    home_rest, away_rest = rest_days.get(home, default_home_rest), rest_days.get(away, default_away_rest)
+    home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
     totals = calculate_total_points(home, away, home_rest, away_rest, home_inj, away_inj, travel)
     diff = totals['predicted_total'] - line
     if abs(diff) > 3:
@@ -405,7 +403,7 @@ for sm in markets['spreads']:
     home, away, line, spread_team = sm['home_team'], sm['away_team'], sm['line'], sm['spread_team']
     home_inj, away_inj = len(injuries.get(home, [])), len(injuries.get(away, []))
     travel = calculate_travel_distance(away, home)
-    home_rest, away_rest = rest_days.get(home, default_home_rest), rest_days.get(away, default_away_rest)
+    home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
     spread = calculate_spread(home, away, home_rest, away_rest, home_inj, away_inj, travel)
     predicted = spread['predicted_spread']
     spread_diff = (predicted - line) if spread_team == home else (-predicted - line)
@@ -454,7 +452,7 @@ with tab1:
         home, away = game['home_team'], game['away_team']
         home_inj, away_inj = len(injuries.get(home, [])), len(injuries.get(away, []))
         travel = calculate_travel_distance(away, home)
-        home_rest, away_rest = rest_days.get(home, default_home_rest), rest_days.get(away, default_away_rest)
+        home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
         analysis = calculate_edge(home, away, game['yes_price'], home_rest, away_rest, home_inj, away_inj, travel, default_ref_bias, weights)
         if abs(analysis['edge']) < min_edge: continue
         
@@ -510,7 +508,7 @@ with tab2:
             home, away, line, yes_price = tm['home_team'], tm['away_team'], tm['line'], tm['yes_price']
             home_inj, away_inj = len(injuries.get(home, [])), len(injuries.get(away, []))
             travel = calculate_travel_distance(away, home)
-            home_rest, away_rest = rest_days.get(home, default_home_rest), rest_days.get(away, default_away_rest)
+            home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
             totals = calculate_total_points(home, away, home_rest, away_rest, home_inj, away_inj, travel)
             predicted, diff = totals['predicted_total'], totals['predicted_total'] - line
             
@@ -568,7 +566,7 @@ with tab3:
             home, away, line, yes_price, spread_team = sm['home_team'], sm['away_team'], sm['line'], sm['yes_price'], sm['spread_team']
             home_inj, away_inj = len(injuries.get(home, [])), len(injuries.get(away, []))
             travel = calculate_travel_distance(away, home)
-            home_rest, away_rest = rest_days.get(home, default_home_rest), rest_days.get(away, default_away_rest)
+            home_rest, away_rest = rest_days.get(home, 2), rest_days.get(away, 2)
             spread = calculate_spread(home, away, home_rest, away_rest, home_inj, away_inj, travel)
             predicted = spread['predicted_spread']
             
