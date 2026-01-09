@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 from datetime import datetime, timedelta
 import math
@@ -278,6 +279,19 @@ st.caption("12-Factor Prediction Model • For Analysis Only • Not Financial A
 # Get clicked game from query params
 clicked_game = st.query_params.get("game", None)
 
+# Auto-scroll to clicked game using JS
+if clicked_game:
+    components.html(f'''
+    <script>
+        setTimeout(function() {{
+            var el = window.parent.document.getElementById("game-{clicked_game}");
+            if (el) {{
+                el.scrollIntoView({{behavior: "smooth", block: "start"}});
+            }}
+        }}, 500);
+    </script>
+    ''', height=0)
+
 # Custom CSS for orange edge highlight
 st.markdown("""
 <style>
@@ -414,11 +428,6 @@ tab_ml, tab_tot, tab_spr = st.tabs(["🏀 Winner", "📊 Totals", "📏 Spreads"
 with tab_ml:
     st.subheader("Game Winner Predictions")
     
-    # If a game was clicked, show which one is expanded
-    if clicked_game:
-        game_display = clicked_game.replace('_', ' ').replace('at', '@')
-        st.success(f"📍 Showing: **{game_display}** - See expanded section below")
-    
     if not markets['moneyline']:
         st.warning("No games found for today.")
     
@@ -453,6 +462,9 @@ with tab_ml:
         game_key = f"{away} @ {home}"
         game_encoded = game_key.replace(' ', '_').replace('@', 'at')
         should_expand = (clicked_game == game_encoded)
+        
+        # Add anchor div for this game
+        st.markdown(f'<div id="game-{game_encoded}" style="scroll-margin-top:100px;"></div>', unsafe_allow_html=True)
         
         with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | {preview_analysis['edge']:+.1f}% | {rec_text}", expanded=should_expand):
             # Manual injury inputs
