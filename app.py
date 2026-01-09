@@ -471,8 +471,8 @@ with tab2:
     home_team = col2.selectbox("Home Team", all_teams, index=all_teams.index("Boston"))
     
     col3, col4 = st.columns(2)
-    kalshi_line = col3.number_input("Kalshi Line", 180.0, 280.0, 230.5, 0.5)
-    kalshi_over_price = col4.number_input("Over Price (¢)", 1, 99, 50)
+    kalshi_line = col3.number_input("Kalshi Line", 180.0, 280.0, 230.5, 0.5, help="Total points line from Kalshi")
+    kalshi_over_price = col4.number_input("OVER Price (¢)", 1, 99, 50, help="Kalshi price to buy YES on OVER")
     
     col5, col6 = st.columns(2)
     t_home_rest = col5.number_input("Home Rest Days", 0, 7, rest_days.get(home_team, default_home_rest), key="t_hr")
@@ -555,7 +555,7 @@ with tab3:
     
     col3, col4 = st.columns(2)
     kalshi_spread = col3.number_input("Kalshi Spread (- = home favored)", -30.0, 30.0, -5.5, 0.5)
-    kalshi_cover_price = col4.number_input("Cover Price (¢)", 1, 99, 50, key="sp")
+    kalshi_cover_price = col4.number_input("YES Price (¢)", 1, 99, 50, key="sp", help="Kalshi price to buy YES on this spread")
     
     col5, col6 = st.columns(2)
     s_home_rest = col5.number_input("Home Rest Days", 0, 7, rest_days.get(s_home_team, default_home_rest), key="s_hr")
