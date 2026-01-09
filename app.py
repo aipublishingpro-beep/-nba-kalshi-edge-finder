@@ -107,7 +107,13 @@ def fetch_markets():
                 date_display = game_date.strftime('%b %d')
                 is_today = game_date.date() == today.date()
                 
-                info = {'ticker': ticker, 'home': home, 'away': away, 'yes_price': yes_price, 
+                # CRITICAL: Kalshi YES = "Away team wins"
+                # So home team win probability = 100 - yes_price
+                home_win_prob = 100 - yes_price
+                
+                info = {'ticker': ticker, 'home': home, 'away': away, 
+                        'yes_price': home_win_prob,  # Now correctly = home team win %
+                        'away_price': yes_price,     # Keep original for reference
                         'game_date': date_display, 'game_dt': game_date, 'is_today': is_today}
                 
                 if mtype == 'totals':
@@ -381,10 +387,16 @@ for g in markets['moneyline']:
     analysis = calculate_edge(home, away, g['yes_price'], rest_days.get(home, 2), rest_days.get(away, 2), 0, 0, travel, weights)
     
     pred_team = home if analysis['adj_edge'] > 0 else away
+    # Show the relevant market price for the predicted team
+    if analysis['adj_edge'] > 0:
+        market_for_pred = g['yes_price']  # Home team price
+    else:
+        market_for_pred = 100 - g['yes_price']  # Away team price
+    
     all_edges.append({
         "game": key, "pred": pred_team, "adj_edge": analysis['adj_edge'],
         "raw_edge": analysis['raw_edge'], "rec": analysis['rec'], "conf": analysis['conf'],
-        "date": g['game_date'], "market": g['yes_price']
+        "date": g['game_date'], "market": market_for_pred, "home_price": g['yes_price']
     })
 
 all_edges.sort(key=lambda x: abs(x['adj_edge']), reverse=True)
@@ -458,7 +470,7 @@ with tab_ml:
         
         with st.expander(f"{indicator} {g['game_date']} | {away} @ {home} | Edge: {analysis['adj_edge']:+.1f}% | {analysis['rec']}", expanded=should_expand):
             
-            st.caption(f"Market: {home} {g['yes_price']:.0f}% to win")
+            st.caption(f"Market: {home} {g['yes_price']:.0f}% to win | {away} {g.get('away_price', 100-g['yes_price']):.0f}%")
             
             ic1, ic2 = st.columns(2)
             with ic1:
