@@ -332,6 +332,7 @@ st.sidebar.write(f"Spreads: {len(markets['spreads'])}")
 
 # ========== TOP 3 EDGES SECTION ==========
 st.markdown("### 🔥 Top 3 Edges Today")
+st.caption(f"💰 **Kelly Criterion** automatically sizes bets based on edge size & your ${bankroll:,} bankroll. Bigger edge = bigger bet. Using {int(kelly_fraction*100)}% Kelly (conservative).")
 
 top_edges = []
 
@@ -344,12 +345,13 @@ for game in markets['moneyline']:
     analysis = calculate_edge(home, away, game['yes_price'], home_rest, away_rest, home_inj, away_inj, travel, default_ref_bias, weights)
     if analysis['recommendation'] != 'NO EDGE':
         bet_team = home if analysis['recommendation'] == 'BUY YES' else away
+        kelly = calculate_kelly(analysis['home_win_prob'] if analysis['recommendation'] == 'BUY YES' else 100 - analysis['home_win_prob'], 
+                                game['yes_price'] if analysis['recommendation'] == 'BUY YES' else 100 - game['yes_price'], bankroll, kelly_fraction)
         top_edges.append({
             'type': 'ML', 'game': f"{away} @ {home}", 'date': game['game_date'],
             'edge': abs(analysis['edge']), 'edge_raw': analysis['edge'],
             'rec': f"{bet_team} WINS", 'confidence': analysis['confidence'],
-            'bet_amount': calculate_kelly(analysis['home_win_prob'] if analysis['recommendation'] == 'BUY YES' else 100 - analysis['home_win_prob'], 
-                                          game['yes_price'] if analysis['recommendation'] == 'BUY YES' else 100 - game['yes_price'], bankroll, kelly_fraction)['bet_amount'],
+            'bet_amount': kelly['bet_amount'], 'kelly_pct': kelly['adj_kelly_pct'],
             'url': f"https://kalshi.com/markets/kxnbagame/{game['ticker'].lower()}",
             'color': '🟢' if analysis['recommendation'] == 'BUY YES' else '🔴'
         })
@@ -370,7 +372,7 @@ for tm in markets['totals']:
             'type': 'TOT', 'game': f"{away} @ {home}", 'date': tm['game_date'],
             'edge': abs(diff), 'edge_raw': diff,
             'rec': f"{rec} {line}", 'confidence': 'HIGH' if abs(diff) > 6 else 'MEDIUM',
-            'bet_amount': kelly['bet_amount'],
+            'bet_amount': kelly['bet_amount'], 'kelly_pct': kelly['adj_kelly_pct'],
             'url': f"https://kalshi.com/markets/kxnbatotal/{tm['ticker'].lower()}",
             'color': '🟢' if rec == "OVER" else '🔴'
         })
@@ -400,7 +402,7 @@ for sm in markets['spreads']:
             'type': 'SPR', 'game': f"{away} @ {home}", 'date': sm['game_date'],
             'edge': abs(spread_diff), 'edge_raw': spread_diff,
             'rec': rec, 'confidence': 'HIGH' if abs(spread_diff) > 6 else 'MEDIUM',
-            'bet_amount': kelly['bet_amount'],
+            'bet_amount': kelly['bet_amount'], 'kelly_pct': kelly['adj_kelly_pct'],
             'url': f"https://kalshi.com/markets/kxnbaspread/{sm['ticker'].lower()}",
             'color': color
         })
@@ -412,9 +414,9 @@ if top_edges:
     for i, edge in enumerate(top_edges, 1):
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.markdown(f"**#{i} {edge['color']} [{edge['type']}] {edge['date']} | {edge['game']}** → **{edge['rec']}** ({edge['edge']:.1f} pts edge) • {edge['confidence']}")
+            st.markdown(f"**#{i} {edge['color']} [{edge['type']}] {edge['date']} | {edge['game']}** → **{edge['rec']}** ({edge['edge']:.1f}% edge) • {edge['confidence']}")
         with col2:
-            st.link_button(f"BET ${edge['bet_amount']:.0f}", edge['url'], use_container_width=True)
+            st.link_button(f"BET ${edge['bet_amount']:.0f} ({edge['kelly_pct']}%)", edge['url'], use_container_width=True)
     st.markdown("---")
 else:
     st.info("No high-confidence edges found. Adjust Min Edge % in sidebar.")
