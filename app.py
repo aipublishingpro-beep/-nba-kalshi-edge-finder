@@ -243,7 +243,7 @@ else:
         else:
             rec_color = "⚪"
         
-        with st.expander(f"{rec_color} {away} @ {home} | Edge: {analysis['edge']:+.1f}%", expanded=(abs(analysis['edge']) >= min_edge)):
+        with st.expander(f"{rec_color} {away} @ {home} | Edge: {analysis['edge']:+.1f}%", expanded=False):
             col1, col2, col3 = st.columns(3)
             
             with col1:
