@@ -411,6 +411,11 @@ else:
 # Get auto rest days
 rest_data = get_cached_rest_days()
 
+# Cache clear button
+if st.sidebar.button("🔄 Refresh Rest Data"):
+    st.cache_data.clear()
+    st.rerun()
+
 # Manual Analysis
 st.header("🔍 Game Analysis")
 st.write("**Select teams • Rest days auto-detected • Injury status manual**")
