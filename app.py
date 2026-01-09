@@ -409,9 +409,9 @@ else:
             col3.metric("EV", f"{analysis['expected_value']:+.2f}¢")
             url = f"https://kalshi.com/markets/kxnbagame/professional-basketball-game/{game['ticker'].lower()}"
             if analysis['recommendation'] == 'BUY YES':
-                col3.link_button(f"🟢 BUY YES", url, use_container_width=True)
+                col3.link_button(f"🟢 {home} to WIN (YES)", url, use_container_width=True)
             elif analysis['recommendation'] == 'BUY NO':
-                col3.link_button(f"🔴 BUY NO", url, use_container_width=True)
+                col3.link_button(f"🔴 {away} to WIN (NO)", url, use_container_width=True)
             
             # ========== 12-FACTOR BREAKDOWN WITH RAW VALUES ==========
             st.markdown("---")
