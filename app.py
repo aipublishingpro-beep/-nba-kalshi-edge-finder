@@ -120,7 +120,7 @@ def parse_teams(ticker):
 @st.cache_data(ttl=300)
 def fetch_markets():
     markets = {'moneyline': [], 'totals': [], 'spreads': []}
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.now().date()
     
     for mtype, series in [('moneyline', 'KXNBAGAME'), ('totals', 'KXNBATOTAL'), ('spreads', 'KXNBASPREAD')]:
         try:
@@ -134,14 +134,14 @@ def fetch_markets():
                 close_time = m.get('close_time', '')
                 game_date = ''
                 
-                # FILTER: Only include games from TODAY onward
+                # STRICT FILTER: Only TODAY's games (excludes postponed zombies)
                 try:
                     game_dt = datetime.fromisoformat(close_time.replace('Z', '+00:00')).replace(tzinfo=None)
-                    if game_dt < today_start:
-                        continue  # Skip yesterday's games
+                    if game_dt.date() < today:
+                        continue  # Skip postponed/yesterday's games
                     game_date = game_dt.strftime('%b %d')
                 except:
-                    continue  # Skip if can't parse date
+                    continue
                 
                 info = {'ticker': ticker, 'home': home, 'away': away, 'yes_price': m.get('yes_ask', 50), 'date': game_date, 'close_time': close_time}
                 
@@ -221,6 +221,11 @@ def_away_rest = st.sidebar.number_input("Away Rest", 1, 5, 2)
 markets = fetch_markets()
 rest = fetch_rest()
 
+# SERIES URLS (Kalshi doesn't support game-specific deep links)
+URL_MONEYLINE = "https://kalshi.com/markets/kxnbagame"
+URL_TOTALS = "https://kalshi.com/markets/kxnbatotal"
+URL_SPREADS = "https://kalshi.com/markets/kxnbaspread"
+
 # Build edges
 edges = []
 
@@ -243,9 +248,8 @@ for g in markets['moneyline']:
             color = '🔴'
         
         amt = calculate_kelly(prob, px, bankroll, kelly_frac)
-        url = "https://kalshi.com/markets/kxnbagame/professional-basketball-game/" + ticker.lower()
         
-        edges.append({'type': 'ML', 'game': away + " @ " + home, 'date': g['date'], 'ticker': ticker, 'edge': abs(analysis['edge']), 'team': team, 'amt': amt, 'url': url, 'color': color})
+        edges.append({'type': 'ML', 'game': away + " @ " + home, 'date': g['date'], 'ticker': ticker, 'edge': abs(analysis['edge']), 'team': team, 'amt': amt, 'url': URL_MONEYLINE, 'color': color})
 
 for g in markets['totals']:
     home, away, ticker, price = g['home'], g['away'], g['ticker'], g['yes_price']
@@ -262,9 +266,8 @@ for g in markets['totals']:
         rec = "OVER" if diff > 0 else "UNDER"
         color = '🟢' if diff > 0 else '🔴'
         amt = calculate_kelly(50 + abs(diff), price if diff > 0 else 100 - price, bankroll, kelly_frac)
-        url = "https://kalshi.com/markets/kxnbatotal/" + ticker.lower()
         
-        edges.append({'type': 'TOT', 'game': away + " @ " + home, 'date': g['date'], 'ticker': ticker, 'edge': abs(diff), 'team': rec + " " + str(line), 'amt': amt, 'url': url, 'color': color})
+        edges.append({'type': 'TOT', 'game': away + " @ " + home, 'date': g['date'], 'ticker': ticker, 'edge': abs(diff), 'team': rec + " " + str(line), 'amt': amt, 'url': URL_TOTALS, 'color': color})
 
 for g in markets['spreads']:
     home, away, ticker, price = g['home'], g['away'], g['ticker'], g['yes_price']
@@ -280,9 +283,8 @@ for g in markets['spreads']:
             team, color = away + " COVERS", '🔴'
         
         amt = calculate_kelly(50 + abs(diff), price if diff > 0 else 100 - price, bankroll, kelly_frac)
-        url = "https://kalshi.com/markets/kxnbaspread/" + ticker.lower()
         
-        edges.append({'type': 'SPR', 'game': away + " @ " + home, 'date': g['date'], 'ticker': ticker, 'edge': abs(diff), 'team': team, 'amt': amt, 'url': url, 'color': color})
+        edges.append({'type': 'SPR', 'game': away + " @ " + home, 'date': g['date'], 'ticker': ticker, 'edge': abs(diff), 'team': team, 'amt': amt, 'url': URL_SPREADS, 'color': color})
 
 edges.sort(key=lambda x: x['edge'], reverse=True)
 
