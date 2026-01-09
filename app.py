@@ -319,7 +319,9 @@ min_edge = st.sidebar.slider("Min Edge %", 0, 25, 5)
 st.sidebar.markdown("---")
 st.sidebar.header("💰 Kelly Settings")
 bankroll = st.sidebar.number_input("Bankroll ($)", 100, 100000, 1000, 100)
-kelly_fraction = st.sidebar.select_slider("Kelly Fraction", options=[0.1, 0.25, 0.5, 1.0], value=0.25, format_func=lambda x: {0.1:"1/10", 0.25:"1/4", 0.5:"1/2", 1.0:"Full"}[x])
+kelly_fraction = st.sidebar.slider("Kelly Fraction %", 1, 100, 10, 1, help="Lower = safer. Pros use 10-25%. Start with 10%.")
+kelly_fraction = kelly_fraction / 100  # Convert to decimal
+st.sidebar.caption(f"Using {int(kelly_fraction*100)}% Kelly → Max ~{kelly_fraction*50:.0f}% of bankroll per bet")
 
 if st.sidebar.button("🔄 Refresh Data"): st.cache_data.clear(); st.rerun()
 
