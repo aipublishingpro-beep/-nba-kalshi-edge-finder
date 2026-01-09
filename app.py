@@ -405,7 +405,7 @@ st.write("**Select teams • Rest days auto-detected • Injury status manual**"
 col1, col2 = st.columns(2)
 with col1:
     st.subheader("🏠 Home Team")
-    manual_home = st.selectbox("Home Team", list(team_mapping.keys()), index=13)
+    manual_home = st.selectbox("Home Team", list(team_mapping.keys()), index=17)
     
     auto_home_rest = rest_data.get(manual_home, 1)
     home_is_b2b = auto_home_rest == 0
@@ -417,11 +417,14 @@ with col1:
         format_func=lambda x: INJURY_LEVELS[x],
         key="home_injury"
     )
-    home_b2b = st.checkbox("Home team on BACK-TO-BACK", value=home_is_b2b, key="home_b2b")
+    # Auto-detect B2B from rest days
+    home_b2b = manual_home_rest == 0
+    if home_b2b:
+        st.warning("⚠️ BACK-TO-BACK detected")
 
 with col2:
     st.subheader("✈️ Away Team")
-    manual_away = st.selectbox("Away Team", list(team_mapping.keys()), index=9)
+    manual_away = st.selectbox("Away Team", list(team_mapping.keys()), index=5)
     
     auto_away_rest = rest_data.get(manual_away, 1)
     away_is_b2b = auto_away_rest == 0
@@ -433,7 +436,10 @@ with col2:
         format_func=lambda x: INJURY_LEVELS[x],
         key="away_injury"
     )
-    away_b2b = st.checkbox("Away team on BACK-TO-BACK", value=away_is_b2b, key="away_b2b")
+    # Auto-detect B2B from rest days
+    away_b2b = manual_away_rest == 0
+    if away_b2b:
+        st.warning("⚠️ BACK-TO-BACK detected")
 
 distance = calculate_distance(manual_away, manual_home)
 altitude = team_locations.get(manual_home, {}).get("altitude", 0)
