@@ -58,6 +58,19 @@ TEAM_LOCATIONS = {
     "Utah": (40.768, -111.901), "Washington": (38.898, -77.021),
 }
 
+# ========== URL BUILDER FUNCTIONS ==========
+def build_moneyline_url(ticker):
+    """Build correct Kalshi moneyline URL"""
+    return f"https://kalshi.com/markets/kxnbagame/professional-basketball-game/{ticker.lower()}"
+
+def build_totals_url(ticker):
+    """Build correct Kalshi totals URL"""
+    return f"https://kalshi.com/markets/kxnbatotal/professional-basketball-game/{ticker.lower()}"
+
+def build_spread_url(ticker):
+    """Build correct Kalshi spread URL"""
+    return f"https://kalshi.com/markets/kxnbaspread/professional-basketball-game/{ticker.lower()}"
+
 def calculate_travel_distance(team1, team2):
     loc1, loc2 = TEAM_LOCATIONS.get(team1), TEAM_LOCATIONS.get(team2)
     if not loc1 or not loc2: return 0
@@ -320,7 +333,7 @@ st.sidebar.markdown("---")
 st.sidebar.header("💰 Kelly Settings")
 bankroll = st.sidebar.number_input("Bankroll ($)", 100, 100000, 1000, 100)
 kelly_fraction = st.sidebar.slider("Kelly Fraction %", 1, 100, 10, 1)
-kelly_fraction = kelly_fraction / 100  # Convert to decimal
+kelly_fraction = kelly_fraction / 100
 st.sidebar.markdown(f"""
 **What is Kelly?**
 
@@ -362,7 +375,7 @@ for game in markets['moneyline']:
             'edge': abs(analysis['edge']), 'edge_raw': analysis['edge'],
             'rec': f"{bet_team} WINS", 'confidence': analysis['confidence'],
             'bet_amount': kelly['bet_amount'], 'kelly_pct': kelly['adj_kelly_pct'],
-            'url': f"https://kalshi.com/markets/kxnbagame/{game['ticker'].lower()}",
+            'url': build_moneyline_url(game['ticker']),
             'color': '🟢' if analysis['recommendation'] == 'BUY YES' else '🔴'
         })
 
@@ -383,7 +396,7 @@ for tm in markets['totals']:
             'edge': abs(diff), 'edge_raw': diff,
             'rec': f"{rec} {line}", 'confidence': 'HIGH' if abs(diff) > 6 else 'MEDIUM',
             'bet_amount': kelly['bet_amount'], 'kelly_pct': kelly['adj_kelly_pct'],
-            'url': f"https://kalshi.com/markets/kxnbatotal/{tm['ticker'].lower()}",
+            'url': build_totals_url(tm['ticker']),
             'color': '🟢' if rec == "OVER" else '🔴'
         })
 
@@ -413,7 +426,7 @@ for sm in markets['spreads']:
             'edge': abs(spread_diff), 'edge_raw': spread_diff,
             'rec': rec, 'confidence': 'HIGH' if abs(spread_diff) > 6 else 'MEDIUM',
             'bet_amount': kelly['bet_amount'], 'kelly_pct': kelly['adj_kelly_pct'],
-            'url': f"https://kalshi.com/markets/kxnbaspread/{sm['ticker'].lower()}",
+            'url': build_spread_url(sm['ticker']),
             'color': color
         })
 
@@ -485,7 +498,7 @@ with tab1:
             
             st.caption(f"🏠 Home Court: +{f['home_court']} (baseline)")
             
-            url = f"https://kalshi.com/markets/kxnbagame/{game['ticker'].lower()}"
+            url = build_moneyline_url(game['ticker'])
             st.link_button(f"🎯 BET {bet_team.upper()} TO WIN → ${kelly['bet_amount']:.2f}", url, use_container_width=True)
 
 # TAB 2: TOTALS
@@ -540,7 +553,7 @@ with tab2:
                 fc10.metric("Altitude", f"{f['altitude']:+.1f}")
                 fc11.metric("OT Prob", f"{f['ot_prob']:+.1f}")
                 
-                url = f"https://kalshi.com/markets/kxnbatotal/{tm['ticker'].lower()}"
+                url = build_totals_url(tm['ticker'])
                 if rec == "OVER": st.link_button(f"🎯 BET OVER {line} → ${kelly['bet_amount']:.2f}", url, use_container_width=True)
                 elif rec == "UNDER": st.link_button(f"🎯 BET UNDER {line} → ${kelly['bet_amount']:.2f}", url, use_container_width=True)
     else:
@@ -576,11 +589,9 @@ with tab3:
             with st.expander(f"{rec_color} {sm['game_date']} | {away} @ {home} | {spread_team} -{line} | {rec}"):
                 st.caption(f"**Kalshi:** {sm['title']}")
                 c1, c2, c3 = st.columns(3)
-                # Show model spread from SAME TEAM's perspective as Kalshi for easy comparison
                 if spread_team == home:
                     model_spread_display = f"{spread_team} {predicted:+.1f}"
                 else:
-                    # Kalshi is asking about away team, flip our home-based spread
                     model_spread_display = f"{spread_team} {-predicted:+.1f}"
                 c1.metric("Model Spread", model_spread_display)
                 c2.metric("Kalshi Line", f"{spread_team} -{line}")
@@ -603,7 +614,7 @@ with tab3:
                 kc4.metric("EV", f"${kelly['ev_on_bet']:+.2f}")
                 
                 if btn_text:
-                    url = f"https://kalshi.com/markets/kxnbaspread/{sm['ticker'].lower()}"
+                    url = build_spread_url(sm['ticker'])
                     st.link_button(btn_text, url, use_container_width=True)
     else:
         st.warning("No spread markets found")
