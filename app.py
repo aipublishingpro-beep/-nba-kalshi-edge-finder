@@ -318,7 +318,7 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, ma
             if show_trading:
                 col1, col2, col3 = st.columns([1, 2, 2])
                 with col1:
-                    num_contracts = st.number_input("Qty", min_value=1, max_value=100, value=st.session_state.default_contracts, key=f"contracts_{ticker}", label_visibility="collapsed")
+                    num_contracts = st.number_input("Qty", min_value=1, value=st.session_state.default_contracts, key=f"contracts_{ticker}", label_visibility="collapsed")
                 with col2:
                     if st.button(f"🟡 BID {bid}¢ × {num_contracts}", key=f"place_{ticker}", type="secondary", use_container_width=True):
                         success, msg = place_kalshi_order(
@@ -358,7 +358,7 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, ma
                 if show_trading:
                     col1, col2 = st.columns([1, 3])
                     with col1:
-                        num_contracts = st.number_input("Qty", min_value=1, max_value=100, value=st.session_state.default_contracts, key=f"contracts_{ticker}", label_visibility="collapsed")
+                        num_contracts = st.number_input("Qty", min_value=1, value=st.session_state.default_contracts, key=f"contracts_{ticker}", label_visibility="collapsed")
                     with col2:
                         if st.button(f"🔴 LIFT ASK {int(no_ask)}¢ × {num_contracts}", key=f"lift_{ticker}", type="primary", use_container_width=True):
                             success, msg = place_kalshi_order(
@@ -502,7 +502,7 @@ with st.sidebar:
             st.session_state.kalshi_api_key = st.text_input("API Key", value=st.session_state.kalshi_api_key, type="password")
             st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", value=st.session_state.kalshi_private_key, height=100)
         
-        st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, max_value=100, value=st.session_state.default_contracts)
+        st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, value=st.session_state.default_contracts)
     
     st.divider()
     st.subheader("📋 Watchlist Teams")
@@ -705,4 +705,4 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v5.8 | Two-Button Trading | BID vs LIFT ASK")
+st.caption("v6.0 | Two-Button Trading | No Contract Limit")
