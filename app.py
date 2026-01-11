@@ -323,14 +323,16 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, ma
         </div>
         """, unsafe_allow_html=True)
         
-        # PLACE BID BUTTON (if trading enabled)
+        # PLACE BID BUTTON (if trading enabled) - RIGHT BELOW THE BOX
         init_trading()
         if st.session_state.trading_enabled and st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
-            col1, col2 = st.columns([2, 1])
+            col1, col2, col3 = st.columns([1, 1, 2])
             with col1:
-                num_contracts = st.number_input(f"Contracts", min_value=1, max_value=100, value=st.session_state.default_contracts, key=f"contracts_{ticker}")
+                num_contracts = st.number_input(f"Qty", min_value=1, max_value=100, value=st.session_state.default_contracts, key=f"contracts_{ticker}", label_visibility="collapsed")
             with col2:
-                if st.button(f"🚀 PLACE BID {bid}¢", key=f"place_{ticker}", type="primary"):
+                st.caption(f"contracts")
+            with col3:
+                if st.button(f"🚀 PLACE BID {bid}¢", key=f"place_{ticker}", type="primary", use_container_width=True):
                     success, msg = place_kalshi_order(
                         ticker=market_ticker or ticker,
                         side="no",
@@ -350,11 +352,13 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, ma
             # Also add place button for acceptable ask
             init_trading()
             if st.session_state.trading_enabled and st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
-                col1, col2 = st.columns([2, 1])
+                col1, col2, col3 = st.columns([1, 1, 2])
                 with col1:
-                    num_contracts = st.number_input(f"Contracts", min_value=1, max_value=100, value=st.session_state.default_contracts, key=f"contracts_{ticker}")
+                    num_contracts = st.number_input(f"Qty", min_value=1, max_value=100, value=st.session_state.default_contracts, key=f"contracts_{ticker}", label_visibility="collapsed")
                 with col2:
-                    if st.button(f"🚀 LIFT ASK {int(no_ask)}¢", key=f"lift_{ticker}", type="primary"):
+                    st.caption(f"contracts")
+                with col3:
+                    if st.button(f"🚀 LIFT ASK {int(no_ask)}¢", key=f"lift_{ticker}", type="primary", use_container_width=True):
                         success, msg = place_kalshi_order(
                             ticker=market_ticker or ticker,
                             side="no",
