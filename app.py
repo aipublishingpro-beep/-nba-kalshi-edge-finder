@@ -385,12 +385,10 @@ def fetch_extreme_totals(min_threshold=245):
                     if no_ask == 0 and yes_ask > 0:
                         no_ask = 1 - yes_ask
                     
-                    # Get game status
-                    close_time = m.get("close_time", "")
-                    status = "🟡 PENDING"
-                    
+                    # Store both ticker and event_ticker for URL construction
                     extreme_markets.append({
                         "ticker": m.get("ticker", ""),
+                        "event_ticker": event_ticker,
                         "threshold": floor_strike,
                         "away_team": away,
                         "home_team": home,
@@ -541,12 +539,22 @@ with st.sidebar:
     st.write("✅ **Q1 Ended** - Q1 done, total <50")
     st.write("🎯 **Q1 Watch** - Watchlist, Q1 <40")
     
+    if st.button("🔔 Test Sound"):
+        st.session_state.test_sound = True
+    
     st.divider()
-    st.caption("💡 Click Refresh to update live scores")
+    st.caption("💡 Click Refresh to update scores & check alerts")
 
 # MAIN CONTENT
 if st.button("🔄 Refresh Markets & Scores", type="primary"):
     st.cache_data.clear()
+    st.rerun()
+
+# Test sound from sidebar
+if st.session_state.get('test_sound', False):
+    play_alert_sound("edge")
+    st.session_state.test_sound = False
+    st.success("🔔 Sound test played! If you didn't hear it, check browser permissions.")
 
 markets, error, today_date = fetch_extreme_totals(min_threshold)
 live_scores = fetch_espn_live_scores()
@@ -802,4 +810,4 @@ else:
                 st.caption("🛑 ABORT if price jumps +5¢ suddenly")
 
 st.divider()
-st.caption("v4.1 | 🟢 ESPN Live Scores | Q1 is King | Gate-First Logic")
+st.caption("v4.2 | 🟢 ESPN Live Scores | 🔊 Sound Alerts | Q1 is King")
