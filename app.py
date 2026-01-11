@@ -1,9 +1,53 @@
 import streamlit as st
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 
 st.set_page_config(page_title="Extreme Totals NO Finder", page_icon="🎯", layout="wide")
+
+# ============================================================
+# PRICE SPIKE DETECTION (KILL SWITCH)
+# ============================================================
+def init_price_history():
+    if 'price_history' not in st.session_state:
+        st.session_state.price_history = {}  # {ticker: [(timestamp, price), ...]}
+    if 'spike_alerts' not in st.session_state:
+        st.session_state.spike_alerts = {}  # {ticker: True/False}
+
+def record_price(ticker, price):
+    init_price_history()
+    now = datetime.now()
+    if ticker not in st.session_state.price_history:
+        st.session_state.price_history[ticker] = []
+    st.session_state.price_history[ticker].append((now, price))
+    # Keep only last 2 minutes of data
+    cutoff = now - timedelta(seconds=120)
+    st.session_state.price_history[ticker] = [(t, p) for t, p in st.session_state.price_history[ticker] if t > cutoff]
+
+def check_price_spike(ticker, current_price, threshold_cents=0.05, window_seconds=30):
+    init_price_history()
+    if ticker not in st.session_state.price_history:
+        return False, 0
+    now = datetime.now()
+    cutoff = now - timedelta(seconds=window_seconds)
+    old_prices = [(t, p) for t, p in st.session_state.price_history[ticker] if t <= cutoff]
+    if not old_prices:
+        return False, 0
+    oldest_price = old_prices[0][1]  # Price from ~30 seconds ago
+    delta = current_price - oldest_price
+    if delta >= threshold_cents:
+        st.session_state.spike_alerts[ticker] = True
+        return True, delta
+    return False, delta
+
+def is_spiked(ticker):
+    init_price_history()
+    return st.session_state.spike_alerts.get(ticker, False)
+
+def clear_spike(ticker):
+    init_price_history()
+    if ticker in st.session_state.spike_alerts:
+        st.session_state.spike_alerts[ticker] = False
 
 def play_alert_sound(alert_type="edge"):
     sounds = {"edge": {"freq": 800, "duration": 0.3, "repeat": 2}, "watchlist": {"freq": 600, "duration": 0.2, "repeat": 1}, "mispriced": {"freq": 1000, "duration": 0.15, "repeat": 3}, "q1_ended": {"freq": 500, "duration": 0.5, "repeat": 1}}
@@ -209,12 +253,27 @@ else:
             live = get_live_game_data(m["away_team"], m["home_team"], live_scores)
             live_str = f"{live['away_score']}-{live['home_score']} ({live['status']} {live['quarter']} {live['clock']})" if live else "Not started"
             
-            st.success(f"""
+            # KILL SWITCH - Record and check for spike
+            record_price(m["ticker"], m["no_ask"])
+            spiked, delta = check_price_spike(m["ticker"], m["no_ask"])
+            
+            if spiked or is_spiked(m["ticker"]):
+                st.error(f"""
+🛑 **PRICE SPIKE DETECTED — SKIP THIS MARKET**  
+**🏀 {m["away_team"]} @ {m["home_team"]}**  
+Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.  
+**DO NOT CHASE.** Wait for cooldown.
+                """)
+                if st.button(f"✅ Clear spike alert - {m['ticker']}", key=f"clear_{m['ticker']}"):
+                    clear_spike(m["ticker"])
+                    st.rerun()
+            else:
+                st.success(f"""
 **🏀 {m["away_team"]} @ {m["home_team"]}**  
 ⭐ WATCHLIST: **{wl_team}** (Bottom 8 3PT% + Bottom 10 Pace)  
 **Threshold:** {m["threshold"]} | **NO Price:** {m["no_ask"]:.2f} | **Live:** {live_str}
-            """)
-            st.link_button(f"🔗 Open Kalshi - {m['threshold']}", get_kalshi_url(m), type="primary")
+                """)
+                st.link_button(f"🔗 Open Kalshi - {m['threshold']}", get_kalshi_url(m), type="primary")
             st.markdown("---")
     
     # ============================================================
@@ -228,23 +287,38 @@ else:
             live = get_live_game_data(m["away_team"], m["home_team"], live_scores)
             live_str = f"{live['away_score']}-{live['home_score']} ({live['status']} {live['quarter']} {live['clock']})" if live else "Not started"
             
-            st.warning(f"""
+            # KILL SWITCH - Record and check for spike
+            record_price(m["ticker"], m["no_ask"])
+            spiked, delta = check_price_spike(m["ticker"], m["no_ask"])
+            
+            if spiked or is_spiked(m["ticker"]):
+                st.error(f"""
+🛑 **PRICE SPIKE DETECTED — SKIP THIS MARKET**  
+**🏀 {m["away_team"]} @ {m["home_team"]}**  
+Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.  
+**DO NOT CHASE.** Wait for cooldown.
+                """)
+                if st.button(f"✅ Clear spike alert - {m['ticker']}", key=f"clear_{m['ticker']}"):
+                    clear_spike(m["ticker"])
+                    st.rerun()
+            else:
+                st.warning(f"""
 **🏀 {m["away_team"]} @ {m["home_team"]}**  
 ⭐ WATCHLIST: **{wl_team}** (Bottom 8 3PT% + Bottom 10 Pace)  
 **Threshold:** {m["threshold"]} | **NO Price:** {m["no_ask"]:.2f} | **Live:** {live_str}
-            """)
-            
-            # Price unlock guide
-            if m["no_ask"] <= 0.70:
-                st.info(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 50-54")
-            elif m["no_ask"] <= 0.75:
-                st.info(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 48-49")
-            elif m["no_ask"] <= 0.78:
-                st.info(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 <48")
-            else:
-                st.error(f"🔴 Price {m['no_ask']:.2f} - Too expensive even with great Q1")
-            
-            st.link_button(f"🔗 Open Kalshi - {m['threshold']}", get_kalshi_url(m), type="secondary")
+                """)
+                
+                # Price unlock guide
+                if m["no_ask"] <= 0.70:
+                    st.info(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 50-54")
+                elif m["no_ask"] <= 0.75:
+                    st.info(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 48-49")
+                elif m["no_ask"] <= 0.78:
+                    st.info(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 <48")
+                else:
+                    st.error(f"🔴 Price {m['no_ask']:.2f} - Too expensive even with great Q1")
+                
+                st.link_button(f"🔗 Open Kalshi - {m['threshold']}", get_kalshi_url(m), type="secondary")
             st.markdown("---")
     
     if not watchlist_green and not watchlist_yellow:
