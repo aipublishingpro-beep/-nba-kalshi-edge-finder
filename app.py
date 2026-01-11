@@ -36,17 +36,22 @@ def init_trading():
         st.session_state.default_contracts = 10
 
 def create_kalshi_signature(private_key_pem, timestamp, method, path):
-    """Create signature for Kalshi API authentication."""
+    """Create signature for Kalshi API authentication using RSA-PSS."""
     if not CRYPTO_AVAILABLE:
         return None
     try:
         private_key = serialization.load_pem_private_key(
             private_key_pem.encode(), password=None, backend=default_backend()
         )
-        message = f"{timestamp}{method}{path}".encode()
+        # Strip query parameters from path before signing
+        path_without_query = path.split('?')[0]
+        message = f"{timestamp}{method}{path_without_query}".encode('utf-8')
         signature = private_key.sign(
             message,
-            padding.PKCS1v15(),
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.DIGEST_LENGTH
+            ),
             hashes.SHA256()
         )
         return base64.b64encode(signature).decode()
@@ -84,7 +89,7 @@ def place_kalshi_order(ticker, side, price_cents, count, api_key, private_key_pe
         }
         
         response = requests.post(
-            f"https://api.kalshi.com{path}",
+            f"https://trading-api.kalshi.com{path}",
             headers=headers,
             json=order_data,
             timeout=10
@@ -676,4 +681,4 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v5.4 | One-Click Trading | Fixed API Endpoint")
+st.caption("v5.5 | One-Click Trading | RSA-PSS Signature Fix")
