@@ -89,7 +89,7 @@ def place_kalshi_order(ticker, side, price_cents, count, api_key, private_key_pe
         }
         
         response = requests.post(
-            f"https://trading-api.kalshi.com{path}",
+            f"https://api.elections.kalshi.com{path}",
             headers=headers,
             json=order_data,
             timeout=10
@@ -690,4 +690,4 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v5.6 | One-Click Trading | Better Error Handling")
+st.caption("v5.7 | One-Click Trading | Correct API URL")
