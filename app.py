@@ -750,18 +750,23 @@ st.set_page_config(
 st.title("🎯 KALSHI EXTREME TOTALS - NO FINDER")
 st.caption("Tail-risk exploitation system. You are not betting averages. You are betting tail collapse.")
 
+# ============================================================
+# LOAD LIVE DATA FIRST (global scope)
+# ============================================================
+with st.spinner("Loading live NBA data..."):
+    live_data = load_team_data()
+
+TEAM_3PT_PCT = live_data["3pt"]
+TEAM_PACE = live_data["pace"]
+REST_DATA = live_data["rest"]
+DATA_SOURCES = live_data["sources"]
+
+# Calculate watchlist from live data
+watchlist = get_primary_watchlist(TEAM_3PT_PCT, TEAM_PACE)
+
 # Sidebar
 with st.sidebar:
     st.header("⚙️ System Settings")
-    
-    # Load live data FIRST
-    with st.spinner("Loading live NBA data..."):
-        live_data = load_team_data()
-    
-    TEAM_3PT_PCT = live_data["3pt"]
-    TEAM_PACE = live_data["pace"]
-    REST_DATA = live_data["rest"]
-    sources = live_data["sources"]
     
     # Threshold filter
     min_threshold = st.selectbox(
@@ -775,9 +780,9 @@ with st.sidebar:
     
     # DATA STATUS
     st.subheader("📡 DATA STATUS")
-    st.write(f"3PT%: {sources['3pt']}")
-    st.write(f"Pace: {sources['pace']}")
-    st.write(f"Rest: {sources['rest']}")
+    st.write(f"3PT%: {DATA_SOURCES['3pt']}")
+    st.write(f"Pace: {DATA_SOURCES['pace']}")
+    st.write(f"Rest: {DATA_SOURCES['rest']}")
     if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
         st.rerun()
@@ -802,7 +807,6 @@ with st.sidebar:
     # Primary Watchlist - NOW LIVE
     st.subheader("📋 Primary Watchlist")
     st.caption("LIVE: Bottom 8 3PT% ∩ Bottom 10 pace")
-    watchlist = get_primary_watchlist(TEAM_3PT_PCT, TEAM_PACE)
     
     if watchlist:
         for team in sorted(watchlist):
