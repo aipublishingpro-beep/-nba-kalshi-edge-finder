@@ -464,7 +464,64 @@ def calculate_confidence(market, q1_total, watchlist, spread_est=5):
 # APP
 # ============================================================
 st.title("🎯 KALSHI EXTREME TOTALS - NO FINDER")
-st.caption("Tail-risk exploitation system. You are not betting averages. You are betting tail collapse.")
+
+# TAB NAVIGATION
+tab1, tab2 = st.tabs(["🔍 EDGE FINDER", "📊 POSITION TRACKER"])
+
+# Initialize position tracker
+if 'tracked_positions' not in st.session_state:
+    st.session_state.tracked_positions = []
+
+def calculate_projection(total, minutes_played):
+    if minutes_played <= 0:
+        return None
+    return round((total / minutes_played) * 48)
+
+def get_minutes_played(period, clock, status):
+    if status == "🔴 FINAL":
+        return 48
+    if status == "🟠 HALFTIME":
+        return 24
+    if period == 0:
+        return 0
+    try:
+        if ':' in str(clock):
+            parts = str(clock).split(':')
+            mins = int(parts[0])
+            secs = int(float(parts[1])) if len(parts) > 1 else 0
+            clock_mins = mins + secs / 60
+            return (period - 1) * 12 + (12 - clock_mins)
+    except:
+        pass
+    return (period - 1) * 12
+
+def get_position_status(threshold, total, projected, is_final=False):
+    if is_final:
+        if total < threshold:
+            return "✅ WON!", "green"
+        else:
+            return "❌ LOST", "red"
+    
+    if projected is None or total == 0:
+        return "⏳ WAITING", "gray"
+    
+    cushion = threshold - projected
+    
+    if cushion > 15:
+        return "🟢 VERY SAFE", "green"
+    elif cushion > 8:
+        return "🟢 LOOKING GOOD", "green"
+    elif cushion > 3:
+        return "🟡 ON TRACK", "yellow"
+    elif cushion > -3:
+        return "🟠 TIGHT", "orange"
+    elif cushion > -10:
+        return "🔴 DANGER", "red"
+    else:
+        return "🔴 LIKELY LOSS", "red"
+
+with tab1:
+    st.caption("Tail-risk exploitation system. You are not betting averages. You are betting tail collapse.")
 
 watchlist = get_primary_watchlist()
 
