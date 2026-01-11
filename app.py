@@ -24,7 +24,8 @@ def record_price(ticker, price):
     cutoff = now - timedelta(seconds=120)
     st.session_state.price_history[ticker] = [(t, p) for t, p in st.session_state.price_history[ticker] if t > cutoff]
 
-def check_price_spike(ticker, current_price, threshold_cents=0.05, window_seconds=30):
+def check_price_spike(ticker, current_price, threshold_cents=5, window_seconds=30):
+    """Check if price spiked by threshold_cents in window_seconds. Prices in cents."""
     init_price_history()
     if ticker not in st.session_state.price_history:
         return False, 0
@@ -120,41 +121,42 @@ def get_kalshi_url(market):
 def calculate_recommended_bid(no_ask, game_state, q1_total=None, is_spiked=False, q1_lock_imminent=False):
     """
     Calculate recommended bid based on game state and price.
+    no_ask is in CENTS (0-100), returns bid in CENTS.
     
     game_state: 'pregame', 'live_q1', 'post_q1'
-    Returns: (bid_price or None, label, explanation)
+    Returns: (bid_price_cents or None, label, explanation)
     """
     # KILL SWITCH - No bid if spiked
     if is_spiked:
         return None, "🛑 DO NOT BID", "Market moved too fast — wait for cooldown"
     
-    # PREGAME - Patient parking
+    # PREGAME - Patient parking (10¢ below ask, floor at 60¢)
     if game_state == 'pregame':
-        bid = max(no_ask - 0.10, 0.60)  # 10¢ below ask, floor at 0.60
+        bid = max(int(no_ask - 10), 60)
         return bid, "Patient Pregame Bid", "Let price come to you — don't chase"
     
-    # LIVE Q1 with lock-in imminent
+    # LIVE Q1 with lock-in imminent (5¢ below ask, cap at 75¢)
     if game_state == 'live_q1' and q1_lock_imminent:
-        bid = min(no_ask - 0.05, 0.75)  # 5¢ below ask, cap at 0.75
+        bid = min(int(no_ask - 5), 75)
         return bid, "Early Live Bid", "Q1 lock-in forming — tighten if desired"
     
-    # LIVE Q1 without lock-in
+    # LIVE Q1 without lock-in (8¢ below ask)
     if game_state == 'live_q1':
-        bid = max(no_ask - 0.08, 0.60)  # 8¢ below ask
+        bid = max(int(no_ask - 8), 60)
         return bid, "Live Q1 Bid", "Waiting for Q1 end — park conservatively"
     
     # POST-Q1 CONFIRMED
     if game_state == 'post_q1':
         if q1_total and q1_total >= 55:
             return None, "🚫 NO TRADE", "Q1 too high — skip this game"
-        if no_ask <= 0.75:
-            return None, "✅ ASK ACCEPTABLE", f"Lift ask at {no_ask:.2f} if desired"
+        if no_ask <= 75:
+            return None, "✅ ASK ACCEPTABLE", f"Lift ask at {int(no_ask)}¢ if desired"
         else:
-            bid = no_ask - 0.03  # 3¢ below ask
+            bid = int(no_ask - 3)  # 3¢ below ask
             return bid, "Post-Q1 Value Bid", "Information edge confirmed — tight spread OK"
     
     # Default fallback
-    return max(no_ask - 0.10, 0.60), "Default Bid", "Conservative parking"
+    return max(int(no_ask - 10), 60), "Default Bid", "Conservative parking"
 
 def get_game_state(live_data):
     """Determine game state from live data."""
@@ -191,7 +193,7 @@ def get_game_state(live_data):
     return 'pregame', False, None
 
 def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None):
-    """Render the bid recommendation box."""
+    """Render the bid recommendation box. Prices are in cents."""
     game_state, q1_lock_imminent, q1_total = get_game_state(live_data)
     spiked = is_spiked(ticker)
     
@@ -199,11 +201,11 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None):
         no_ask, game_state, q1_total, spiked, q1_lock_imminent
     )
     
-    # Build display
+    # Build display - bid is already in cents
     if spiked:
         st.error(f"**{label}**\n\n{explanation}")
     elif bid is not None:
-        st.info(f"**💵 Recommended Bid: {bid:.2f}**\n\n*{label}* — {explanation}")
+        st.info(f"**💵 Recommended Bid: {bid}¢**\n\n*{label}* — {explanation}")
     else:
         if "ACCEPTABLE" in label:
             st.success(f"**{label}**\n\n{explanation}")
@@ -257,18 +259,20 @@ def fetch_extreme_totals(min_threshold=245):
     except Exception as e: return [], str(e), today
 
 def get_price_tolerance(q1_total):
-    if q1_total is None: return 0.68, "Pregame"
-    elif q1_total < 48: return 0.78, "Q1 < 48"
-    elif q1_total < 50: return 0.75, "Q1 48-49"
-    elif q1_total < 55: return 0.70, "Q1 50-54"
-    else: return 0.00, "Q1 ≥ 55"
+    """Returns max NO price in CENTS based on Q1 total."""
+    if q1_total is None: return 68, "Pregame"
+    elif q1_total < 48: return 78, "Q1 < 48"
+    elif q1_total < 50: return 75, "Q1 48-49"
+    elif q1_total < 55: return 70, "Q1 50-54"
+    else: return 0, "Q1 ≥ 55"
 
 def calculate_confidence(market, q1_total, watchlist, spread_est=5):
+    """Calculate confidence score. Prices are in cents (0-100)."""
     away, home = market["away_team"], market["home_team"]
     threshold, no_ask = market["threshold"], market["no_ask"]
     if q1_total is not None and q1_total >= 55: return 0, "🚫 Q1 ≥ 55 - NO TRADE", "red", {"REJECTED": "Q1 too high"}
     max_price, regime = get_price_tolerance(q1_total)
-    if q1_total is not None and no_ask > max_price: return 0, f"🚫 Price {no_ask:.2f} > {max_price} for {regime}", "red", {"REJECTED": "Overpriced"}
+    if q1_total is not None and no_ask > max_price: return 0, f"🚫 Price {int(no_ask)}¢ > {max_price}¢ for {regime}", "red", {"REJECTED": "Overpriced"}
     if q1_total is None: return 0, "⏳ WAIT FOR Q1", "gray", {}
     score, breakdown = 0, {}
     q1_pts = 30 if q1_total < 45 else 27 if q1_total < 48 else 22 if q1_total < 50 else 15
@@ -276,8 +280,8 @@ def calculate_confidence(market, q1_total, watchlist, spread_est=5):
     breakdown["Q1 Regime"] = f"{q1_pts}/30"
     if away in watchlist or home in watchlist: score += 20; breakdown["Watchlist"] = "✅ +20"
     else: breakdown["Watchlist"] = "❌ +0"
-    buffer = max_price - no_ask
-    price_pts = 20 if buffer >= 0.10 else 15 if buffer >= 0.06 else 10 if buffer >= 0.03 else 5
+    buffer = max_price - no_ask  # Now in cents
+    price_pts = 20 if buffer >= 10 else 15 if buffer >= 6 else 10 if buffer >= 3 else 5
     score += price_pts
     breakdown["Price Buffer"] = f"{price_pts}/20"
     score += 10 if threshold >= 252 else 7 if threshold >= 250 else 5 if threshold >= 248 else 3
@@ -303,8 +307,8 @@ with st.sidebar:
     min_threshold = st.selectbox("Min Threshold", [245, 248, 250, 252], index=0)
     st.divider()
     st.subheader("💰 PRICE RULES")
-    st.markdown("|Q1|Max NO|\n|:-:|:-:|\n|<48|0.78|\n|48-49|0.75|\n|50-54|0.70|\n|≥55|NO TRADE|")
-    st.caption("Pregame: 0.68 max")
+    st.markdown("|Q1|Max NO|\n|:-:|:-:|\n|<48|78¢|\n|48-49|75¢|\n|50-54|70¢|\n|≥55|NO TRADE|")
+    st.caption("Pregame: 68¢ max")
     st.divider()
     st.subheader("📋 Watchlist Teams")
     st.caption("Bottom 8 3PT% ∩ Bottom 10 Pace")
@@ -344,10 +348,10 @@ if error:
 elif not markets:
     st.warning(f"No extreme totals (≥{min_threshold}) for today.")
 else:
-    # Split watchlist markets by price
+    # Split watchlist markets by price (prices are in cents)
     watchlist_markets = [m for m in markets if m["away_team"] in watchlist or m["home_team"] in watchlist]
-    watchlist_green = [m for m in watchlist_markets if m["no_ask"] <= 0.68]
-    watchlist_yellow = [m for m in watchlist_markets if m["no_ask"] > 0.68]
+    watchlist_green = [m for m in watchlist_markets if m["no_ask"] <= 68]
+    watchlist_yellow = [m for m in watchlist_markets if m["no_ask"] > 68]
     non_watchlist = [m for m in markets if m["away_team"] not in watchlist and m["home_team"] not in watchlist]
 
     # ============================================================
@@ -369,7 +373,7 @@ else:
                 st.error(f"""
 🛑 **PRICE SPIKE DETECTED — SKIP THIS MARKET**  
 **🏀 {m["away_team"]} @ {m["home_team"]}**  
-Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.  
+Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.  
 **DO NOT CHASE.** Wait for cooldown.
                 """)
                 render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team)
@@ -380,7 +384,7 @@ Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.
                 st.success(f"""
 **🏀 {m["away_team"]} @ {m["home_team"]}**  
 ⭐ WATCHLIST: **{wl_team}** (Bottom 8 3PT% + Bottom 10 Pace)  
-**Threshold:** {m["threshold"]} | **NO Price:** {m["no_ask"]:.2f} | **Live:** {live_str}
+**Threshold:** {m["threshold"]} | **NO Price:** {int(m["no_ask"])}¢ | **Live:** {live_str}
                 """)
                 render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team)
                 st.link_button(f"🔗 Open Kalshi - {m['threshold']}", get_kalshi_url(m), type="primary")
@@ -405,7 +409,7 @@ Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.
                 st.error(f"""
 🛑 **PRICE SPIKE DETECTED — SKIP THIS MARKET**  
 **🏀 {m["away_team"]} @ {m["home_team"]}**  
-Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.  
+Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.  
 **DO NOT CHASE.** Wait for cooldown.
                 """)
                 render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team)
@@ -416,18 +420,18 @@ Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.
                 st.warning(f"""
 **🏀 {m["away_team"]} @ {m["home_team"]}**  
 ⭐ WATCHLIST: **{wl_team}** (Bottom 8 3PT% + Bottom 10 Pace)  
-**Threshold:** {m["threshold"]} | **NO Price:** {m["no_ask"]:.2f} | **Live:** {live_str}
+**Threshold:** {m["threshold"]} | **NO Price:** {int(m["no_ask"])}¢ | **Live:** {live_str}
                 """)
                 
-                # Price unlock guide
-                if m["no_ask"] <= 0.70:
-                    st.caption(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 50-54")
-                elif m["no_ask"] <= 0.75:
-                    st.caption(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 48-49")
-                elif m["no_ask"] <= 0.78:
-                    st.caption(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 <48")
+                # Price unlock guide (prices in cents)
+                if m["no_ask"] <= 70:
+                    st.caption(f"💡 Price {int(m['no_ask'])}¢ unlocks at Q1 50-54")
+                elif m["no_ask"] <= 75:
+                    st.caption(f"💡 Price {int(m['no_ask'])}¢ unlocks at Q1 48-49")
+                elif m["no_ask"] <= 78:
+                    st.caption(f"💡 Price {int(m['no_ask'])}¢ unlocks at Q1 <48")
                 else:
-                    st.caption(f"🔴 Price {m['no_ask']:.2f} - Too expensive even with great Q1")
+                    st.caption(f"🔴 Price {int(m['no_ask'])}¢ - Too expensive even with great Q1")
                 
                 render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team)
                 st.link_button(f"🔗 Open Kalshi - {m['threshold']}", get_kalshi_url(m), type="secondary")
@@ -462,7 +466,7 @@ Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.
     for m in non_watchlist:
         away, home, no_ask = m["away_team"], m["home_team"], m["no_ask"]
         live = get_live_game_data(away, home, live_scores)
-        p_status = "🟢 OK" if no_ask <= 0.68 else "🟡 Wait" if no_ask <= 0.78 else "🔴 Expensive"
+        p_status = "🟢 OK" if no_ask <= 68 else "🟡 Wait" if no_ask <= 78 else "🔴 Expensive"
         
         # Record price for spike detection
         record_price(m["ticker"], no_ask)
@@ -472,10 +476,10 @@ Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.
         c1.subheader(f"🏀 {away} @ {home}")
         c2.metric("LIVE", f"{live['away_score']}-{live['home_score']}" if live else "—")
         c3.metric("Threshold", m["threshold"])
-        c4.metric("NO Price", f"{no_ask:.2f}")
+        c4.metric("NO Price", f"{int(no_ask)}¢")
         
         if spiked or is_spiked(m["ticker"]):
-            st.error(f"🛑 PRICE SPIKE +{delta:.2f} — DO NOT CHASE")
+            st.error(f"🛑 PRICE SPIKE +{int(delta)}¢ — DO NOT CHASE")
         elif live:
             st.write(f"{live['status']} {live['quarter']} {live['clock']} | Total: {live['total']} | {p_status}")
         else:
@@ -514,7 +518,7 @@ Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.
         score, rec, color, breakdown = calculate_confidence(sel, q1_val, watchlist, spread)
         if q1_val is None:
             st.warning("⏳ WAITING FOR Q1")
-            st.write(f"NO Price: {sel['no_ask']:.2f} | Pregame limit: 0.68")
+            st.write(f"NO Price: {int(sel['no_ask'])}¢ | Pregame limit: 68¢")
         else:
             st.subheader(f"Score: {score}/100")
             st.progress(min(score/100, 1.0))
@@ -531,4 +535,4 @@ Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v4.4 | ESPN Live | Kill Switch Active | Watchlist Priority")
+st.caption("v4.7 | ESPN Live | Kill Switch | Prices in Cents")
