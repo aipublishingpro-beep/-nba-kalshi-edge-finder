@@ -1,271 +1,469 @@
 import streamlit as st
 import requests
-from datetime import datetime
-import math
+from datetime import datetime, timedelta
+import pytz
 
-st.set_page_config(page_title="NBA Kalshi Edge Finder", page_icon="🏀", layout="wide")
+# ============================================================
+# TEAM DATA - 3PT% AND PACE (UPDATE WEEKLY)
+# ============================================================
 
-KALSHI_ABBREV_MAP = {
-    "ATL": "Atlanta", "BOS": "Boston", "BKN": "Brooklyn", "CHA": "Charlotte", "CHI": "Chicago", "CLE": "Cleveland",
-    "DAL": "Dallas", "DEN": "Denver", "DET": "Detroit", "GSW": "Golden State", "HOU": "Houston", "IND": "Indiana",
-    "LAC": "LA Clippers", "LAL": "LA Lakers", "MEM": "Memphis", "MIA": "Miami", "MIL": "Milwaukee", "MIN": "Minnesota",
-    "NOP": "New Orleans", "NYK": "New York", "OKC": "Oklahoma City", "ORL": "Orlando", "PHI": "Philadelphia",
-    "PHX": "Phoenix", "POR": "Portland", "SAC": "Sacramento", "SAS": "San Antonio", "TOR": "Toronto", "UTA": "Utah", "WAS": "Washington"
+# 3PT% rankings (lower = worse shooting, more likely to suppress totals)
+# Data source: NBA.com/stats - update weekly
+TEAM_3PT_PCT = {
+    "Atlanta": 0.362, "Boston": 0.382, "Brooklyn": 0.348, "Charlotte": 0.341,
+    "Chicago": 0.352, "Cleveland": 0.358, "Dallas": 0.371, "Denver": 0.365,
+    "Detroit": 0.339, "Golden State": 0.378, "Houston": 0.344, "Indiana": 0.374,
+    "LA Clippers": 0.356, "LA Lakers": 0.349, "Memphis": 0.332, "Miami": 0.355,
+    "Milwaukee": 0.363, "Minnesota": 0.357, "New Orleans": 0.346, "New York": 0.361,
+    "Oklahoma City": 0.369, "Orlando": 0.343, "Philadelphia": 0.359, "Phoenix": 0.367,
+    "Portland": 0.347, "Sacramento": 0.364, "San Antonio": 0.338, "Toronto": 0.351,
+    "Utah": 0.345, "Washington": 0.336
 }
 
-TEAM_STATS = {
-    "Atlanta": {"net_rating": -1.8, "def_rank": 21, "pace": 101.2, "ppg": 118.5, "home_win_pct": 0.48, "away_win_pct": 0.32, "division": "Southeast"},
-    "Boston": {"net_rating": 11.2, "def_rank": 2, "pace": 99.8, "ppg": 120.5, "home_win_pct": 0.82, "away_win_pct": 0.68, "division": "Atlantic"},
-    "Brooklyn": {"net_rating": -3.2, "def_rank": 22, "pace": 96.3, "ppg": 108.2, "home_win_pct": 0.38, "away_win_pct": 0.28, "division": "Atlantic"},
-    "Charlotte": {"net_rating": -5.5, "def_rank": 25, "pace": 100.5, "ppg": 110.5, "home_win_pct": 0.35, "away_win_pct": 0.22, "division": "Southeast"},
-    "Chicago": {"net_rating": -2.5, "def_rank": 18, "pace": 98.5, "ppg": 112.0, "home_win_pct": 0.45, "away_win_pct": 0.30, "division": "Central"},
-    "Cleveland": {"net_rating": 9.8, "def_rank": 1, "pace": 97.2, "ppg": 116.8, "home_win_pct": 0.78, "away_win_pct": 0.65, "division": "Central"},
-    "Dallas": {"net_rating": 3.5, "def_rank": 12, "pace": 99.8, "ppg": 117.5, "home_win_pct": 0.58, "away_win_pct": 0.42, "division": "Southwest"},
-    "Denver": {"net_rating": 4.2, "def_rank": 15, "pace": 98.5, "ppg": 116.2, "home_win_pct": 0.68, "away_win_pct": 0.45, "division": "Northwest"},
-    "Detroit": {"net_rating": -6.2, "def_rank": 27, "pace": 99.2, "ppg": 110.8, "home_win_pct": 0.32, "away_win_pct": 0.18, "division": "Central"},
-    "Golden State": {"net_rating": 2.8, "def_rank": 11, "pace": 100.2, "ppg": 115.8, "home_win_pct": 0.62, "away_win_pct": 0.38, "division": "Pacific"},
-    "Houston": {"net_rating": 3.2, "def_rank": 5, "pace": 99.5, "ppg": 114.2, "home_win_pct": 0.58, "away_win_pct": 0.42, "division": "Southwest"},
-    "Indiana": {"net_rating": 2.5, "def_rank": 24, "pace": 103.5, "ppg": 121.5, "home_win_pct": 0.55, "away_win_pct": 0.40, "division": "Central"},
-    "LA Clippers": {"net_rating": 1.5, "def_rank": 10, "pace": 98.5, "ppg": 112.8, "home_win_pct": 0.52, "away_win_pct": 0.38, "division": "Pacific"},
-    "LA Lakers": {"net_rating": 1.8, "def_rank": 13, "pace": 99.8, "ppg": 115.5, "home_win_pct": 0.55, "away_win_pct": 0.38, "division": "Pacific"},
-    "Memphis": {"net_rating": 2.2, "def_rank": 16, "pace": 100.8, "ppg": 117.2, "home_win_pct": 0.55, "away_win_pct": 0.40, "division": "Southwest"},
-    "Miami": {"net_rating": 0.5, "def_rank": 8, "pace": 97.5, "ppg": 110.5, "home_win_pct": 0.52, "away_win_pct": 0.35, "division": "Southeast"},
-    "Milwaukee": {"net_rating": 3.8, "def_rank": 14, "pace": 100.5, "ppg": 118.2, "home_win_pct": 0.62, "away_win_pct": 0.45, "division": "Central"},
-    "Minnesota": {"net_rating": 5.5, "def_rank": 3, "pace": 97.8, "ppg": 112.5, "home_win_pct": 0.65, "away_win_pct": 0.50, "division": "Northwest"},
-    "New Orleans": {"net_rating": -2.0, "def_rank": 19, "pace": 99.0, "ppg": 113.2, "home_win_pct": 0.45, "away_win_pct": 0.28, "division": "Southwest"},
-    "New York": {"net_rating": 5.8, "def_rank": 6, "pace": 98.5, "ppg": 117.8, "home_win_pct": 0.68, "away_win_pct": 0.52, "division": "Atlantic"},
-    "Oklahoma City": {"net_rating": 10.5, "def_rank": 4, "pace": 99.5, "ppg": 119.5, "home_win_pct": 0.78, "away_win_pct": 0.65, "division": "Northwest"},
-    "Orlando": {"net_rating": 4.8, "def_rank": 2, "pace": 96.5, "ppg": 108.5, "home_win_pct": 0.62, "away_win_pct": 0.48, "division": "Southeast"},
-    "Philadelphia": {"net_rating": 1.2, "def_rank": 9, "pace": 98.2, "ppg": 113.8, "home_win_pct": 0.52, "away_win_pct": 0.35, "division": "Atlantic"},
-    "Phoenix": {"net_rating": 2.5, "def_rank": 17, "pace": 98.8, "ppg": 115.2, "home_win_pct": 0.58, "away_win_pct": 0.42, "division": "Pacific"},
-    "Portland": {"net_rating": -6.8, "def_rank": 28, "pace": 98.2, "ppg": 107.5, "home_win_pct": 0.32, "away_win_pct": 0.18, "division": "Northwest"},
-    "Sacramento": {"net_rating": -1.2, "def_rank": 23, "pace": 100.5, "ppg": 117.8, "home_win_pct": 0.52, "away_win_pct": 0.35, "division": "Pacific"},
-    "San Antonio": {"net_rating": -4.5, "def_rank": 26, "pace": 99.8, "ppg": 112.5, "home_win_pct": 0.42, "away_win_pct": 0.28, "division": "Southwest"},
-    "Toronto": {"net_rating": -3.2, "def_rank": 20, "pace": 99.5, "ppg": 113.5, "home_win_pct": 0.42, "away_win_pct": 0.30, "division": "Atlantic"},
-    "Utah": {"net_rating": -8.5, "def_rank": 29, "pace": 100.8, "ppg": 108.2, "home_win_pct": 0.32, "away_win_pct": 0.18, "division": "Northwest"},
-    "Washington": {"net_rating": -9.2, "def_rank": 30, "pace": 101.2, "ppg": 108.5, "home_win_pct": 0.28, "away_win_pct": 0.15, "division": "Southeast"},
+# Pace rankings (possessions per 48 min - lower = slower, suppresses totals)
+TEAM_PACE = {
+    "Atlanta": 100.2, "Boston": 98.1, "Brooklyn": 99.4, "Charlotte": 101.3,
+    "Chicago": 97.8, "Cleveland": 96.5, "Dallas": 98.7, "Denver": 97.2,
+    "Detroit": 99.1, "Golden State": 100.8, "Houston": 101.5, "Indiana": 102.4,
+    "LA Clippers": 97.4, "LA Lakers": 99.8, "Memphis": 99.6, "Miami": 96.8,
+    "Milwaukee": 98.3, "Minnesota": 97.1, "New Orleans": 100.1, "New York": 96.2,
+    "Oklahoma City": 99.3, "Orlando": 97.6, "Philadelphia": 98.5, "Phoenix": 99.9,
+    "Portland": 100.6, "Sacramento": 101.1, "San Antonio": 98.9, "Toronto": 100.4,
+    "Utah": 98.2, "Washington": 101.8
 }
 
-TEAM_LOCATIONS = {
-    "Atlanta": (33.757, -84.396), "Boston": (42.366, -71.062), "Brooklyn": (40.683, -73.976), "Charlotte": (35.225, -80.839),
-    "Chicago": (41.881, -87.674), "Cleveland": (41.496, -81.688), "Dallas": (32.790, -96.810), "Denver": (39.749, -105.010),
-    "Detroit": (42.341, -83.055), "Golden State": (37.768, -122.388), "Houston": (29.751, -95.362), "Indiana": (39.764, -86.156),
-    "LA Clippers": (34.043, -118.267), "LA Lakers": (34.043, -118.267), "Memphis": (35.138, -90.051), "Miami": (25.781, -80.188),
-    "Milwaukee": (43.045, -87.917), "Minnesota": (44.979, -93.276), "New Orleans": (29.949, -90.082), "New York": (40.751, -73.994),
-    "Oklahoma City": (35.463, -97.515), "Orlando": (28.539, -81.384), "Philadelphia": (39.901, -75.172), "Phoenix": (33.446, -112.071),
-    "Portland": (45.532, -122.667), "Sacramento": (38.580, -121.500), "San Antonio": (29.427, -98.438), "Toronto": (43.643, -79.379),
-    "Utah": (40.768, -111.901), "Washington": (38.898, -77.021),
+# Team abbreviation mappings
+ABBREV_TO_FULL = {
+    "ATL": "Atlanta", "BOS": "Boston", "BKN": "Brooklyn", "CHA": "Charlotte",
+    "CHI": "Chicago", "CLE": "Cleveland", "DAL": "Dallas", "DEN": "Denver",
+    "DET": "Detroit", "GSW": "Golden State", "HOU": "Houston", "IND": "Indiana",
+    "LAC": "LA Clippers", "LAL": "LA Lakers", "MEM": "Memphis", "MIA": "Miami",
+    "MIL": "Milwaukee", "MIN": "Minnesota", "NOP": "New Orleans", "NYK": "New York",
+    "OKC": "Oklahoma City", "ORL": "Orlando", "PHI": "Philadelphia", "PHX": "Phoenix",
+    "POR": "Portland", "SAC": "Sacramento", "SAS": "San Antonio", "TOR": "Toronto",
+    "UTA": "Utah", "WAS": "Washington"
 }
 
-def calc_travel(away, home):
-    if away not in TEAM_LOCATIONS or home not in TEAM_LOCATIONS:
-        return 0
-    lat1, lon1 = TEAM_LOCATIONS[away]
-    lat2, lon2 = TEAM_LOCATIONS[home]
-    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
-    dlat, dlon = lat2 - lat1, lon2 - lon1
-    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
-    return round(3959 * 2 * math.asin(math.sqrt(a)))
+TICKER_ABBREVS = {
+    "ATL": "Atlanta", "BOS": "Boston", "BRO": "Brooklyn", "BKN": "Brooklyn",
+    "CHA": "Charlotte", "CHI": "Chicago", "CLE": "Cleveland", "DAL": "Dallas",
+    "DEN": "Denver", "DET": "Detroit", "GSW": "Golden State", "GS": "Golden State",
+    "HOU": "Houston", "IND": "Indiana", "LAC": "LA Clippers", "LAL": "LA Lakers",
+    "MEM": "Memphis", "MIA": "Miami", "MIL": "Milwaukee", "MIN": "Minnesota",
+    "NOP": "New Orleans", "NO": "New Orleans", "NYK": "New York", "NY": "New York",
+    "OKC": "Oklahoma City", "ORL": "Orlando", "PHI": "Philadelphia", "PHX": "Phoenix",
+    "PHO": "Phoenix", "POR": "Portland", "SAC": "Sacramento", "SAS": "San Antonio",
+    "SA": "San Antonio", "TOR": "Toronto", "UTA": "Utah", "WAS": "Washington"
+}
 
-def parse_teams(ticker):
-    try:
-        code = ticker.split('-')[1]
-        away_abbr, home_abbr = code[-6:-3].upper(), code[-3:].upper()
-        date_part = code[:-6]
-        year = int("20" + date_part[:2])
-        month_map = {'JAN': 1, 'FEB': 2, 'MAR': 3, 'APR': 4, 'MAY': 5, 'JUN': 6, 'JUL': 7, 'AUG': 8, 'SEP': 9, 'OCT': 10, 'NOV': 11, 'DEC': 12}
-        game_date = datetime(year, month_map.get(date_part[2:5].upper(), 1), int(date_part[5:7]))
-        return KALSHI_ABBREV_MAP.get(home_abbr), KALSHI_ABBREV_MAP.get(away_abbr), game_date
-    except:
-        return None, None, None
+# ============================================================
+# STEP 1: GENERATE PRIMARY WATCHLIST
+# ============================================================
 
-@st.cache_data(ttl=300)
-def fetch_markets():
-    markets = []
-    today = datetime.now().date()
-    try:
-        resp = requests.get("https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXNBAGAME&status=open", timeout=10)
-        for m in resp.json().get('markets', []):
-            home, away, game_date = parse_teams(m.get('ticker', ''))
-            if not home or not away or not game_date or game_date.date() < today:
-                continue
-            yes_bid = m.get('yes_bid', 0) or 0
-            yes_ask = m.get('yes_ask', 0) or 0
-            yes_price = (yes_bid + yes_ask) / 2 if yes_bid and yes_ask else yes_ask or yes_bid or 50
-            # KALSHI YES = Away wins, so home win % = 100 - yes_price
-            home_prob = 100 - yes_price
-            markets.append({
-                'ticker': m.get('ticker'), 'home': home, 'away': away,
-                'home_prob': home_prob, 'away_prob': yes_price,
-                'game_date': game_date.strftime('%b %d'),
-                'game_dt': game_date, 'is_today': game_date.date() == today
-            })
-    except Exception as e:
-        st.error(f"API error: {e}")
-    return sorted(markets, key=lambda x: x['game_dt'])
+def get_bottom_3pt_teams(n=8):
+    """Bottom N teams by 3PT% - these can't inflate totals through variance"""
+    sorted_teams = sorted(TEAM_3PT_PCT.items(), key=lambda x: x[1])
+    return [team for team, pct in sorted_teams[:n]]
 
-@st.cache_data(ttl=3600)
-def fetch_rest():
-    rest = {t: 2 for t in TEAM_STATS}
-    try:
-        resp = requests.get("https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXNBAGAME&status=settled&limit=200", timeout=10)
-        now = datetime.now()
-        for m in resp.json().get('markets', []):
-            home, away, gd = parse_teams(m.get('ticker', ''))
-            if home and away and gd:
-                days = (now - gd).days
-                if 0 <= days <= 5:
-                    rest[home] = min(rest.get(home, 99), days)
-                    rest[away] = min(rest.get(away, 99), days)
-    except:
-        pass
-    return rest
+def get_bottom_pace_teams(n=10):
+    """Bottom N teams by pace - these limit possession volume"""
+    sorted_teams = sorted(TEAM_PACE.items(), key=lambda x: x[1])
+    return [team for team, pace in sorted_teams[:n]]
 
-def calc_edge(home, away, market_home_prob, h_rest, a_rest, h_inj, a_inj, travel):
-    """
-    SIMPLE EDGE CALCULATION
-    Market is 95% right. We only adjust for situational factors.
-    """
-    hs = TEAM_STATS.get(home, {})
-    aws = TEAM_STATS.get(away, {})
-    if not hs or not aws:
-        return {"edge": 0, "adj_edge": 0, "factors": {}, "rec": "NO DATA"}
-    
-    factors = {}
-    
-    # REST: +1% per day advantage, max ±2%
-    rest_diff = h_rest - a_rest
-    factors["rest"] = max(-2, min(2, rest_diff * 0.8))
-    
-    # INJURY: +1.5% per level, max ±3%
-    inj_diff = a_inj - h_inj
-    factors["injury"] = max(-3, min(3, inj_diff * 1.0))
-    
-    # TRAVEL: +0.5% if away traveled far
-    factors["travel"] = 0.5 if travel > 2000 else (0.3 if travel > 1500 else 0)
-    
-    # DIVISION: -0.5% (games are tighter)
-    factors["division"] = -0.5 if hs.get("division") == aws.get("division") else 0
-    
-    # SUM AND CAP
-    raw_edge = sum(factors.values())
-    raw_edge = max(-3, min(3, raw_edge))  # Cap at ±3%
-    
-    # HAIRCUT: Keep only 60% of edge
-    adj_edge = raw_edge * 0.6
-    
-    # RECOMMENDATION
-    abs_edge = abs(adj_edge)
-    if abs_edge < 1.0:
-        rec = "NO EDGE"
-    elif abs_edge < 1.8:
-        rec = "SLIGHT " + ("HOME" if adj_edge > 0 else "AWAY")
-    elif abs_edge < 2.5:
-        rec = "LEAN " + ("HOME" if adj_edge > 0 else "AWAY")
+def get_primary_watchlist():
+    """Intersection of bottom 3PT% AND bottom pace teams"""
+    bottom_3pt = set(get_bottom_3pt_teams(8))
+    bottom_pace = set(get_bottom_pace_teams(10))
+    return bottom_3pt.intersection(bottom_pace)
+
+# ============================================================
+# REST DAY CALCULATIONS
+# ============================================================
+
+# Last game dates (UPDATE DAILY or pull from API)
+# Format: "Team": "YYYY-MM-DD"
+LAST_GAME_DATES = {
+    "Atlanta": "2026-01-10", "Boston": "2026-01-10", "Brooklyn": "2026-01-09",
+    "Charlotte": "2026-01-10", "Chicago": "2026-01-09", "Cleveland": "2026-01-10",
+    "Dallas": "2026-01-10", "Denver": "2026-01-09", "Detroit": "2026-01-10",
+    "Golden State": "2026-01-10", "Houston": "2026-01-09", "Indiana": "2026-01-10",
+    "LA Clippers": "2026-01-09", "LA Lakers": "2026-01-10", "Memphis": "2026-01-10",
+    "Miami": "2026-01-09", "Milwaukee": "2026-01-10", "Minnesota": "2026-01-09",
+    "New Orleans": "2026-01-10", "New York": "2026-01-10", "Oklahoma City": "2026-01-09",
+    "Orlando": "2026-01-10", "Philadelphia": "2026-01-09", "Phoenix": "2026-01-10",
+    "Portland": "2026-01-09", "Sacramento": "2026-01-10", "San Antonio": "2026-01-09",
+    "Toronto": "2026-01-10", "Utah": "2026-01-09", "Washington": "2026-01-10"
+}
+
+def get_rest_days(team):
+    """Calculate days since last game"""
+    if team not in LAST_GAME_DATES:
+        return None
+    last_game = datetime.strptime(LAST_GAME_DATES[team], "%Y-%m-%d")
+    today = datetime.now()
+    return (today - last_game).days
+
+def get_rest_status(days):
+    """Categorize rest status"""
+    if days is None:
+        return "Unknown", "⚪"
+    elif days <= 1:
+        return "Short Rest", "🔴"
+    elif days == 2:
+        return "Normal Rest", "🟡"
     else:
-        rec = "EDGE " + ("HOME" if adj_edge > 0 else "AWAY")
+        return "Extended Rest", "🟢"
+
+# ============================================================
+# KALSHI API FUNCTIONS
+# ============================================================
+
+def parse_teams_from_ticker(ticker_code):
+    """Parse team codes from ticker like '26JAN11NOPWAS' -> ('New Orleans', 'Washington')"""
+    if len(ticker_code) < 12:
+        return None, None
+    teams_part = ticker_code[7:]
+    if len(teams_part) == 6:
+        away_code = teams_part[:3]
+        home_code = teams_part[3:]
+    else:
+        away_code = teams_part[:3]
+        home_code = teams_part[3:6] if len(teams_part) >= 6 else teams_part[3:]
+    away = TICKER_ABBREVS.get(away_code.upper(), away_code)
+    home = TICKER_ABBREVS.get(home_code.upper(), home_code)
+    return away, home
+
+def fetch_extreme_totals(min_threshold=245):
+    """Fetch only extreme totals (≥245) from Kalshi"""
+    url = "https://api.elections.kalshi.com/trade-api/v2/markets"
+    params = {"series_ticker": "KXNBATOTAL", "status": "open", "limit": 200}
     
-    return {
-        "raw_edge": round(raw_edge, 2),
-        "adj_edge": round(adj_edge, 2),
-        "factors": factors,
-        "rec": rec,
-        "h_rest": h_rest, "a_rest": a_rest,
-        "travel": travel
+    try:
+        response = requests.get(url, params=params, timeout=15)
+        if response.status_code != 200:
+            return [], f"API Error: {response.status_code}"
+        
+        data = response.json()
+        markets = data.get("markets", [])
+        extreme_markets = []
+        
+        for m in markets:
+            floor_strike = m.get("floor_strike", 0)
+            if floor_strike and floor_strike >= min_threshold:
+                event_ticker = m.get("event_ticker", "")
+                parts = event_ticker.split("-")
+                if len(parts) >= 2:
+                    game_code = parts[1]
+                    away, home = parse_teams_from_ticker(game_code)
+                    
+                    yes_ask = m.get("yes_ask", 0) or 0
+                    no_ask = m.get("no_ask", 0) or 0
+                    if no_ask == 0 and yes_ask > 0:
+                        no_ask = 1 - yes_ask
+                    
+                    extreme_markets.append({
+                        "ticker": m.get("ticker", ""),
+                        "event_ticker": event_ticker,
+                        "threshold": floor_strike,
+                        "away_team": away,
+                        "home_team": home,
+                        "yes_ask": yes_ask,
+                        "no_ask": no_ask,
+                        "volume": m.get("volume", 0),
+                        "title": m.get("title", "")
+                    })
+        
+        extreme_markets.sort(key=lambda x: x["threshold"], reverse=True)
+        return extreme_markets, None
+        
+    except Exception as e:
+        return [], str(e)
+
+# ============================================================
+# FILTER LOGIC
+# ============================================================
+
+def check_all_filters(market, q1_total, watchlist, spread_estimate=5):
+    """Run all 6 filters and return pass/fail for each"""
+    away = market["away_team"]
+    home = market["home_team"]
+    threshold = market["threshold"]
+    no_ask = market["no_ask"]
+    
+    filters = {}
+    
+    # Filter 1: Threshold ≥ 245
+    filters["threshold"] = {
+        "pass": threshold >= 245,
+        "value": threshold,
+        "rule": "≥ 245"
     }
-
-# ========== UI ==========
-st.title("🏀 NBA Edge Finder")
-st.caption("Market-adjusted • Situational edges only • Realistic 1-3%")
-
-st.sidebar.header("⚙️ Settings")
-st.sidebar.markdown("**Edge Thresholds**")
-st.sidebar.write("• <1% = No edge")
-st.sidebar.write("• 1-1.8% = Slight")
-st.sidebar.write("• 1.8-2.5% = Lean")
-st.sidebar.write("• 2.5%+ = Edge (rare)")
-st.sidebar.markdown("---")
-st.sidebar.write("**Haircut: 40%**")
-st.sidebar.caption("We reduce edges by 40%")
-
-if st.sidebar.button("🔄 Refresh"):
-    st.cache_data.clear()
-    st.rerun()
-
-markets = fetch_markets()
-rest = fetch_rest()
-
-st.sidebar.markdown("---")
-st.sidebar.write(f"**Games:** {len(markets)}")
-
-# Calculate all edges
-results = []
-for g in markets:
-    if not g['is_today']:
-        continue
-    travel = calc_travel(g['away'], g['home'])
-    analysis = calc_edge(g['home'], g['away'], g['home_prob'], rest.get(g['home'], 2), rest.get(g['away'], 2), 0, 0, travel)
-    results.append({**g, **analysis})
-
-# Sort by absolute edge
-results.sort(key=lambda x: abs(x.get('adj_edge', 0)), reverse=True)
-
-# TOP EDGES
-st.markdown("---")
-st.subheader("🎯 Today's Edges")
-
-edges_found = [r for r in results if abs(r['adj_edge']) >= 1.0]
-if edges_found:
-    cols = st.columns(min(3, len(edges_found)))
-    for i, r in enumerate(edges_found[:3]):
-        with cols[i]:
-            team = r['home'] if r['adj_edge'] > 0 else r['away']
-            mkt = r['home_prob'] if r['adj_edge'] > 0 else r['away_prob']
-            color = "#22c55e" if abs(r['adj_edge']) >= 1.8 else "#888"
-            st.markdown(f'''
-            <div style="background:rgba(34,197,94,0.1); border-left:4px solid {color}; border-radius:8px; padding:16px; margin:8px 0;">
-                <div style="font-size:1.4rem; font-weight:700;">{team}</div>
-                <div style="font-size:1.6rem; font-weight:800; color:{color};">+{abs(r["adj_edge"]):.1f}%</div>
-                <div style="color:#888; font-size:0.85rem;">{r["game_date"]} • {r["away"]} @ {r["home"]}</div>
-                <div style="color:#666; font-size:0.75rem;">{r["rec"]} • Market: {mkt:.0f}%</div>
-            </div>
-            ''', unsafe_allow_html=True)
-else:
-    st.info("✅ No actionable edges today. Market is efficient.")
-
-st.caption("💡 Edges are 1-3%. If a model shows 10%+, it's broken.")
-
-# GAME LIST
-st.markdown("---")
-st.subheader("📋 All Games")
-
-for r in results:
-    edge = r['adj_edge']
-    ind = "🟢" if abs(edge) >= 1.8 else ("🟡" if abs(edge) >= 1.0 else "⚪")
     
-    with st.expander(f"{ind} {r['game_date']} | {r['away']} @ {r['home']} | Edge: {edge:+.1f}% | {r['rec']}"):
-        st.write(f"**Market:** {r['home']} {r['home_prob']:.0f}% | {r['away']} {r['away_prob']:.0f}%")
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            h_inj = st.select_slider(f"🏥 {r['home']}", [0,1,2,3], 0, format_func=lambda x: ["Full","Minor","GTD","OUT"][x], key=f"h_{r['ticker']}")
-        with c2:
-            a_inj = st.select_slider(f"🏥 {r['away']}", [0,1,2,3], 0, format_func=lambda x: ["Full","Minor","GTD","OUT"][x], key=f"a_{r['ticker']}")
-        
-        # Recalculate with injuries
-        new_analysis = calc_edge(r['home'], r['away'], r['home_prob'], r['h_rest'], r['a_rest'], h_inj, a_inj, r['travel'])
-        
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Raw Adj", f"{new_analysis['raw_edge']:+.1f}%")
-        c2.metric("After Haircut", f"{new_analysis['adj_edge']:+.1f}%")
-        c3.metric("Final Edge", f"{new_analysis['adj_edge']:+.1f}%")
-        c4.metric("Rec", new_analysis['rec'])
-        
-        with st.expander("📊 Factors"):
-            for k, v in new_analysis['factors'].items():
-                st.write(f"• {k}: {v:+.2f}%")
-            st.write(f"**Raw total:** {new_analysis['raw_edge']:+.2f}%")
-            st.write(f"**After 40% haircut:** {new_analysis['adj_edge']:+.2f}%")
+    # Filter 2: NO ask ≤ 0.68
+    filters["price"] = {
+        "pass": no_ask <= 0.68,
+        "value": f"{no_ask:.2f}",
+        "rule": "≤ 0.68"
+    }
+    
+    # Filter 3: Primary Watchlist team involved
+    has_watchlist = away in watchlist or home in watchlist
+    watchlist_team = away if away in watchlist else (home if home in watchlist else "None")
+    filters["watchlist"] = {
+        "pass": has_watchlist,
+        "value": watchlist_team,
+        "rule": "At least 1 team"
+    }
+    
+    # Filter 4: Short rest (0-1 days)
+    away_rest = get_rest_days(away)
+    home_rest = get_rest_days(home)
+    has_short_rest = (away_rest is not None and away_rest <= 1) or (home_rest is not None and home_rest <= 1)
+    rest_info = f"{away}: {away_rest}d, {home}: {home_rest}d"
+    filters["rest"] = {
+        "pass": has_short_rest,
+        "value": rest_info,
+        "rule": "≤ 1 day for at least 1 team"
+    }
+    
+    # Filter 5: Q1 Total < 50
+    filters["q1"] = {
+        "pass": q1_total < 50 if q1_total is not None else False,
+        "value": q1_total if q1_total is not None else "Not entered",
+        "rule": "< 50 (prefer < 48)"
+    }
+    
+    # Filter 6: OT Risk (spread estimate)
+    ot_ok = spread_estimate >= 5
+    filters["ot_risk"] = {
+        "pass": ot_ok,
+        "value": f"Spread ~{spread_estimate}",
+        "rule": "Spread ≥ 5 preferred"
+    }
+    
+    # All pass?
+    all_pass = all(f["pass"] for f in filters.values())
+    
+    return filters, all_pass
 
-st.markdown("---")
-st.caption("⚠️ Realistic edges are 1-3%. Pass 90% of games. Markets are efficient.")
+# ============================================================
+# STREAMLIT APP
+# ============================================================
+
+st.set_page_config(
+    page_title="Extreme Totals NO Finder",
+    page_icon="🎯",
+    layout="wide"
+)
+
+st.title("🎯 KALSHI EXTREME TOTALS - NO FINDER")
+st.caption("Tail-risk exploitation system. You are not betting averages. You are betting tail collapse.")
+
+# Sidebar
+with st.sidebar:
+    st.header("⚙️ System Settings")
+    
+    # Threshold filter
+    min_threshold = st.selectbox(
+        "Minimum Threshold",
+        options=[245, 248, 250, 252, 255],
+        index=0,
+        help="Only show markets at or above this total"
+    )
+    
+    # Max NO price
+    max_no_price = st.slider(
+        "Max NO Ask Price",
+        min_value=0.50,
+        max_value=0.75,
+        value=0.68,
+        step=0.01,
+        help="Skip if NO is priced above this (safety already priced in)"
+    )
+    
+    st.divider()
+    
+    # Primary Watchlist
+    st.subheader("📋 Primary Watchlist")
+    st.caption("Teams in BOTH bottom 8 3PT% AND bottom 10 pace")
+    watchlist = get_primary_watchlist()
+    
+    if watchlist:
+        for team in sorted(watchlist):
+            st.write(f"• **{team}**")
+            st.caption(f"  3PT: {TEAM_3PT_PCT[team]:.1%} | Pace: {TEAM_PACE[team]:.1f}")
+    else:
+        st.warning("No teams qualify this week")
+    
+    st.divider()
+    
+    # Component Lists
+    with st.expander("🔍 Bottom 8 3PT% Teams"):
+        for team in get_bottom_3pt_teams(8):
+            st.write(f"• {team}: {TEAM_3PT_PCT[team]:.1%}")
+    
+    with st.expander("🐢 Bottom 10 Pace Teams"):
+        for team in get_bottom_pace_teams(10):
+            st.write(f"• {team}: {TEAM_PACE[team]:.1f}")
+    
+    st.divider()
+    st.caption("Last updated: Update TEAM_3PT_PCT and TEAM_PACE weekly")
+
+# Main content
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.header("📊 Extreme Totals Markets")
+    
+    # Fetch markets
+    if st.button("🔄 Refresh Markets", type="primary"):
+        st.cache_data.clear()
+    
+    @st.cache_data(ttl=300)
+    def load_markets(threshold):
+        return fetch_extreme_totals(threshold)
+    
+    markets, error = load_markets(min_threshold)
+    
+    if error:
+        st.error(f"API Error: {error}")
+    elif not markets:
+        st.info(f"No extreme totals (≥{min_threshold}) found. Markets may not be posted yet.")
+    else:
+        # Filter by max NO price
+        eligible_markets = [m for m in markets if m["no_ask"] <= max_no_price]
+        
+        st.success(f"Found {len(markets)} extreme totals, {len(eligible_markets)} within price range")
+        
+        for market in eligible_markets:
+            away = market["away_team"]
+            home = market["home_team"]
+            threshold = market["threshold"]
+            no_ask = market["no_ask"]
+            
+            # Check if watchlist team involved
+            has_watchlist = away in watchlist or home in watchlist
+            watchlist_badge = "✅ WATCHLIST" if has_watchlist else "⚠️ No watchlist team"
+            
+            # Rest info
+            away_rest = get_rest_days(away)
+            home_rest = get_rest_days(home)
+            away_status, away_icon = get_rest_status(away_rest)
+            home_status, home_icon = get_rest_status(home_rest)
+            
+            # Display card
+            with st.container():
+                st.subheader(f"🏀 {away} @ {home}")
+                
+                mcol1, mcol2, mcol3 = st.columns(3)
+                with mcol1:
+                    st.metric("Threshold", f"{threshold}")
+                with mcol2:
+                    price_color = "🟢" if no_ask <= 0.65 else "🟡" if no_ask <= 0.68 else "🔴"
+                    st.metric("NO Price", f"{price_color} {no_ask:.2f}")
+                with mcol3:
+                    st.write(f"**{watchlist_badge}**")
+                
+                # Rest status
+                st.write(f"**Rest:** {away_icon} {away} ({away_rest}d) vs {home_icon} {home} ({home_rest}d)")
+                
+                # Kalshi link
+                kalshi_url = f"https://kalshi.com/markets/{market['ticker']}"
+                st.markdown(f"[View on Kalshi]({kalshi_url})")
+                
+                st.divider()
+
+with col2:
+    st.header("✅ ENTRY CHECKLIST")
+    st.caption("ALL must pass before entry")
+    
+    # Select market for checklist
+    if markets:
+        market_options = [f"{m['away_team']} @ {m['home_team']} ({m['threshold']})" for m in markets]
+        selected_idx = st.selectbox("Select Game", range(len(market_options)), format_func=lambda x: market_options[x])
+        selected_market = markets[selected_idx]
+        
+        st.divider()
+        
+        # Q1 Input (LIVE CONFIRMATION)
+        st.subheader("🔴 LIVE Q1 CHECK")
+        q1_total = st.number_input(
+            "Enter Q1 Total (after Q1 ends)",
+            min_value=0,
+            max_value=100,
+            value=0,
+            help="Wait for Q1 to complete. Enter combined score."
+        )
+        
+        # Spread estimate
+        spread_est = st.number_input(
+            "Estimated Spread",
+            min_value=0.0,
+            max_value=30.0,
+            value=5.0,
+            step=0.5,
+            help="Check pregame spread. ≥5 preferred for OT safety"
+        )
+        
+        st.divider()
+        
+        # Run all filters
+        q1_val = q1_total if q1_total > 0 else None
+        filters, all_pass = check_all_filters(selected_market, q1_val, watchlist, spread_est)
+        
+        # Display each filter
+        for name, result in filters.items():
+            icon = "✅" if result["pass"] else "❌"
+            st.write(f"{icon} **{name.upper()}**: {result['value']} (rule: {result['rule']})")
+        
+        st.divider()
+        
+        # FINAL VERDICT
+        if all_pass:
+            st.success("🚀 ALL FILTERS PASS - ENTRY ELIGIBLE")
+            st.balloons()
+            
+            # Calculate suggested position
+            st.write(f"**Suggested Action:** BET NO on {selected_market['threshold']}")
+            st.write(f"**NO Price:** {selected_market['no_ask']:.2f}")
+            
+            kalshi_url = f"https://kalshi.com/markets/{selected_market['ticker']}"
+            st.markdown(f"### [→ PLACE BET ON KALSHI]({kalshi_url})")
+        else:
+            failed = [k for k, v in filters.items() if not v["pass"]]
+            st.error(f"❌ NO TRADE - Failed: {', '.join(failed)}")
+            st.caption("Do not enter. Wait for better setup.")
+    else:
+        st.info("Load markets to use checklist")
+
+# Bottom section - System Rules
+st.divider()
+with st.expander("📖 SYSTEM RULES (READ THIS)"):
+    st.markdown("""
+    ### THE EDGE
+    You are exploiting tail-risk overpricing. The market overestimates the probability of extreme scoring.
+    
+    ### THE BRAKES
+    1. **Low 3PT% teams** - Can't inflate totals through variance
+    2. **Slow pace teams** - Limit possession volume  
+    3. **Short rest** - Fatigue suppresses pace and shooting
+    4. **Price discipline** - NO ≤ 0.68 or safety is already priced
+    5. **OT avoidance** - Overtime kills extreme NOs
+    6. **Q1 confirmation** - Slow Q1 = unsustainable pressure on later quarters
+    
+    ### THE DISCIPLINE
+    - You will trade far less
+    - You will skip many "obvious" games
+    - You will feel bored most nights
+    - **That boredom is the edge**
+    
+    ### NEVER
+    - Chase the highest NO blindly
+    - Enter pregame (ALWAYS wait for Q1)
+    - Double down or martingale
+    - Bet games without a watchlist team
+    """)
+
+# Footer
+st.divider()
+st.caption("Extreme Totals NO Finder v1.0 | System designed for patience, not action")
