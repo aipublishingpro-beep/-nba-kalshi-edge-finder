@@ -114,6 +114,104 @@ def get_kalshi_url(market):
     if event_ticker: return f"https://kalshi.com/events/{event_ticker}"
     return "https://kalshi.com/sports/basketball/Pro%20Basketball%20(M)"
 
+# ============================================================
+# RECOMMENDED BID CALCULATOR
+# ============================================================
+def calculate_recommended_bid(no_ask, game_state, q1_total=None, is_spiked=False, q1_lock_imminent=False):
+    """
+    Calculate recommended bid based on game state and price.
+    
+    game_state: 'pregame', 'live_q1', 'post_q1'
+    Returns: (bid_price or None, label, explanation)
+    """
+    # KILL SWITCH - No bid if spiked
+    if is_spiked:
+        return None, "🛑 DO NOT BID", "Market moved too fast — wait for cooldown"
+    
+    # PREGAME - Patient parking
+    if game_state == 'pregame':
+        bid = max(no_ask - 0.10, 0.60)  # 10¢ below ask, floor at 0.60
+        return bid, "Patient Pregame Bid", "Let price come to you — don't chase"
+    
+    # LIVE Q1 with lock-in imminent
+    if game_state == 'live_q1' and q1_lock_imminent:
+        bid = min(no_ask - 0.05, 0.75)  # 5¢ below ask, cap at 0.75
+        return bid, "Early Live Bid", "Q1 lock-in forming — tighten if desired"
+    
+    # LIVE Q1 without lock-in
+    if game_state == 'live_q1':
+        bid = max(no_ask - 0.08, 0.60)  # 8¢ below ask
+        return bid, "Live Q1 Bid", "Waiting for Q1 end — park conservatively"
+    
+    # POST-Q1 CONFIRMED
+    if game_state == 'post_q1':
+        if q1_total and q1_total >= 55:
+            return None, "🚫 NO TRADE", "Q1 too high — skip this game"
+        if no_ask <= 0.75:
+            return None, "✅ ASK ACCEPTABLE", f"Lift ask at {no_ask:.2f} if desired"
+        else:
+            bid = no_ask - 0.03  # 3¢ below ask
+            return bid, "Post-Q1 Value Bid", "Information edge confirmed — tight spread OK"
+    
+    # Default fallback
+    return max(no_ask - 0.10, 0.60), "Default Bid", "Conservative parking"
+
+def get_game_state(live_data):
+    """Determine game state from live data."""
+    if not live_data:
+        return 'pregame', False, None
+    
+    period = live_data.get('period', 0)
+    quarter = str(live_data.get('quarter', ''))
+    clock = live_data.get('clock', '')
+    total = live_data.get('total', 0)
+    
+    # Check for Q1 lock-in imminent (Q1, < 1:15 remaining, total < 50)
+    q1_lock_imminent = False
+    if period == 1 and 'End' not in quarter:
+        # Parse clock to check if < 1:15 remaining
+        try:
+            if ':' in clock:
+                mins, secs = clock.split(':')
+                total_secs = int(mins) * 60 + int(float(secs))
+                if total_secs <= 75 and total < 50:  # 1:15 = 75 seconds
+                    q1_lock_imminent = True
+        except:
+            pass
+    
+    if period == 0 or live_data.get('status') == '🟡 SCHEDULED':
+        return 'pregame', False, None
+    elif period == 1 and 'End' in quarter:
+        return 'post_q1', False, total
+    elif period == 1:
+        return 'live_q1', q1_lock_imminent, total
+    elif period > 1:
+        return 'post_q1', False, total
+    
+    return 'pregame', False, None
+
+def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None):
+    """Render the bid recommendation box."""
+    game_state, q1_lock_imminent, q1_total = get_game_state(live_data)
+    spiked = is_spiked(ticker)
+    
+    bid, label, explanation = calculate_recommended_bid(
+        no_ask, game_state, q1_total, spiked, q1_lock_imminent
+    )
+    
+    # Build display
+    if spiked:
+        st.error(f"**{label}**\n\n{explanation}")
+    elif bid is not None:
+        st.info(f"**💵 Recommended Bid: {bid:.2f}**\n\n*{label}* — {explanation}")
+    else:
+        if "ACCEPTABLE" in label:
+            st.success(f"**{label}**\n\n{explanation}")
+        elif "NO TRADE" in label:
+            st.error(f"**{label}**\n\n{explanation}")
+        else:
+            st.warning(f"**{label}**\n\n{explanation}")
+
 def parse_game_date(game_code):
     try:
         year = "20" + game_code[:2]
@@ -215,7 +313,17 @@ with st.sidebar:
     st.subheader("🔊 Sound Alerts")
     if st.button("🔔 Test Sound"): st.session_state.test_sound = True
     st.divider()
-    st.error("🛑 KILL: +5¢ in 30s → ABORT")
+    st.subheader("🛑 KILL SWITCH")
+    st.caption("Auto-detects +5¢ jumps in 30s")
+    init_price_history()
+    active_spikes = sum(1 for v in st.session_state.spike_alerts.values() if v)
+    if active_spikes > 0:
+        st.error(f"⚠️ {active_spikes} ACTIVE SPIKE ALERT(S)")
+        if st.button("🔄 Clear All Spikes"):
+            st.session_state.spike_alerts = {}
+            st.rerun()
+    else:
+        st.success("✅ No price spikes detected")
 
 # MAIN
 if st.button("🔄 Refresh Markets & Scores", type="primary"):
@@ -264,6 +372,7 @@ else:
 Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.  
 **DO NOT CHASE.** Wait for cooldown.
                 """)
+                render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team)
                 if st.button(f"✅ Clear spike alert - {m['ticker']}", key=f"clear_{m['ticker']}"):
                     clear_spike(m["ticker"])
                     st.rerun()
@@ -273,6 +382,7 @@ Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.
 ⭐ WATCHLIST: **{wl_team}** (Bottom 8 3PT% + Bottom 10 Pace)  
 **Threshold:** {m["threshold"]} | **NO Price:** {m["no_ask"]:.2f} | **Live:** {live_str}
                 """)
+                render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team)
                 st.link_button(f"🔗 Open Kalshi - {m['threshold']}", get_kalshi_url(m), type="primary")
             st.markdown("---")
     
@@ -298,7 +408,8 @@ Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.
 Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.  
 **DO NOT CHASE.** Wait for cooldown.
                 """)
-                if st.button(f"✅ Clear spike alert - {m['ticker']}", key=f"clear_{m['ticker']}"):
+                render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team)
+                if st.button(f"✅ Clear spike alert - {m['ticker']}", key=f"clear_y_{m['ticker']}"):
                     clear_spike(m["ticker"])
                     st.rerun()
             else:
@@ -310,14 +421,15 @@ Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.
                 
                 # Price unlock guide
                 if m["no_ask"] <= 0.70:
-                    st.info(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 50-54")
+                    st.caption(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 50-54")
                 elif m["no_ask"] <= 0.75:
-                    st.info(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 48-49")
+                    st.caption(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 48-49")
                 elif m["no_ask"] <= 0.78:
-                    st.info(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 <48")
+                    st.caption(f"💡 Price {m['no_ask']:.2f} unlocks at Q1 <48")
                 else:
-                    st.error(f"🔴 Price {m['no_ask']:.2f} - Too expensive even with great Q1")
+                    st.caption(f"🔴 Price {m['no_ask']:.2f} - Too expensive even with great Q1")
                 
+                render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team)
                 st.link_button(f"🔗 Open Kalshi - {m['threshold']}", get_kalshi_url(m), type="secondary")
             st.markdown("---")
     
@@ -352,17 +464,24 @@ Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.
         live = get_live_game_data(away, home, live_scores)
         p_status = "🟢 OK" if no_ask <= 0.68 else "🟡 Wait" if no_ask <= 0.78 else "🔴 Expensive"
         
+        # Record price for spike detection
+        record_price(m["ticker"], no_ask)
+        spiked, delta = check_price_spike(m["ticker"], no_ask)
+        
         c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
         c1.subheader(f"🏀 {away} @ {home}")
         c2.metric("LIVE", f"{live['away_score']}-{live['home_score']}" if live else "—")
         c3.metric("Threshold", m["threshold"])
         c4.metric("NO Price", f"{no_ask:.2f}")
         
-        if live:
+        if spiked or is_spiked(m["ticker"]):
+            st.error(f"🛑 PRICE SPIKE +{delta:.2f} — DO NOT CHASE")
+        elif live:
             st.write(f"{live['status']} {live['quarter']} {live['clock']} | Total: {live['total']} | {p_status}")
         else:
             st.write(f"🟡 PENDING | {p_status}")
         
+        render_bid_recommendation(no_ask, live, m["ticker"])
         st.link_button("🔗 Open Kalshi", get_kalshi_url(m), type="secondary")
         st.divider()
     
@@ -412,4 +531,4 @@ Price jumped **+{delta:.2f}** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v4.3 | ESPN Live | Watchlist Priority View")
+st.caption("v4.4 | ESPN Live | Kill Switch Active | Watchlist Priority")
