@@ -300,12 +300,13 @@ def get_game_state(live_data):
         return 'post_q1', False, total
     return 'pregame', False, None
 
-def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, market_ticker=None):
+def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, market_ticker=None, threshold=None):
     game_state, q1_lock_imminent, q1_total = get_game_state(live_data)
     spiked = is_spiked(ticker)
     bid, label, explanation = calculate_recommended_bid(
         no_ask, game_state, q1_total, spiked, q1_lock_imminent
     )
+    threshold_str = f" on {threshold}" if threshold else ""
     if spiked:
         st.error(f"**{label}**\n\n{explanation}")
     elif bid is not None:
@@ -315,7 +316,7 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, ma
             st.markdown("""<style>.yellow-box {background-color: #FFD700; padding: 15px; border-radius: 8px; border: 2px solid #FFA500; margin-bottom: 10px;}</style>""", unsafe_allow_html=True)
             st.markdown(f"""
             <div class="yellow-box">
-                <span style="color: #000; font-size: 20px; font-weight: bold;">💵 Recommended Bid: {bid}¢</span><br>
+                <span style="color: #000; font-size: 20px; font-weight: bold;">💵 Recommended Bid: {bid}¢{threshold_str}</span><br>
                 <span style="color: #333; font-style: italic;">{label}</span> — <span style="color: #333;">{explanation}</span>
             </div>
             """, unsafe_allow_html=True)
@@ -558,7 +559,7 @@ else:
 Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.  
 **DO NOT CHASE.** Wait for cooldown.
                 """)
-                render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team, m["ticker"])
+                render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team, m["ticker"], m["threshold"])
                 if st.button(f"✅ Clear spike alert - {m['ticker']}", key=f"clear_{m['ticker']}"):
                     clear_spike(m["ticker"])
                     st.rerun()
@@ -646,7 +647,7 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
             st.write(f"{live['status']} {live['quarter']} {live['clock']} | Total: {live['total']} | {p_status}")
         else:
             st.write(f"🟡 PENDING | {p_status}")
-        render_bid_recommendation(no_ask, live, m["ticker"], None, m["ticker"])
+        render_bid_recommendation(no_ask, live, m["ticker"], None, m["ticker"], m["threshold"])
         st.link_button("🔗 Open Kalshi", get_kalshi_url(m), type="secondary")
         st.divider()
     
@@ -694,4 +695,4 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v7.2 PRIVATE | Auto-Refresh 15s | Pregame ≤75¢")
+st.caption("v7.3 PRIVATE | Auto-Refresh 15s | Pregame ≤75¢")
