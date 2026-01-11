@@ -85,7 +85,8 @@ def place_kalshi_order(ticker, side, price_cents, count, api_key, private_key_pe
             "count": count,
             "type": "limit",
             "no_price": price_cents,
-            "client_order_id": str(uuid.uuid4())
+            "client_order_id": str(uuid.uuid4()),
+            "expiration_ts": None  # GTC - Good Till Cancelled
         }
         
         response = requests.post(
@@ -699,4 +700,4 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v6.1 | Sidebar Controls Contract Size")
+st.caption("v6.2 | GTC Orders - Stay on Book")
