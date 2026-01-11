@@ -316,16 +316,14 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, ma
             </div>
             """, unsafe_allow_html=True)
             if show_trading:
-                col1, col2, col3 = st.columns([1, 2, 2])
+                col1, col2 = st.columns([1, 1])
                 with col1:
-                    num_contracts = st.number_input("Qty", min_value=1, value=st.session_state.default_contracts, key=f"contracts_{ticker}", label_visibility="collapsed")
-                with col2:
-                    if st.button(f"🟡 BID {bid}¢ × {num_contracts}", key=f"place_{ticker}", type="secondary", use_container_width=True):
+                    if st.button(f"🟡 BID {bid}¢ × {st.session_state.default_contracts}", key=f"place_{ticker}", type="secondary", use_container_width=True):
                         success, msg = place_kalshi_order(
                             ticker=market_ticker or ticker,
                             side="no",
                             price_cents=bid,
-                            count=num_contracts,
+                            count=st.session_state.default_contracts,
                             api_key=st.session_state.kalshi_api_key,
                             private_key_pem=st.session_state.kalshi_private_key
                         )
@@ -334,13 +332,13 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, ma
                             play_alert_sound("edge")
                         else:
                             st.error(f"❌ {msg}")
-                with col3:
-                    if st.button(f"🔴 LIFT ASK {int(no_ask)}¢ × {num_contracts}", key=f"lift_{ticker}", type="primary", use_container_width=True):
+                with col2:
+                    if st.button(f"🔴 LIFT ASK {int(no_ask)}¢ × {st.session_state.default_contracts}", key=f"lift_{ticker}", type="primary", use_container_width=True):
                         success, msg = place_kalshi_order(
                             ticker=market_ticker or ticker,
                             side="no",
                             price_cents=int(no_ask),
-                            count=num_contracts,
+                            count=st.session_state.default_contracts,
                             api_key=st.session_state.kalshi_api_key,
                             private_key_pem=st.session_state.kalshi_private_key
                         )
@@ -356,24 +354,20 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, ma
             with st.container():
                 st.success(f"**{label}**\n\n{explanation}")
                 if show_trading:
-                    col1, col2 = st.columns([1, 3])
-                    with col1:
-                        num_contracts = st.number_input("Qty", min_value=1, value=st.session_state.default_contracts, key=f"contracts_{ticker}", label_visibility="collapsed")
-                    with col2:
-                        if st.button(f"🔴 LIFT ASK {int(no_ask)}¢ × {num_contracts}", key=f"lift_{ticker}", type="primary", use_container_width=True):
-                            success, msg = place_kalshi_order(
-                                ticker=market_ticker or ticker,
-                                side="no",
-                                price_cents=int(no_ask),
-                                count=num_contracts,
-                                api_key=st.session_state.kalshi_api_key,
-                                private_key_pem=st.session_state.kalshi_private_key
-                            )
-                            if success:
-                                st.success(f"✅ FILLED! {msg}")
-                                play_alert_sound("edge")
-                            else:
-                                st.error(f"❌ {msg}")
+                    if st.button(f"🔴 LIFT ASK {int(no_ask)}¢ × {st.session_state.default_contracts}", key=f"lift_{ticker}", type="primary", use_container_width=True):
+                        success, msg = place_kalshi_order(
+                            ticker=market_ticker or ticker,
+                            side="no",
+                            price_cents=int(no_ask),
+                            count=st.session_state.default_contracts,
+                            api_key=st.session_state.kalshi_api_key,
+                            private_key_pem=st.session_state.kalshi_private_key
+                        )
+                        if success:
+                            st.success(f"✅ FILLED! {msg}")
+                            play_alert_sound("edge")
+                        else:
+                            st.error(f"❌ {msg}")
         elif "NO TRADE" in label:
             st.error(f"**{label}**\n\n{explanation}")
         else:
@@ -705,4 +699,4 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v6.0 | Two-Button Trading | No Contract Limit")
+st.caption("v6.1 | Sidebar Controls Contract Size")
