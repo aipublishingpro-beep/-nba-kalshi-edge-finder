@@ -9,6 +9,109 @@ import pytz
 st.set_page_config(page_title="Extreme Totals NO Finder", page_icon="🎯", layout="wide")
 
 # ============================================================
+# SOUND ALERT SYSTEM
+# ============================================================
+def play_alert_sound(alert_type="edge"):
+    """Play sound alert using Web Audio API"""
+    
+    # Different frequencies for different alerts
+    sounds = {
+        "edge": {"freq": 800, "duration": 0.3, "repeat": 2},      # High beep x2 - Edge found
+        "watchlist": {"freq": 600, "duration": 0.2, "repeat": 1}, # Medium beep - Watchlist team
+        "mispriced": {"freq": 1000, "duration": 0.15, "repeat": 3}, # Fast high beeps - Mispriced!
+        "q1_ended": {"freq": 500, "duration": 0.5, "repeat": 1},  # Long low beep - Q1 ended
+    }
+    
+    sound = sounds.get(alert_type, sounds["edge"])
+    
+    js_code = f"""
+    <script>
+    (function() {{
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const freq = {sound['freq']};
+        const duration = {sound['duration']};
+        const repeat = {sound['repeat']};
+        
+        for (let i = 0; i < repeat; i++) {{
+            setTimeout(() => {{
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = freq;
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + duration);
+            }}, i * (duration * 1000 + 100));
+        }}
+    }})();
+    </script>
+    """
+    st.components.v1.html(js_code, height=0)
+
+def check_and_alert(markets, live_scores, watchlist):
+    """Check for alert conditions and return alerts to display"""
+    alerts = []
+    
+    for m in markets:
+        away = m["away_team"]
+        home = m["home_team"]
+        no_ask = m["no_ask"]
+        threshold = m["threshold"]
+        
+        # Check watchlist
+        has_watchlist = away in watchlist or home in watchlist
+        wl_team = away if away in watchlist else (home if home in watchlist else None)
+        
+        # Get live data
+        live = get_live_game_data(away, home, live_scores)
+        
+        # ALERT 1: Watchlist team with good pregame price
+        if has_watchlist and no_ask <= 0.68:
+            alerts.append({
+                "type": "edge",
+                "message": f"🔥 EDGE: {wl_team} game at {no_ask:.2f} (threshold {threshold})",
+                "priority": 1
+            })
+        
+        # ALERT 2: Mispriced (very good price)
+        if no_ask <= 0.60:
+            alerts.append({
+                "type": "mispriced",
+                "message": f"💰 MISPRICED: {away}@{home} NO at {no_ask:.2f}!",
+                "priority": 2
+            })
+        
+        # ALERT 3: Q1 just ended with good total
+        if live:
+            if live['period'] == 1 and "End" in str(live.get('quarter', '')):
+                if live['total'] < 50:
+                    alerts.append({
+                        "type": "q1_ended",
+                        "message": f"✅ Q1 ENDED: {away}@{home} - Total {live['total']} - CHECK NOW!",
+                        "priority": 1
+                    })
+            
+            # ALERT 4: Q1 in progress with low score
+            if live['period'] == 1 and live['status'] == "🟢 LIVE":
+                if live['total'] < 40 and has_watchlist:
+                    alerts.append({
+                        "type": "watchlist",
+                        "message": f"🎯 Q1 WATCH: {wl_team} game at {live['total']} pts - Monitor for entry",
+                        "priority": 3
+                    })
+    
+    # Sort by priority
+    alerts.sort(key=lambda x: x["priority"])
+    return alerts
+
+# ============================================================
 # ESPN LIVE SCORES
 # ============================================================
 @st.cache_data(ttl=30)  # Refresh every 30 seconds
@@ -431,6 +534,14 @@ with st.sidebar:
     st.error("🛑 KILL SWITCH: If NO jumps +5¢ in 30s → ABORT")
     
     st.divider()
+    st.subheader("🔊 SOUND ALERTS")
+    st.caption("Alerts trigger when:")
+    st.write("🔥 **Edge** - Watchlist + price ≤0.68")
+    st.write("💰 **Mispriced** - Any NO ≤0.60")
+    st.write("✅ **Q1 Ended** - Q1 done, total <50")
+    st.write("🎯 **Q1 Watch** - Watchlist, Q1 <40")
+    
+    st.divider()
     st.caption("💡 Click Refresh to update live scores")
 
 # MAIN CONTENT
@@ -441,6 +552,48 @@ markets, error, today_date = fetch_extreme_totals(min_threshold)
 live_scores = fetch_espn_live_scores()
 
 st.caption(f"📅 Games for: **{today_date}** | Live scores refresh every 30s")
+
+# ============================================================
+# SOUND ALERTS SECTION
+# ============================================================
+if not error and markets:
+    # Check for alerts
+    alerts = check_and_alert(markets, live_scores, watchlist)
+    
+    # Sound toggle in session state
+    if 'sound_enabled' not in st.session_state:
+        st.session_state.sound_enabled = True
+    if 'last_alert_count' not in st.session_state:
+        st.session_state.last_alert_count = 0
+    
+    # Sound control
+    col_sound1, col_sound2 = st.columns([1, 4])
+    with col_sound1:
+        sound_on = st.toggle("🔊 Sound Alerts", value=st.session_state.sound_enabled)
+        st.session_state.sound_enabled = sound_on
+    
+    # Display alerts if any
+    if alerts:
+        with st.expander(f"🚨 **{len(alerts)} ALERT(S) DETECTED** - Click to view", expanded=True):
+            for alert in alerts:
+                if alert["type"] == "edge":
+                    st.error(alert["message"])
+                elif alert["type"] == "mispriced":
+                    st.warning(alert["message"])
+                elif alert["type"] == "q1_ended":
+                    st.success(alert["message"])
+                else:
+                    st.info(alert["message"])
+        
+        # Play sound if enabled and new alerts
+        if sound_on and len(alerts) > st.session_state.last_alert_count:
+            # Play the highest priority alert sound
+            top_alert = alerts[0]
+            play_alert_sound(top_alert["type"])
+        
+        st.session_state.last_alert_count = len(alerts)
+    else:
+        st.session_state.last_alert_count = 0
 
 if error:
     st.error(f"API Error: {error}")
@@ -512,8 +665,11 @@ else:
                 st.metric("NO Price", f"{edge['no_ask']:.2f}")
                 wl = "✅" if (edge["away_team"] in watchlist or edge["home_team"] in watchlist) else "⚠️"
                 st.write(f"Watchlist: {wl}")
+                
+                # Direct Kalshi Link - Always visible
+                st.link_button("🔗 Open Kalshi Market", f"https://kalshi.com/markets/{edge['ticker']}", type="secondary")
     else:
-        st.info("No pregame edges under 0.68")
+        st.info("No pregame edges under 0.68 — Check 'All Markets' below for full list with Kalshi links")
     
     st.divider()
     
@@ -574,7 +730,8 @@ else:
             else:
                 st.write(f"🟡 **PENDING** | {wl_badge} | {p_status}")
             
-            st.markdown(f"[Kalshi Link](https://kalshi.com/markets/{m['ticker']})")
+            # Direct Kalshi Link - Always visible, neutral placement
+            st.link_button("🔗 Open Kalshi Market", f"https://kalshi.com/markets/{m['ticker']}", type="secondary")
             st.divider()
     
     # CONFIDENCE SCORER
