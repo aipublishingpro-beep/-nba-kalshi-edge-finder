@@ -2,8 +2,96 @@ import streamlit as st
 import requests
 from datetime import datetime, timedelta
 import pytz
+import uuid
+import base64
+
+# Try to import cryptography for trading (optional)
+try:
+    from cryptography.hazmat.primitives import serialization, hashes
+    from cryptography.hazmat.primitives.asymmetric import padding
+    from cryptography.hazmat.backends import default_backend
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    CRYPTO_AVAILABLE = False
 
 st.set_page_config(page_title="Extreme Totals NO Finder", page_icon="🎯", layout="wide")
+
+# ============================================================
+# KALSHI TRADING API
+# ============================================================
+def init_trading():
+    if 'kalshi_api_key' not in st.session_state:
+        st.session_state.kalshi_api_key = ""
+    if 'kalshi_private_key' not in st.session_state:
+        st.session_state.kalshi_private_key = ""
+    if 'trading_enabled' not in st.session_state:
+        st.session_state.trading_enabled = False
+    if 'default_contracts' not in st.session_state:
+        st.session_state.default_contracts = 10
+
+def create_kalshi_signature(private_key_pem, timestamp, method, path):
+    """Create signature for Kalshi API authentication."""
+    if not CRYPTO_AVAILABLE:
+        return None
+    try:
+        private_key = serialization.load_pem_private_key(
+            private_key_pem.encode(), password=None, backend=default_backend()
+        )
+        message = f"{timestamp}{method}{path}".encode()
+        signature = private_key.sign(
+            message,
+            padding.PKCS1v15(),
+            hashes.SHA256()
+        )
+        return base64.b64encode(signature).decode()
+    except Exception as e:
+        return None
+
+def place_kalshi_order(ticker, side, price_cents, count, api_key, private_key_pem):
+    """Place a limit order on Kalshi. Returns (success, message)."""
+    if not CRYPTO_AVAILABLE:
+        return False, "cryptography library not installed"
+    try:
+        path = '/trade-api/v2/portfolio/orders'
+        timestamp = str(int(datetime.now().timestamp() * 1000))
+        signature = create_kalshi_signature(private_key_pem, timestamp, "POST", path)
+        
+        if not signature:
+            return False, "Failed to create signature - check private key"
+        
+        headers = {
+            'KALSHI-ACCESS-KEY': api_key,
+            'KALSHI-ACCESS-SIGNATURE': signature,
+            'KALSHI-ACCESS-TIMESTAMP': timestamp,
+            'Content-Type': 'application/json'
+        }
+        
+        # For NO contracts, we set no_price
+        order_data = {
+            "ticker": ticker,
+            "action": "buy",
+            "side": "no",
+            "count": count,
+            "type": "limit",
+            "no_price": price_cents,
+            "client_order_id": str(uuid.uuid4())
+        }
+        
+        response = requests.post(
+            f"https://api.elections.kalshi.com{path}",
+            headers=headers,
+            json=order_data,
+            timeout=10
+        )
+        
+        if response.status_code == 201:
+            order = response.json().get('order', {})
+            return True, f"Order placed! ID: {order.get('order_id', 'N/A')}"
+        else:
+            error_msg = response.json().get('error', {}).get('message', response.text)
+            return False, f"API Error: {error_msg}"
+    except Exception as e:
+        return False, f"Error: {str(e)}"
 
 # ============================================================
 # PRICE SPIKE DETECTION (KILL SWITCH)
@@ -214,8 +302,8 @@ def get_game_state(live_data):
     
     return 'pregame', False, None
 
-def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None):
-    """Render the bid recommendation box. Prices are in cents."""
+def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, market_ticker=None):
+    """Render the bid recommendation box with optional Place Bid button. Prices are in cents. BRIGHT YELLOW."""
     game_state, q1_lock_imminent, q1_total = get_game_state(live_data)
     spiked = is_spiked(ticker)
     
@@ -227,14 +315,68 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None):
     if spiked:
         st.error(f"**{label}**\n\n{explanation}")
     elif bid is not None:
-        st.warning(f"**💵 Recommended Bid: {bid}¢**\n\n*{label}* — {explanation}")
+        # BRIGHT YELLOW box with custom HTML
+        st.markdown(f"""
+        <div style="background-color: #FFD700; padding: 15px; border-radius: 8px; border: 2px solid #FFA500;">
+            <span style="color: #000; font-size: 20px; font-weight: bold;">💵 Recommended Bid: {bid}¢</span><br>
+            <span style="color: #333; font-style: italic;">{label}</span> — <span style="color: #333;">{explanation}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # PLACE BID BUTTON (if trading enabled)
+        init_trading()
+        if st.session_state.trading_enabled and st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                num_contracts = st.number_input(f"Contracts", min_value=1, max_value=100, value=st.session_state.default_contracts, key=f"contracts_{ticker}")
+            with col2:
+                if st.button(f"🚀 PLACE BID {bid}¢", key=f"place_{ticker}", type="primary"):
+                    success, msg = place_kalshi_order(
+                        ticker=market_ticker or ticker,
+                        side="no",
+                        price_cents=bid,
+                        count=num_contracts,
+                        api_key=st.session_state.kalshi_api_key,
+                        private_key_pem=st.session_state.kalshi_private_key
+                    )
+                    if success:
+                        st.success(f"✅ {msg}")
+                        play_alert_sound("edge")
+                    else:
+                        st.error(f"❌ {msg}")
     else:
         if "ACCEPTABLE" in label:
             st.success(f"**{label}**\n\n{explanation}")
+            # Also add place button for acceptable ask
+            init_trading()
+            if st.session_state.trading_enabled and st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    num_contracts = st.number_input(f"Contracts", min_value=1, max_value=100, value=st.session_state.default_contracts, key=f"contracts_{ticker}")
+                with col2:
+                    if st.button(f"🚀 LIFT ASK {int(no_ask)}¢", key=f"lift_{ticker}", type="primary"):
+                        success, msg = place_kalshi_order(
+                            ticker=market_ticker or ticker,
+                            side="no",
+                            price_cents=int(no_ask),
+                            count=num_contracts,
+                            api_key=st.session_state.kalshi_api_key,
+                            private_key_pem=st.session_state.kalshi_private_key
+                        )
+                        if success:
+                            st.success(f"✅ {msg}")
+                            play_alert_sound("edge")
+                        else:
+                            st.error(f"❌ {msg}")
         elif "NO TRADE" in label:
             st.error(f"**{label}**\n\n{explanation}")
         else:
-            st.warning(f"**{label}**\n\n{explanation}")
+            st.markdown(f"""
+            <div style="background-color: #FFD700; padding: 15px; border-radius: 8px; border: 2px solid #FFA500;">
+                <span style="color: #000; font-size: 18px; font-weight: bold;">{label}</span><br>
+                <span style="color: #333;">{explanation}</span>
+            </div>
+            """, unsafe_allow_html=True)
 
 def parse_game_date(game_code):
     try:
@@ -332,6 +474,31 @@ with st.sidebar:
     st.markdown("|Q1|Max NO|\n|:-:|:-:|\n|<48|78¢|\n|48-49|75¢|\n|50-54|70¢|\n|≥55|NO TRADE|")
     st.caption("Pregame: 68¢ max")
     st.divider()
+    
+    # ONE-CLICK TRADING SECTION
+    st.subheader("🚀 ONE-CLICK TRADING")
+    init_trading()
+    
+    if not CRYPTO_AVAILABLE:
+        st.error("⚠️ Add 'cryptography' to requirements.txt")
+        st.code("cryptography", language=None)
+        trading_on = False
+    else:
+        trading_on = st.toggle("Enable One-Click", value=st.session_state.trading_enabled)
+        st.session_state.trading_enabled = trading_on
+    
+    if trading_on:
+        st.session_state.kalshi_api_key = st.text_input("API Key", value=st.session_state.kalshi_api_key, type="password")
+        st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", value=st.session_state.kalshi_private_key, height=100, type="default")
+        st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, max_value=100, value=st.session_state.default_contracts)
+        
+        if st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
+            st.success("✅ Ready to trade")
+        else:
+            st.warning("⚠️ Enter API credentials")
+        st.caption("Get keys: kalshi.com → Settings → API")
+    
+    st.divider()
     st.subheader("📋 Watchlist Teams")
     st.caption("Bottom 8 3PT% ∩ Bottom 10 Pace")
     for t in sorted(watchlist): st.success(f"⭐ **{t}**")
@@ -398,7 +565,7 @@ else:
 Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.  
 **DO NOT CHASE.** Wait for cooldown.
                 """)
-                render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team)
+                render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team, m["ticker"])
                 if st.button(f"✅ Clear spike alert - {m['ticker']}", key=f"clear_{m['ticker']}"):
                     clear_spike(m["ticker"])
                     st.rerun()
@@ -408,7 +575,7 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
 ⭐ WATCHLIST: **{wl_team}** (Bottom 8 3PT% + Bottom 10 Pace)  
 **Threshold:** {m["threshold"]} | **NO Price:** {int(m["no_ask"])}¢ | **Live:** {live_str}
                 """)
-                render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team)
+                render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team, m["ticker"])
                 st.link_button(f"🔗 Open Kalshi - {m['threshold']}", get_kalshi_url(m), type="primary")
             st.markdown("---")
     
@@ -434,7 +601,7 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
 Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.  
 **DO NOT CHASE.** Wait for cooldown.
                 """)
-                render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team)
+                render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team, m["ticker"])
                 if st.button(f"✅ Clear spike alert - {m['ticker']}", key=f"clear_y_{m['ticker']}"):
                     clear_spike(m["ticker"])
                     st.rerun()
@@ -455,7 +622,7 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
                 else:
                     st.caption(f"🔴 Price {int(m['no_ask'])}¢ - Too expensive even with great Q1")
                 
-                render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team)
+                render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team, m["ticker"])
                 st.link_button(f"🔗 Open Kalshi - {m['threshold']}", get_kalshi_url(m), type="secondary")
             st.markdown("---")
     
@@ -507,7 +674,7 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
         else:
             st.write(f"🟡 PENDING | {p_status}")
         
-        render_bid_recommendation(no_ask, live, m["ticker"])
+        render_bid_recommendation(no_ask, live, m["ticker"], None, m["ticker"])
         st.link_button("🔗 Open Kalshi", get_kalshi_url(m), type="secondary")
         st.divider()
     
@@ -557,4 +724,4 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v4.8 | ESPN Live | Kill Switch | 5s Alert Sound")
+st.caption("v5.1 | ESPN Live | Kill Switch | One-Click Trading")
