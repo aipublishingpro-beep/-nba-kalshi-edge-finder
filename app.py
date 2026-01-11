@@ -334,10 +334,10 @@ with st.sidebar:
     st.markdown("|Q1|Max NO|\n|:-:|:-:|\n|<48|0.78|\n|48-49|0.75|\n|50-54|0.70|\n|≥55|NO TRADE|")
     st.caption("Pregame: 0.68 max")
     st.divider()
-    st.subheader("📋 Watchlist")
+    st.subheader("📋 Watchlist Teams")
     st.caption("Bottom 8 3PT% ∩ Bottom 10 Pace")
     for t in sorted(watchlist):
-        st.write(f"• **{t}**")
+        st.success(f"⭐ **{t}**")
     st.divider()
     st.subheader("🔊 Sound Alerts")
     st.write("🔥 Edge | 💰 Mispriced | ✅ Q1 End | 🎯 Q1 Watch")
@@ -407,18 +407,65 @@ else:
     
     st.markdown("**Status:** 🟡 SCHEDULED | 🟢 LIVE | 🟠 HALFTIME | 🔴 FINAL")
     
+    # ============================================================
+    # 🎯 TODAY'S WATCHLIST GAMES - PROMINENT SECTION
+    # ============================================================
+    watchlist_games = [m for m in markets if m["away_team"] in watchlist or m["home_team"] in watchlist]
+    
+    if watchlist_games:
+        st.markdown("---")
+        st.markdown("## 🎯 TODAY'S WATCHLIST GAMES")
+        st.markdown("### *These games have STRUCTURAL BRAKES on scoring*")
+        
+        for m in watchlist_games:
+            wl_team = m["away_team"] if m["away_team"] in watchlist else m["home_team"]
+            live = get_live_game_data(m["away_team"], m["home_team"], live_scores)
+            
+            # Big colored box for watchlist games
+            st.success(f"""
+            ### 🏀 {m["away_team"]} @ {m["home_team"]}
+            **⭐ WATCHLIST TEAM: {wl_team}** (Bottom 8 3PT% + Bottom 10 Pace)
+            
+            **Threshold:** {m["threshold"]} | **NO Price:** {m["no_ask"]:.2f} | **Live:** {f"{live['away_score']}-{live['home_score']} ({live['status']})" if live else "Not started"}
+            """)
+            
+            # Price status for this game
+            if m["no_ask"] <= 0.68:
+                st.info(f"💰 Price {m['no_ask']:.2f} is UNDER pregame limit (0.68) - Monitor for Q1!")
+            elif m["no_ask"] <= 0.78:
+                st.warning(f"⏳ Price {m['no_ask']:.2f} - Will unlock with good Q1 score")
+            else:
+                st.error(f"🔴 Price {m['no_ask']:.2f} - Currently too expensive")
+            
+            st.link_button(f"🔗 Open Kalshi - {m['threshold']}", get_kalshi_url(m), type="primary")
+            st.markdown("---")
+    else:
+        st.warning("⚠️ No watchlist team games found today")
+    
     # TOP EDGES
-    st.header("🔥 TODAY'S TARGETS")
+    st.header("🔥 ALL TODAY'S TARGETS")
+    st.caption("Games with good pregame prices (≤0.68)")
     scored = [m for m in markets if m["no_ask"] <= 0.68]
     for m in scored:
-        m["score"] = (30 if (m["away_team"] in watchlist or m["home_team"] in watchlist) else 0) + (25 if m["no_ask"] <= 0.60 else 15 if m["no_ask"] <= 0.65 else 0)
+        has_wl = m["away_team"] in watchlist or m["home_team"] in watchlist
+        m["score"] = (30 if has_wl else 0) + (25 if m["no_ask"] <= 0.60 else 15 if m["no_ask"] <= 0.65 else 0)
     scored.sort(key=lambda x: x["score"], reverse=True)
     
     if scored[:3]:
         cols = st.columns(len(scored[:3]))
         for i, edge in enumerate(scored[:3]):
             with cols[i]:
+                has_wl = edge["away_team"] in watchlist or edge["home_team"] in watchlist
+                wl_team = edge["away_team"] if edge["away_team"] in watchlist else (edge["home_team"] if edge["home_team"] in watchlist else None)
+                
                 st.subheader(f"#{i+1} {edge['away_team']} @ {edge['home_team']}")
+                
+                # BIG watchlist indicator
+                if has_wl:
+                    st.success(f"⭐ **WATCHLIST: {wl_team}**")
+                else:
+                    st.warning("⚠️ No watchlist team")
+                
                 live = get_live_game_data(edge['away_team'], edge['home_team'], live_scores)
                 if live:
                     st.write(f"**{live['status']}** {live['quarter']} {live['clock']}")
@@ -427,8 +474,6 @@ else:
                     st.write("🟡 **PENDING**")
                 st.metric("Threshold", edge["threshold"])
                 st.metric("NO Price", f"{edge['no_ask']:.2f}")
-                wl = "✅" if (edge["away_team"] in watchlist or edge["home_team"] in watchlist) else "⚠️"
-                st.write(f"Watchlist: {wl}")
                 st.link_button("🔗 Open Kalshi", get_kalshi_url(edge), type="secondary")
     else:
         st.info("No pregame edges ≤0.68")
@@ -439,9 +484,14 @@ else:
     st.header("📊 All Markets")
     for m in markets:
         away, home, no_ask = m["away_team"], m["home_team"], m["no_ask"]
-        wl = "✅ WL" if (away in watchlist or home in watchlist) else "⚠️"
+        has_wl = away in watchlist or home in watchlist
+        wl_team = away if away in watchlist else (home if home in watchlist else None)
         live = get_live_game_data(away, home, live_scores)
         p_status = "🟢 OK" if no_ask <= 0.68 else "🟡 Q1 50-54" if no_ask <= 0.70 else "🟡 Q1 48-49" if no_ask <= 0.75 else "🟠 Q1<48" if no_ask <= 0.78 else "🔴 Expensive"
+        
+        # Highlight watchlist games with colored container
+        if has_wl:
+            st.markdown(f"### ⭐ WATCHLIST: {wl_team}")
         
         c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
         c1.subheader(f"🏀 {away} @ {home}")
@@ -455,9 +505,12 @@ else:
             elif live['period'] == 1 and "End" in live['quarter']:
                 st.info(f"✅ Q1 ENDED | Total: {live['total']} | Enter in scorer!")
             else:
-                st.write(f"{live['status']} {live['quarter']} | Total: {live['total']} | {wl} | {p_status}")
+                st.write(f"{live['status']} {live['quarter']} | Total: {live['total']} | {p_status}")
         else:
-            st.write(f"🟡 PENDING | {wl} | {p_status}")
+            if has_wl:
+                st.success(f"🟡 PENDING | ⭐ **WATCHLIST TEAM: {wl_team}** | {p_status}")
+            else:
+                st.write(f"🟡 PENDING | {p_status}")
         
         st.link_button("🔗 Open Kalshi", get_kalshi_url(m), type="secondary")
         st.divider()
@@ -469,6 +522,16 @@ else:
         opts = [f"{m['away_team']} @ {m['home_team']} ({m['threshold']})" for m in markets]
         sel_idx = st.selectbox("Select Game", range(len(opts)), format_func=lambda x: opts[x])
         sel = markets[sel_idx]
+        
+        # Check watchlist for selected game
+        sel_has_wl = sel["away_team"] in watchlist or sel["home_team"] in watchlist
+        sel_wl_team = sel["away_team"] if sel["away_team"] in watchlist else (sel["home_team"] if sel["home_team"] in watchlist else None)
+        
+        if sel_has_wl:
+            st.success(f"⭐ **WATCHLIST TEAM: {sel_wl_team}**")
+        else:
+            st.warning("⚠️ No watchlist team in this game")
+        
         live = get_live_game_data(sel['away_team'], sel['home_team'], live_scores)
         
         if live:
