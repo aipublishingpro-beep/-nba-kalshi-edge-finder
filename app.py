@@ -51,9 +51,31 @@ def clear_spike(ticker):
         st.session_state.spike_alerts[ticker] = False
 
 def play_alert_sound(alert_type="edge"):
-    sounds = {"edge": {"freq": 800, "duration": 0.3, "repeat": 2}, "watchlist": {"freq": 600, "duration": 0.2, "repeat": 1}, "mispriced": {"freq": 1000, "duration": 0.15, "repeat": 3}, "q1_ended": {"freq": 500, "duration": 0.5, "repeat": 1}}
+    """Play continuous 5-second alert sound."""
+    sounds = {
+        "edge": {"freq": 800, "duration": 5},
+        "watchlist": {"freq": 600, "duration": 5},
+        "mispriced": {"freq": 1000, "duration": 5},
+        "q1_ended": {"freq": 500, "duration": 5},
+    }
     sound = sounds.get(alert_type, sounds["edge"])
-    js_code = f'<script>(function(){{const a=new(window.AudioContext||window.webkitAudioContext)();for(let i=0;i<{sound["repeat"]};i++){{setTimeout(()=>{{const o=a.createOscillator();const g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value={sound["freq"]};o.type="sine";g.gain.setValueAtTime(0.3,a.currentTime);g.gain.exponentialRampToValueAtTime(0.01,a.currentTime+{sound["duration"]});o.start(a.currentTime);o.stop(a.currentTime+{sound["duration"]})}},{sound["duration"]}*1000*i+100*i)}}}})();</script>'
+    js_code = f"""
+    <script>
+    (function() {{
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        osc.frequency.value = {sound['freq']};
+        osc.type = 'sine';
+        gain.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + {sound['duration']});
+        osc.start(audioContext.currentTime);
+        osc.stop(audioContext.currentTime + {sound['duration']});
+    }})();
+    </script>
+    """
     st.components.v1.html(js_code, height=0)
 
 @st.cache_data(ttl=30)
@@ -205,7 +227,7 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None):
     if spiked:
         st.error(f"**{label}**\n\n{explanation}")
     elif bid is not None:
-        st.info(f"**💵 Recommended Bid: {bid}¢**\n\n*{label}* — {explanation}")
+        st.warning(f"**💵 Recommended Bid: {bid}¢**\n\n*{label}* — {explanation}")
     else:
         if "ACCEPTABLE" in label:
             st.success(f"**{label}**\n\n{explanation}")
@@ -535,4 +557,4 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v4.7 | ESPN Live | Kill Switch | Prices in Cents")
+st.caption("v4.8 | ESPN Live | Kill Switch | 5s Alert Sound")
