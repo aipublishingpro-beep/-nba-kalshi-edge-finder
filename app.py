@@ -133,15 +133,32 @@ def parse_teams_from_ticker(ticker_code):
     home = TICKER_ABBREVS.get(home_code.upper(), home_code)
     return away, home
 
+def parse_game_date(game_code):
+    """Parse date from ticker like '26JAN11NOPWAS' -> '2026-01-11'"""
+    try:
+        year = "20" + game_code[:2]  # "26" -> "2026"
+        month_str = game_code[2:5].upper()  # "JAN"
+        day = game_code[5:7]  # "11"
+        months = {"JAN": "01", "FEB": "02", "MAR": "03", "APR": "04", "MAY": "05", "JUN": "06",
+                  "JUL": "07", "AUG": "08", "SEP": "09", "OCT": "10", "NOV": "11", "DEC": "12"}
+        month = months.get(month_str, "01")
+        return f"{year}-{month}-{day}"
+    except:
+        return None
+
 def fetch_extreme_totals(min_threshold=245):
-    """Fetch only extreme totals (≥245) from Kalshi"""
+    """Fetch only extreme totals (≥245) from Kalshi - TODAY'S GAMES ONLY"""
     url = "https://api.elections.kalshi.com/trade-api/v2/markets"
     params = {"series_ticker": "KXNBATOTAL", "status": "open", "limit": 200}
+    
+    # Get today's date in ET
+    et = pytz.timezone('US/Eastern')
+    today = datetime.now(et).strftime("%Y-%m-%d")
     
     try:
         response = requests.get(url, params=params, timeout=15)
         if response.status_code != 200:
-            return [], f"API Error: {response.status_code}"
+            return [], f"API Error: {response.status_code}", today
         
         data = response.json()
         markets = data.get("markets", [])
@@ -154,6 +171,12 @@ def fetch_extreme_totals(min_threshold=245):
                 parts = event_ticker.split("-")
                 if len(parts) >= 2:
                     game_code = parts[1]
+                    
+                    # FILTER: Only today's games
+                    game_date = parse_game_date(game_code)
+                    if game_date != today:
+                        continue  # Skip games not scheduled for today
+                    
                     away, home = parse_teams_from_ticker(game_code)
                     
                     yes_ask = m.get("yes_ask", 0) or 0
@@ -170,14 +193,15 @@ def fetch_extreme_totals(min_threshold=245):
                         "yes_ask": yes_ask,
                         "no_ask": no_ask,
                         "volume": m.get("volume", 0),
-                        "title": m.get("title", "")
+                        "title": m.get("title", ""),
+                        "game_date": game_date
                     })
         
         extreme_markets.sort(key=lambda x: x["threshold"], reverse=True)
-        return extreme_markets, None
+        return extreme_markets, None, today
         
     except Exception as e:
-        return [], str(e)
+        return [], str(e), today
 
 # ============================================================
 # FILTER LOGIC
@@ -309,132 +333,223 @@ with st.sidebar:
     st.divider()
     st.caption("Last updated: Update TEAM_3PT_PCT and TEAM_PACE weekly")
 
-# Main content
-col1, col2 = st.columns([2, 1])
+# Main content - CENTERED
+if st.button("🔄 Refresh Markets", type="primary"):
+    st.cache_data.clear()
 
-with col1:
-    st.header("📊 Extreme Totals Markets")
+@st.cache_data(ttl=300)
+def load_markets(threshold):
+    return fetch_extreme_totals(threshold)
+
+markets, error, today_date = load_markets(min_threshold)
+
+st.caption(f"📅 Showing games for: **{today_date}** (Eastern Time)")
+
+if error:
+    st.error(f"API Error: {error}")
+elif not markets:
+    st.warning(f"No extreme totals (≥{min_threshold}) found for today ({today_date}). Either no games today or markets not yet posted.")
     
-    # Fetch markets
-    if st.button("🔄 Refresh Markets", type="primary"):
-        st.cache_data.clear()
+    with st.expander("🔍 Diagnostic: Check all available markets"):
+        diag_url = "https://api.elections.kalshi.com/trade-api/v2/markets"
+        diag_params = {"series_ticker": "KXNBATOTAL", "status": "open", "limit": 50}
+        try:
+            diag_resp = requests.get(diag_url, params=diag_params, timeout=10)
+            diag_data = diag_resp.json()
+            diag_markets = diag_data.get("markets", [])
+            if diag_markets:
+                st.write(f"Found {len(diag_markets)} total KXNBATOTAL markets in API:")
+                for dm in diag_markets[:10]:
+                    et = dm.get("event_ticker", "")
+                    fs = dm.get("floor_strike", 0)
+                    st.write(f"• {et} | Threshold: {fs}")
+            else:
+                st.write("No KXNBATOTAL markets found in API at all")
+        except Exception as e:
+            st.write(f"Diagnostic error: {e}")
+else:
+    # Filter by max NO price
+    eligible_markets = [m for m in markets if m["no_ask"] <= max_no_price]
     
-    @st.cache_data(ttl=300)
-    def load_markets(threshold):
-        return fetch_extreme_totals(threshold)
+    # ============================================================
+    # TOP EDGES SECTION - BEST 2-3 OPPORTUNITIES
+    # ============================================================
     
-    markets, error = load_markets(min_threshold)
+    def score_edge(market):
+        """Score each market for edge quality. Higher = better."""
+        away = market["away_team"]
+        home = market["home_team"]
+        no_ask = market["no_ask"]
+        threshold = market["threshold"]
+        
+        score = 0
+        reasons = []
+        
+        # Watchlist team = +30 points
+        if away in watchlist or home in watchlist:
+            score += 30
+            wt = away if away in watchlist else home
+            reasons.append(f"Watchlist team ({wt})")
+        
+        # Price: Lower NO = better edge
+        if no_ask <= 0.60:
+            score += 25
+            reasons.append("Excellent price (≤0.60)")
+        elif no_ask <= 0.65:
+            score += 20
+            reasons.append("Good price (≤0.65)")
+        elif no_ask <= 0.68:
+            score += 10
+            reasons.append("Acceptable price (≤0.68)")
+        
+        # Higher threshold = more extreme = better
+        if threshold >= 252:
+            score += 20
+            reasons.append(f"Very extreme ({threshold})")
+        elif threshold >= 250:
+            score += 15
+            reasons.append(f"Extreme ({threshold})")
+        elif threshold >= 248:
+            score += 10
+            reasons.append(f"High ({threshold})")
+        
+        # Short rest bonus
+        away_rest = get_rest_days(away)
+        home_rest = get_rest_days(home)
+        if (away_rest and away_rest <= 1) or (home_rest and home_rest <= 1):
+            score += 15
+            reasons.append("Short rest involved")
+        
+        # Both teams extended rest = penalty
+        if (away_rest and away_rest >= 3) and (home_rest and home_rest >= 3):
+            score -= 20
+            reasons.append("⚠️ Both on extended rest")
+        
+        return score, reasons
     
-    if error:
-        st.error(f"API Error: {error}")
-    elif not markets:
-        st.info(f"No extreme totals (≥{min_threshold}) found. Markets may not be posted yet.")
+    # Score all eligible markets
+    scored_markets = []
+    for m in eligible_markets:
+        score, reasons = score_edge(m)
+        scored_markets.append({**m, "score": score, "reasons": reasons})
+    
+    # Sort by score, take top 3
+    scored_markets.sort(key=lambda x: x["score"], reverse=True)
+    top_edges = scored_markets[:3]
+    
+    # Display TOP EDGES
+    st.header("🔥 TODAY'S TOP EDGES")
+    st.caption("Best opportunities ranked by watchlist teams, price, threshold, and rest factors")
+    
+    if top_edges:
+        edge_cols = st.columns(len(top_edges))
+        for i, edge in enumerate(top_edges):
+            with edge_cols[i]:
+                rank_emoji = ["🥇", "🥈", "🥉"][i]
+                st.subheader(f"{rank_emoji} #{i+1} EDGE")
+                
+                st.markdown(f"### {edge['away_team']} @ {edge['home_team']}")
+                st.metric("Threshold", f"≥ {edge['threshold']}")
+                
+                price_color = "🟢" if edge["no_ask"] <= 0.65 else "🟡"
+                st.metric("NO Price", f"{price_color} {edge['no_ask']:.2f}")
+                
+                st.write("**Why this edge:**")
+                for reason in edge["reasons"]:
+                    st.write(f"• {reason}")
+                
+                kalshi_url = f"https://kalshi.com/markets/{edge['ticker']}"
+                st.link_button(f"BET NO on {edge['threshold']}", kalshi_url, type="primary")
     else:
-        # Filter by max NO price
-        eligible_markets = [m for m in markets if m["no_ask"] <= max_no_price]
-        
-        st.success(f"Found {len(markets)} extreme totals, {len(eligible_markets)} within price range")
-        
-        for market in eligible_markets:
-            away = market["away_team"]
-            home = market["home_team"]
-            threshold = market["threshold"]
-            no_ask = market["no_ask"]
-            
-            # Check if watchlist team involved
-            has_watchlist = away in watchlist or home in watchlist
-            watchlist_badge = "✅ WATCHLIST" if has_watchlist else "⚠️ No watchlist team"
-            
-            # Rest info
-            away_rest = get_rest_days(away)
-            home_rest = get_rest_days(home)
-            away_status, away_icon = get_rest_status(away_rest)
-            home_status, home_icon = get_rest_status(home_rest)
-            
-            # Display card
-            with st.container():
-                st.subheader(f"🏀 {away} @ {home}")
-                
-                mcol1, mcol2, mcol3 = st.columns(3)
-                with mcol1:
-                    st.metric("Threshold", f"{threshold}")
-                with mcol2:
-                    price_color = "🟢" if no_ask <= 0.65 else "🟡" if no_ask <= 0.68 else "🔴"
-                    st.metric("NO Price", f"{price_color} {no_ask:.2f}")
-                with mcol3:
-                    st.write(f"**{watchlist_badge}**")
-                
-                # Rest status
-                st.write(f"**Rest:** {away_icon} {away} ({away_rest}d) vs {home_icon} {home} ({home_rest}d)")
-                
-                # Kalshi link
-                kalshi_url = f"https://kalshi.com/markets/{market['ticker']}"
-                st.markdown(f"[View on Kalshi]({kalshi_url})")
-                
-                st.divider()
-
-with col2:
-    st.header("✅ ENTRY CHECKLIST")
-    st.caption("ALL must pass before entry")
+        st.warning("No edges meet price criteria today. Patience is the edge.")
     
-    # Select market for checklist
-    if markets:
+    st.divider()
+    
+    # ============================================================
+    # ALL MARKETS - CENTERED LIST
+    # ============================================================
+    
+    st.header("📊 All Extreme Totals Markets")
+    st.success(f"Found {len(markets)} extreme totals, {len(eligible_markets)} within price range")
+    
+    for market in eligible_markets:
+        away = market["away_team"]
+        home = market["home_team"]
+        threshold = market["threshold"]
+        no_ask = market["no_ask"]
+        
+        has_watchlist = away in watchlist or home in watchlist
+        watchlist_badge = "✅ WATCHLIST" if has_watchlist else "⚠️ No watchlist team"
+        
+        away_rest = get_rest_days(away)
+        home_rest = get_rest_days(home)
+        away_status, away_icon = get_rest_status(away_rest)
+        home_status, home_icon = get_rest_status(home_rest)
+        
+        with st.container():
+            st.subheader(f"🏀 {away} @ {home}")
+            
+            mcol1, mcol2, mcol3 = st.columns(3)
+            with mcol1:
+                st.metric("Threshold", f"{threshold}")
+            with mcol2:
+                price_color = "🟢" if no_ask <= 0.65 else "🟡" if no_ask <= 0.68 else "🔴"
+                st.metric("NO Price", f"{price_color} {no_ask:.2f}")
+            with mcol3:
+                st.write(f"**{watchlist_badge}**")
+            
+            st.write(f"**Rest:** {away_icon} {away} ({away_rest}d) vs {home_icon} {home} ({home_rest}d)")
+            
+            kalshi_url = f"https://kalshi.com/markets/{market['ticker']}"
+            st.markdown(f"[View on Kalshi]({kalshi_url})")
+            
+            st.divider()
+    
+    # ============================================================
+    # ENTRY CHECKLIST - BELOW MARKETS
+    # ============================================================
+    
+    st.header("✅ ENTRY CHECKLIST")
+    st.caption("Select a game and enter live Q1 data. ALL filters must pass before entry.")
+    
+    check_col1, check_col2 = st.columns(2)
+    
+    with check_col1:
         market_options = [f"{m['away_team']} @ {m['home_team']} ({m['threshold']})" for m in markets]
         selected_idx = st.selectbox("Select Game", range(len(market_options)), format_func=lambda x: market_options[x])
         selected_market = markets[selected_idx]
         
-        st.divider()
-        
-        # Q1 Input (LIVE CONFIRMATION)
         st.subheader("🔴 LIVE Q1 CHECK")
         q1_total = st.number_input(
             "Enter Q1 Total (after Q1 ends)",
-            min_value=0,
-            max_value=100,
-            value=0,
+            min_value=0, max_value=100, value=0,
             help="Wait for Q1 to complete. Enter combined score."
         )
         
-        # Spread estimate
         spread_est = st.number_input(
             "Estimated Spread",
-            min_value=0.0,
-            max_value=30.0,
-            value=5.0,
-            step=0.5,
+            min_value=0.0, max_value=30.0, value=5.0, step=0.5,
             help="Check pregame spread. ≥5 preferred for OT safety"
         )
-        
-        st.divider()
-        
-        # Run all filters
+    
+    with check_col2:
         q1_val = q1_total if q1_total > 0 else None
         filters, all_pass = check_all_filters(selected_market, q1_val, watchlist, spread_est)
         
-        # Display each filter
+        st.subheader("Filter Results")
         for name, result in filters.items():
             icon = "✅" if result["pass"] else "❌"
-            st.write(f"{icon} **{name.upper()}**: {result['value']} (rule: {result['rule']})")
+            st.write(f"{icon} **{name.upper()}**: {result['value']}")
         
         st.divider()
         
-        # FINAL VERDICT
         if all_pass:
             st.success("🚀 ALL FILTERS PASS - ENTRY ELIGIBLE")
-            st.balloons()
-            
-            # Calculate suggested position
-            st.write(f"**Suggested Action:** BET NO on {selected_market['threshold']}")
-            st.write(f"**NO Price:** {selected_market['no_ask']:.2f}")
-            
             kalshi_url = f"https://kalshi.com/markets/{selected_market['ticker']}"
-            st.markdown(f"### [→ PLACE BET ON KALSHI]({kalshi_url})")
+            st.link_button(f"→ BET NO on {selected_market['threshold']}", kalshi_url, type="primary")
         else:
             failed = [k for k, v in filters.items() if not v["pass"]]
             st.error(f"❌ NO TRADE - Failed: {', '.join(failed)}")
-            st.caption("Do not enter. Wait for better setup.")
-    else:
-        st.info("Load markets to use checklist")
 
 # Bottom section - System Rules
 st.divider()
