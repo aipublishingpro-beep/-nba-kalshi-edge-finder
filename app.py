@@ -9,6 +9,159 @@ import pytz
 st.set_page_config(page_title="Extreme Totals NO Finder", page_icon="🎯", layout="wide")
 
 # ============================================================
+# ESPN LIVE SCORES
+# ============================================================
+@st.cache_data(ttl=30)  # Refresh every 30 seconds
+def fetch_espn_live_scores():
+    """Pull live NBA scores from ESPN API"""
+    url = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code != 200:
+            return {}
+        
+        data = response.json()
+        games = {}
+        
+        for event in data.get("events", []):
+            competition = event.get("competitions", [{}])[0]
+            competitors = competition.get("competitors", [])
+            
+            if len(competitors) < 2:
+                continue
+            
+            # Get teams
+            home_team = None
+            away_team = None
+            home_score = 0
+            away_score = 0
+            
+            for comp in competitors:
+                team_name = comp.get("team", {}).get("displayName", "")
+                score = int(comp.get("score", 0) or 0)
+                if comp.get("homeAway") == "home":
+                    home_team = team_name
+                    home_score = score
+                else:
+                    away_team = team_name
+                    away_score = score
+            
+            # Game status
+            status_obj = event.get("status", {})
+            status_type = status_obj.get("type", {}).get("name", "STATUS_SCHEDULED")
+            display_clock = status_obj.get("displayClock", "")
+            period = status_obj.get("period", 0)
+            
+            if status_type == "STATUS_SCHEDULED":
+                status = "🟡 SCHEDULED"
+                quarter = ""
+                clock = ""
+            elif status_type == "STATUS_IN_PROGRESS":
+                status = "🟢 LIVE"
+                quarter = f"Q{period}"
+                clock = display_clock
+            elif status_type == "STATUS_HALFTIME":
+                status = "🟠 HALFTIME"
+                quarter = "HALF"
+                clock = ""
+            elif status_type == "STATUS_END_PERIOD":
+                status = "🟢 LIVE"
+                quarter = f"End Q{period}"
+                clock = ""
+            elif status_type == "STATUS_FINAL":
+                status = "🔴 FINAL"
+                quarter = "FINAL"
+                clock = ""
+            else:
+                status = "🟡 PENDING"
+                quarter = ""
+                clock = ""
+            
+            # Normalize team names
+            home_normalized = normalize_team_name(home_team)
+            away_normalized = normalize_team_name(away_team)
+            
+            game_key = f"{away_normalized}@{home_normalized}"
+            
+            games[game_key] = {
+                "away_team": away_normalized,
+                "home_team": home_normalized,
+                "away_score": away_score,
+                "home_score": home_score,
+                "total": away_score + home_score,
+                "status": status,
+                "quarter": quarter,
+                "clock": clock,
+                "period": period
+            }
+        
+        return games
+    except Exception as e:
+        return {}
+
+def normalize_team_name(name):
+    """Convert ESPN team names to our format"""
+    mappings = {
+        "Atlanta Hawks": "Atlanta",
+        "Boston Celtics": "Boston",
+        "Brooklyn Nets": "Brooklyn",
+        "Charlotte Hornets": "Charlotte",
+        "Chicago Bulls": "Chicago",
+        "Cleveland Cavaliers": "Cleveland",
+        "Dallas Mavericks": "Dallas",
+        "Denver Nuggets": "Denver",
+        "Detroit Pistons": "Detroit",
+        "Golden State Warriors": "Golden State",
+        "Houston Rockets": "Houston",
+        "Indiana Pacers": "Indiana",
+        "LA Clippers": "LA Clippers",
+        "Los Angeles Clippers": "LA Clippers",
+        "LA Lakers": "LA Lakers",
+        "Los Angeles Lakers": "LA Lakers",
+        "Memphis Grizzlies": "Memphis",
+        "Miami Heat": "Miami",
+        "Milwaukee Bucks": "Milwaukee",
+        "Minnesota Timberwolves": "Minnesota",
+        "New Orleans Pelicans": "New Orleans",
+        "New York Knicks": "New York",
+        "Oklahoma City Thunder": "Oklahoma City",
+        "Orlando Magic": "Orlando",
+        "Philadelphia 76ers": "Philadelphia",
+        "Phoenix Suns": "Phoenix",
+        "Portland Trail Blazers": "Portland",
+        "Sacramento Kings": "Sacramento",
+        "San Antonio Spurs": "San Antonio",
+        "Toronto Raptors": "Toronto",
+        "Utah Jazz": "Utah",
+        "Washington Wizards": "Washington"
+    }
+    return mappings.get(name, name)
+
+def get_live_game_data(away, home, live_scores):
+    """Match Kalshi market to ESPN live data"""
+    game_key = f"{away}@{home}"
+    if game_key in live_scores:
+        return live_scores[game_key]
+    
+    # Try reverse
+    game_key_rev = f"{home}@{away}"
+    if game_key_rev in live_scores:
+        g = live_scores[game_key_rev]
+        return {
+            "away_team": away,
+            "home_team": home,
+            "away_score": g["home_score"],
+            "home_score": g["away_score"],
+            "total": g["total"],
+            "status": g["status"],
+            "quarter": g["quarter"],
+            "clock": g["clock"],
+            "period": g["period"]
+        }
+    
+    return None
+
+# ============================================================
 # TEAM DATA (Updated weekly - reliable fallback)
 # ============================================================
 TEAM_3PT_PCT = {
@@ -129,6 +282,10 @@ def fetch_extreme_totals(min_threshold=245):
                     if no_ask == 0 and yes_ask > 0:
                         no_ask = 1 - yes_ask
                     
+                    # Get game status
+                    close_time = m.get("close_time", "")
+                    status = "🟡 PENDING"
+                    
                     extreme_markets.append({
                         "ticker": m.get("ticker", ""),
                         "threshold": floor_strike,
@@ -136,7 +293,9 @@ def fetch_extreme_totals(min_threshold=245):
                         "home_team": home,
                         "yes_ask": yes_ask,
                         "no_ask": no_ask,
-                        "volume": m.get("volume", 0)
+                        "volume": m.get("volume", 0),
+                        "close_time": close_time,
+                        "status": status
                     })
         
         extreme_markets.sort(key=lambda x: x["threshold"], reverse=True)
@@ -270,19 +429,48 @@ with st.sidebar:
     
     st.divider()
     st.error("🛑 KILL SWITCH: If NO jumps +5¢ in 30s → ABORT")
+    
+    st.divider()
+    st.caption("💡 Click Refresh to update live scores")
 
 # MAIN CONTENT
-if st.button("🔄 Refresh Markets", type="primary"):
+if st.button("🔄 Refresh Markets & Scores", type="primary"):
     st.cache_data.clear()
 
 markets, error, today_date = fetch_extreme_totals(min_threshold)
-st.caption(f"📅 Games for: **{today_date}**")
+live_scores = fetch_espn_live_scores()
+
+st.caption(f"📅 Games for: **{today_date}** | Live scores refresh every 30s")
 
 if error:
     st.error(f"API Error: {error}")
 elif not markets:
     st.warning(f"No extreme totals (≥{min_threshold}) for today.")
 else:
+    # LIVE SCOREBOARD STRIP
+    if live_scores:
+        st.subheader("📺 LIVE SCOREBOARD (ESPN)")
+        games_list = list(live_scores.values())
+        
+        # Display in rows of 4
+        for row_start in range(0, len(games_list), 4):
+            row_games = games_list[row_start:row_start + 4]
+            score_cols = st.columns(len(row_games))
+            
+            for i, game in enumerate(row_games):
+                with score_cols[i]:
+                    st.write(f"**{game['away_team']}** {game['away_score']}")
+                    st.write(f"**{game['home_team']}** {game['home_score']}")
+                    st.caption(f"{game['status']} {game['quarter']} {game['clock']}")
+                    if game['status'] == "🟢 LIVE" and game['period'] == 1:
+                        st.success(f"Q1: {game['total']}")
+        st.divider()
+    else:
+        st.info("No live games found. Games may not have started yet.")
+    
+    # STATUS LEGEND
+    st.markdown("**Status:** 🟡 SCHEDULED | 🟢 LIVE | 🟠 HALFTIME | 🔴 FINAL")
+    
     # TOP EDGES
     st.header("🔥 TODAY'S TARGETS")
     st.caption("Pregame rankings. WAIT FOR Q1 before betting.")
@@ -309,6 +497,17 @@ else:
         for i, edge in enumerate(top3):
             with cols[i]:
                 st.subheader(f"#{i+1} {edge['away_team']} @ {edge['home_team']}")
+                
+                # Get live score
+                live = get_live_game_data(edge['away_team'], edge['home_team'], live_scores)
+                if live:
+                    st.write(f"**{live['status']}** {live['quarter']} {live['clock']}")
+                    st.metric("LIVE SCORE", f"{live['away_score']} - {live['home_score']}", f"Total: {live['total']}")
+                    if live['period'] == 1 and live['status'] == "🟢 LIVE":
+                        st.success(f"🎯 Q1 Total: {live['total']} - Watch for entry!")
+                else:
+                    st.write("🟡 **PENDING - NOT STARTED**")
+                
                 st.metric("Threshold", edge["threshold"])
                 st.metric("NO Price", f"{edge['no_ask']:.2f}")
                 wl = "✅" if (edge["away_team"] in watchlist or edge["home_team"] in watchlist) else "⚠️"
@@ -319,10 +518,13 @@ else:
     st.divider()
     
     # ALL MARKETS
-    st.header("📊 All Markets")
+    st.header("📊 All Markets - LIVE SCORES")
     for m in markets:
         away, home = m["away_team"], m["home_team"]
         wl_badge = "✅ WL" if (away in watchlist or home in watchlist) else "⚠️"
+        
+        # Get live score
+        live = get_live_game_data(away, home, live_scores)
         
         # Price status
         if m["no_ask"] <= 0.68:
@@ -337,17 +539,46 @@ else:
             p_status = "🔴 Too expensive"
         
         with st.container():
-            c1, c2, c3 = st.columns(3)
-            c1.subheader(f"🏀 {away} @ {home}")
-            c2.metric("Threshold", m["threshold"])
-            c3.metric("NO Price", f"{m['no_ask']:.2f}")
-            st.write(f"{wl_badge} | {p_status}")
+            # Row 1: Team names and live score
+            c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
+            
+            with c1:
+                st.subheader(f"🏀 {away} @ {home}")
+            
+            with c2:
+                if live:
+                    st.metric("LIVE", f"{live['away_score']} - {live['home_score']}")
+                else:
+                    st.metric("LIVE", "-- - --")
+            
+            with c3:
+                st.metric("Threshold", m["threshold"])
+            
+            with c4:
+                st.metric("NO Price", f"{m['no_ask']:.2f}")
+            
+            # Row 2: Status and details
+            if live:
+                status_text = f"{live['status']} {live['quarter']} {live['clock']}"
+                total_text = f"**Current Total: {live['total']}**"
+                
+                # Q1 alert
+                if live['period'] == 1 and live['status'] == "🟢 LIVE":
+                    st.success(f"🎯 **Q1 IN PROGRESS** | Q1 Total: {live['total']} | {live['clock']} remaining")
+                elif live['period'] == 1 and "End" in live['quarter']:
+                    st.info(f"✅ **Q1 ENDED** | Q1 Final: {live['total']} | Enter this in scorer!")
+                elif live['period'] > 1:
+                    st.write(f"{status_text} | Total: {live['total']} | {wl_badge} | {p_status}")
+                else:
+                    st.write(f"{status_text} | {wl_badge} | {p_status}")
+            else:
+                st.write(f"🟡 **PENDING** | {wl_badge} | {p_status}")
+            
             st.markdown(f"[Kalshi Link](https://kalshi.com/markets/{m['ticker']})")
             st.divider()
     
     # CONFIDENCE SCORER
     st.header("🎯 CONFIDENCE SCORER")
-    st.caption("Enter Q1 after first quarter ends.")
     
     col1, col2 = st.columns([1, 2])
     with col1:
@@ -355,34 +586,63 @@ else:
         sel_idx = st.selectbox("Select Game", range(len(opts)), format_func=lambda x: opts[x])
         sel = markets[sel_idx]
         
-        q1 = st.number_input("Q1 Combined Score", 0, 100, 0)
+        # Get live data for selected game
+        live = get_live_game_data(sel['away_team'], sel['home_team'], live_scores)
+        
+        # Show live score box
+        if live:
+            st.success(f"**{live['status']}** {live['quarter']} {live['clock']}")
+            st.metric("LIVE SCORE", f"{live['away_score']} - {live['home_score']}", f"Total: {live['total']}")
+            
+            # Auto-suggest Q1 if Q1 just ended
+            if live['period'] == 1 and "End" in str(live.get('quarter', '')):
+                st.info(f"✅ Q1 just ended! Total: **{live['total']}**")
+                default_q1 = live['total']
+            elif live['period'] > 1:
+                st.warning(f"⚠️ Game past Q1. Current total: {live['total']}")
+                default_q1 = 0
+            else:
+                default_q1 = 0
+        else:
+            st.info("🟡 **GAME NOT STARTED**")
+            default_q1 = 0
+        
+        q1 = st.number_input("Q1 Combined Score", 0, 100, default_q1, help="Enter Q1 total after Q1 ends")
         spread = st.number_input("Pregame Spread", 0.0, 30.0, 5.0, 0.5)
     
     with col2:
         q1_val = q1 if q1 > 0 else None
         score, rec, color, breakdown = calculate_confidence(sel, q1_val, watchlist, spread)
         
-        st.subheader(f"Score: {score}/100")
-        st.progress(min(score/100, 1.0))
-        
-        if color == "green":
-            st.success(rec)
-        elif color == "yellow":
-            st.warning(rec)
-        elif color == "orange":
-            st.warning(rec)
-        elif color == "red":
-            st.error(rec)
+        if q1_val is None:
+            st.warning("⏳ **WAITING FOR Q1 DATA**")
+            st.write("Game is **PENDING**. Enter Q1 combined score after first quarter ends.")
+            st.write(f"**Current NO Price:** {sel['no_ask']:.2f}")
+            max_p, regime = get_price_tolerance(None)
+            st.write(f"**Pregame Limit:** {max_p}")
         else:
-            st.info(rec)
-        
-        if breakdown:
-            st.write("**Breakdown:**")
-            for k, v in breakdown.items():
-                st.write(f"• {k}: {v}")
-        
-        if score >= 45 and q1_val:
-            st.link_button(f"BET NO on {sel['threshold']}", f"https://kalshi.com/markets/{sel['ticker']}", type="primary")
+            st.subheader(f"Score: {score}/100")
+            st.progress(min(score/100, 1.0))
+            
+            if color == "green":
+                st.success(rec)
+            elif color == "yellow":
+                st.warning(rec)
+            elif color == "orange":
+                st.warning(rec)
+            elif color == "red":
+                st.error(rec)
+            else:
+                st.info(rec)
+            
+            if breakdown and "REJECTED" not in breakdown:
+                st.write("**Breakdown:**")
+                for k, v in breakdown.items():
+                    st.write(f"• {k}: {v}")
+            
+            if score >= 45:
+                st.link_button(f"BET NO on {sel['threshold']}", f"https://kalshi.com/markets/{sel['ticker']}", type="primary")
+                st.caption("🛑 ABORT if price jumps +5¢ suddenly")
 
 st.divider()
-st.caption("v4.0 | Q1 is King | Gate-First Logic")
+st.caption("v4.1 | 🟢 ESPN Live Scores | Q1 is King | Gate-First Logic")
