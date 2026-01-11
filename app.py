@@ -21,11 +21,19 @@ st.set_page_config(page_title="Extreme Totals NO Finder", page_icon="🎯", layo
 # ============================================================
 def init_trading():
     if 'kalshi_api_key' not in st.session_state:
-        st.session_state.kalshi_api_key = ""
+        # Try to load from Streamlit secrets first
+        try:
+            st.session_state.kalshi_api_key = st.secrets.get("KALSHI_API_KEY", "")
+        except:
+            st.session_state.kalshi_api_key = ""
     if 'kalshi_private_key' not in st.session_state:
-        st.session_state.kalshi_private_key = ""
+        try:
+            st.session_state.kalshi_private_key = st.secrets.get("KALSHI_PRIVATE_KEY", "")
+        except:
+            st.session_state.kalshi_private_key = ""
     if 'trading_enabled' not in st.session_state:
-        st.session_state.trading_enabled = False
+        # Auto-enable if secrets are present
+        st.session_state.trading_enabled = bool(st.session_state.kalshi_api_key and st.session_state.kalshi_private_key)
     if 'default_contracts' not in st.session_state:
         st.session_state.default_contracts = 10
 
@@ -303,7 +311,7 @@ def get_game_state(live_data):
     return 'pregame', False, None
 
 def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, market_ticker=None):
-    """Render the bid recommendation box with optional Place Bid button. Prices are in cents. BRIGHT YELLOW."""
+    """Render the bid recommendation box with optional Place Bid button. All in one yellow box."""
     game_state, q1_lock_imminent, q1_total = get_game_state(live_data)
     spiked = is_spiked(ticker)
     
@@ -315,54 +323,30 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, ma
     if spiked:
         st.error(f"**{label}**\n\n{explanation}")
     elif bid is not None:
-        # BRIGHT YELLOW box with custom HTML
-        st.markdown(f"""
-        <div style="background-color: #FFD700; padding: 15px; border-radius: 8px; border: 2px solid #FFA500;">
-            <span style="color: #000; font-size: 20px; font-weight: bold;">💵 Recommended Bid: {bid}¢</span><br>
-            <span style="color: #333; font-style: italic;">{label}</span> — <span style="color: #333;">{explanation}</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # PLACE BID BUTTON (if trading enabled) - RIGHT BELOW THE BOX
+        # Check if trading enabled
         init_trading()
-        if st.session_state.trading_enabled and st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
-            col1, col2, col3 = st.columns([1, 1, 2])
-            with col1:
-                num_contracts = st.number_input(f"Qty", min_value=1, max_value=100, value=st.session_state.default_contracts, key=f"contracts_{ticker}", label_visibility="collapsed")
-            with col2:
-                st.caption(f"contracts")
-            with col3:
-                if st.button(f"🚀 PLACE BID {bid}¢", key=f"place_{ticker}", type="primary", use_container_width=True):
-                    success, msg = place_kalshi_order(
-                        ticker=market_ticker or ticker,
-                        side="no",
-                        price_cents=bid,
-                        count=num_contracts,
-                        api_key=st.session_state.kalshi_api_key,
-                        private_key_pem=st.session_state.kalshi_private_key
-                    )
-                    if success:
-                        st.success(f"✅ {msg}")
-                        play_alert_sound("edge")
-                    else:
-                        st.error(f"❌ {msg}")
-    else:
-        if "ACCEPTABLE" in label:
-            st.success(f"**{label}**\n\n{explanation}")
-            # Also add place button for acceptable ask
-            init_trading()
-            if st.session_state.trading_enabled and st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
-                col1, col2, col3 = st.columns([1, 1, 2])
+        show_trading = st.session_state.trading_enabled and st.session_state.kalshi_api_key and st.session_state.kalshi_private_key
+        
+        # Create unified yellow container
+        with st.container():
+            st.markdown("""<style>.yellow-box {background-color: #FFD700; padding: 15px; border-radius: 8px; border: 2px solid #FFA500; margin-bottom: 10px;}</style>""", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="yellow-box">
+                <span style="color: #000; font-size: 20px; font-weight: bold;">💵 Recommended Bid: {bid}¢</span><br>
+                <span style="color: #333; font-style: italic;">{label}</span> — <span style="color: #333;">{explanation}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            if show_trading:
+                col1, col2 = st.columns([1, 3])
                 with col1:
-                    num_contracts = st.number_input(f"Qty", min_value=1, max_value=100, value=st.session_state.default_contracts, key=f"contracts_{ticker}", label_visibility="collapsed")
+                    num_contracts = st.number_input("Qty", min_value=1, max_value=100, value=st.session_state.default_contracts, key=f"contracts_{ticker}", label_visibility="collapsed")
                 with col2:
-                    st.caption(f"contracts")
-                with col3:
-                    if st.button(f"🚀 LIFT ASK {int(no_ask)}¢", key=f"lift_{ticker}", type="primary", use_container_width=True):
+                    if st.button(f"🚀 PLACE BID {bid}¢ × {st.session_state.default_contracts}", key=f"place_{ticker}", type="primary", use_container_width=True):
                         success, msg = place_kalshi_order(
                             ticker=market_ticker or ticker,
                             side="no",
-                            price_cents=int(no_ask),
+                            price_cents=bid,
                             count=num_contracts,
                             api_key=st.session_state.kalshi_api_key,
                             private_key_pem=st.session_state.kalshi_private_key
@@ -372,6 +356,32 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, ma
                             play_alert_sound("edge")
                         else:
                             st.error(f"❌ {msg}")
+    else:
+        if "ACCEPTABLE" in label:
+            init_trading()
+            show_trading = st.session_state.trading_enabled and st.session_state.kalshi_api_key and st.session_state.kalshi_private_key
+            
+            with st.container():
+                st.success(f"**{label}**\n\n{explanation}")
+                if show_trading:
+                    col1, col2 = st.columns([1, 3])
+                    with col1:
+                        num_contracts = st.number_input("Qty", min_value=1, max_value=100, value=st.session_state.default_contracts, key=f"contracts_{ticker}", label_visibility="collapsed")
+                    with col2:
+                        if st.button(f"🚀 LIFT ASK {int(no_ask)}¢ × {st.session_state.default_contracts}", key=f"lift_{ticker}", type="primary", use_container_width=True):
+                            success, msg = place_kalshi_order(
+                                ticker=market_ticker or ticker,
+                                side="no",
+                                price_cents=int(no_ask),
+                                count=num_contracts,
+                                api_key=st.session_state.kalshi_api_key,
+                                private_key_pem=st.session_state.kalshi_private_key
+                            )
+                            if success:
+                                st.success(f"✅ {msg}")
+                                play_alert_sound("edge")
+                            else:
+                                st.error(f"❌ {msg}")
         elif "NO TRADE" in label:
             st.error(f"**{label}**\n\n{explanation}")
         else:
@@ -492,15 +502,18 @@ with st.sidebar:
         st.session_state.trading_enabled = trading_on
     
     if trading_on:
-        st.session_state.kalshi_api_key = st.text_input("API Key", value=st.session_state.kalshi_api_key, type="password")
-        st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", value=st.session_state.kalshi_private_key, height=100)
-        st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, max_value=100, value=st.session_state.default_contracts)
+        # Check if secrets are loaded
+        secrets_loaded = st.session_state.kalshi_api_key and st.session_state.kalshi_private_key
         
-        if st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
-            st.success("✅ Ready to trade")
+        if secrets_loaded:
+            st.success("✅ Keys loaded from secrets")
         else:
-            st.warning("⚠️ Enter API credentials")
-        st.caption("Get keys: kalshi.com → Settings → API")
+            st.warning("⚠️ Add keys to Streamlit Secrets")
+            st.caption("Manage app → Settings → Secrets")
+            st.session_state.kalshi_api_key = st.text_input("API Key", value=st.session_state.kalshi_api_key, type="password")
+            st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", value=st.session_state.kalshi_private_key, height=100)
+        
+        st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, max_value=100, value=st.session_state.default_contracts)
     
     st.divider()
     st.subheader("📋 Watchlist Teams")
@@ -728,4 +741,4 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v5.1 | ESPN Live | Kill Switch | One-Click Trading")
+st.caption("v5.2 | One-Click Trading | Secrets Support")
