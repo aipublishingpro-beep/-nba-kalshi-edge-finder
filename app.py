@@ -489,7 +489,7 @@ with st.sidebar:
     
     if trading_on:
         st.session_state.kalshi_api_key = st.text_input("API Key", value=st.session_state.kalshi_api_key, type="password")
-        st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", value=st.session_state.kalshi_private_key, height=100, type="default")
+        st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", value=st.session_state.kalshi_private_key, height=100)
         st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, max_value=100, value=st.session_state.default_contracts)
         
         if st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
