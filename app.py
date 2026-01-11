@@ -16,6 +16,14 @@ except ImportError:
 
 st.set_page_config(page_title="Extreme Totals NO Finder", page_icon="🎯", layout="wide")
 
+# AUTO-REFRESH EVERY 15 SECONDS
+st.markdown(
+    """
+    <meta http-equiv="refresh" content="15">
+    """,
+    unsafe_allow_html=True
+)
+
 # ============================================================
 # KALSHI TRADING API
 # ============================================================
@@ -490,15 +498,10 @@ with st.sidebar:
     
     if trading_on:
         secrets_loaded = bool(st.session_state.kalshi_api_key and st.session_state.kalshi_private_key)
-        
         if secrets_loaded:
             st.success("✅ Keys loaded from secrets")
         else:
-            st.warning("⚠️ Add keys to Streamlit Secrets")
-            st.caption("Manage app → Settings → Secrets")
-            st.session_state.kalshi_api_key = st.text_input("API Key", value=st.session_state.kalshi_api_key, type="password")
-            st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", value=st.session_state.kalshi_private_key, height=100)
-        
+            st.error("❌ No keys found")
         st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, value=st.session_state.default_contracts)
     
     st.divider()
@@ -702,4 +705,4 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v6.4 | Fixed Kalshi Links")
+st.caption("v7.1 PRIVATE | Auto-Refresh 15s")
