@@ -95,11 +95,20 @@ def place_kalshi_order(ticker, side, price_cents, count, api_key, private_key_pe
             timeout=10
         )
         
+        # Debug: Check what we got back
         if response.status_code == 201:
-            order = response.json().get('order', {})
-            return True, f"Order placed! ID: {order.get('order_id', 'N/A')}"
+            try:
+                order = response.json().get('order', {})
+                return True, f"Order placed! ID: {order.get('order_id', 'N/A')}"
+            except:
+                return True, f"Order likely placed (status 201)"
         else:
-            error_msg = response.json().get('error', {}).get('message', response.text)
+            # Try to parse error, but handle non-JSON responses
+            try:
+                error_data = response.json()
+                error_msg = error_data.get('error', {}).get('message', str(error_data))
+            except:
+                error_msg = f"Status {response.status_code}: {response.text[:200]}"
             return False, f"API Error: {error_msg}"
     except Exception as e:
         return False, f"Error: {str(e)}"
@@ -681,4 +690,4 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v5.5 | One-Click Trading | RSA-PSS Signature Fix")
+st.caption("v5.6 | One-Click Trading | Better Error Handling")
