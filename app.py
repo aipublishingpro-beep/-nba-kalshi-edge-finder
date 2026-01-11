@@ -207,68 +207,220 @@ def fetch_extreme_totals(min_threshold=245):
 # FILTER LOGIC
 # ============================================================
 
-def check_all_filters(market, q1_total, watchlist, spread_estimate=5):
-    """Run all 6 filters and return pass/fail for each"""
+def get_price_tolerance(q1_total):
+    """
+    REGIME-AWARE PRICE TOLERANCE
+    Hard rules - simple, enforceable.
+    """
+    if q1_total is None:
+        return 0.68, "Pregame"
+    elif q1_total < 48:
+        return 0.78, "Q1 < 48"
+    elif q1_total < 50:
+        return 0.75, "Q1 48-49"
+    elif q1_total < 55:
+        return 0.70, "Q1 50-54"
+    else:
+        return 0.00, "Q1 ≥ 55"
+
+def calculate_confidence_score(market, q1_total, watchlist, spread_estimate=5, early_entry=False):
+    """
+    RESTRUCTURED: Gate first, then score.
+    Q1 is a GATE, bonuses are ADDITIVE.
+    Returns: total_score (0-100), breakdown dict, recommendation, rec_color, price_ok
+    """
     away = market["away_team"]
     home = market["home_team"]
     threshold = market["threshold"]
     no_ask = market["no_ask"]
     
-    filters = {}
+    breakdown = {}
     
-    # Filter 1: Threshold ≥ 245
-    filters["threshold"] = {
-        "pass": threshold >= 245,
-        "value": threshold,
-        "rule": "≥ 245"
-    }
+    # ============================================================
+    # STEP 1: HARD GATES (must pass before scoring)
+    # ============================================================
     
-    # Filter 2: NO ask ≤ 0.68
-    filters["price"] = {
-        "pass": no_ask <= 0.68,
-        "value": f"{no_ask:.2f}",
-        "rule": "≤ 0.68"
-    }
+    # Gate 1: Q1 Regime Check
+    if q1_total is not None and q1_total >= 55:
+        breakdown["GATE FAILED"] = {"label": "🚫 Q1 ≥ 55 - AUTOMATIC REJECT"}
+        return 0, breakdown, "🚫 NO TRADE - Q1 too high", "red", False
     
-    # Filter 3: Primary Watchlist team involved
+    # Gate 2: Price tolerance for Q1 regime
+    max_price, regime = get_price_tolerance(q1_total)
+    price_ok = no_ask <= max_price
+    
+    if not price_ok and q1_total is not None:
+        breakdown["GATE FAILED"] = {"label": f"🚫 Price {no_ask:.2f} > {max_price:.2f} tolerance for {regime}"}
+        return 0, breakdown, f"🚫 NO TRADE - Overpriced for {regime}", "red", False
+    
+    # ============================================================
+    # STEP 2: Q1 REGIME SCORE (30 points max - reduced from 50)
+    # ============================================================
+    if q1_total is not None:
+        if q1_total < 45:
+            q1_pts = 30
+            q1_label = "🔥 ELITE (<45)"
+        elif q1_total < 48:
+            q1_pts = 27
+            q1_label = "🟢 Excellent (<48)"
+        elif q1_total < 50:
+            q1_pts = 22
+            q1_label = "🟢 Good (48-49)"
+        elif q1_total < 55:
+            q1_pts = 15
+            q1_label = "🟡 Marginal (50-54)"
+        else:
+            q1_pts = 0
+            q1_label = "🔴 NO TRADE (≥55)"
+    else:
+        q1_pts = 0
+        q1_label = "⚪ Not entered yet"
+    
+    breakdown["Q1 Regime"] = {"points": q1_pts, "max": 30, "value": q1_total, "label": q1_label}
+    
+    # ============================================================
+    # STEP 3: BONUS FACTORS (70 points max - rebalanced)
+    # ============================================================
+    
+    # Watchlist team (+20 max - increased importance)
     has_watchlist = away in watchlist or home in watchlist
-    watchlist_team = away if away in watchlist else (home if home in watchlist else "None")
-    filters["watchlist"] = {
-        "pass": has_watchlist,
-        "value": watchlist_team,
-        "rule": "At least 1 team"
-    }
+    if has_watchlist:
+        wl_pts = 20
+        wl_team = away if away in watchlist else home
+        wl_label = f"✅ {wl_team}"
+    else:
+        wl_pts = 0
+        wl_label = "❌ None"
+    breakdown["Watchlist Team"] = {"points": wl_pts, "max": 20, "label": wl_label}
     
-    # Filter 4: Short rest (0-1 days)
+    # Price quality RELATIVE TO REGIME (+20 max)
+    if q1_total is not None:
+        price_buffer = max_price - no_ask  # How much under tolerance
+        if price_buffer >= 0.10:
+            price_pts = 20
+            price_label = f"🔥 Excellent ({no_ask:.2f}, {price_buffer:.0%} under limit)"
+        elif price_buffer >= 0.06:
+            price_pts = 15
+            price_label = f"🟢 Good ({no_ask:.2f})"
+        elif price_buffer >= 0.03:
+            price_pts = 10
+            price_label = f"🟡 Fair ({no_ask:.2f})"
+        else:
+            price_pts = 5
+            price_label = f"🟠 Tight ({no_ask:.2f}, near limit)"
+    else:
+        # Pregame pricing
+        if no_ask <= 0.60:
+            price_pts = 20
+            price_label = f"🔥 Elite pregame ({no_ask:.2f})"
+        elif no_ask <= 0.65:
+            price_pts = 15
+            price_label = f"🟢 Good pregame ({no_ask:.2f})"
+        elif no_ask <= 0.68:
+            price_pts = 10
+            price_label = f"🟡 OK pregame ({no_ask:.2f})"
+        else:
+            price_pts = 0
+            price_label = f"🔴 Too expensive pregame ({no_ask:.2f})"
+    breakdown["Price vs Regime"] = {"points": price_pts, "max": 20, "value": f"{no_ask:.2f}", "label": price_label}
+    
+    # Threshold height (+10 max)
+    if threshold >= 255:
+        thresh_pts = 10
+        thresh_label = "🔥 Extreme (≥255)"
+    elif threshold >= 252:
+        thresh_pts = 8
+        thresh_label = "🟢 Very high (≥252)"
+    elif threshold >= 250:
+        thresh_pts = 6
+        thresh_label = "🟢 High (≥250)"
+    elif threshold >= 248:
+        thresh_pts = 4
+        thresh_label = "🟡 Elevated (≥248)"
+    else:
+        thresh_pts = 2
+        thresh_label = "🟡 Baseline (245-247)"
+    breakdown["Threshold"] = {"points": thresh_pts, "max": 10, "value": threshold, "label": thresh_label}
+    
+    # Rest advantage (+12 max - increased)
     away_rest = get_rest_days(away)
     home_rest = get_rest_days(home)
-    has_short_rest = (away_rest is not None and away_rest <= 1) or (home_rest is not None and home_rest <= 1)
-    rest_info = f"{away}: {away_rest}d, {home}: {home_rest}d"
-    filters["rest"] = {
-        "pass": has_short_rest,
-        "value": rest_info,
-        "rule": "≤ 1 day for at least 1 team"
-    }
+    short_rest_count = sum([1 for r in [away_rest, home_rest] if r is not None and r <= 1])
+    extended_rest_count = sum([1 for r in [away_rest, home_rest] if r is not None and r >= 3])
     
-    # Filter 5: Q1 Total < 50
-    filters["q1"] = {
-        "pass": q1_total < 50 if q1_total is not None else False,
-        "value": q1_total if q1_total is not None else "Not entered",
-        "rule": "< 50 (prefer < 48)"
-    }
+    if short_rest_count == 2:
+        rest_pts = 12
+        rest_label = "🔥 Both short rest"
+    elif short_rest_count == 1 and extended_rest_count == 0:
+        rest_pts = 9
+        rest_label = "🟢 One short rest"
+    elif short_rest_count == 1:
+        rest_pts = 6
+        rest_label = "🟡 Mixed rest"
+    elif extended_rest_count == 2:
+        rest_pts = 0
+        rest_label = "🔴 Both extended (CAUTION)"
+    else:
+        rest_pts = 3
+        rest_label = "🟡 Normal rest"
+    breakdown["Rest Factor"] = {"points": rest_pts, "max": 12, "label": rest_label}
     
-    # Filter 6: OT Risk (spread estimate)
-    ot_ok = spread_estimate >= 5
-    filters["ot_risk"] = {
-        "pass": ot_ok,
-        "value": f"Spread ~{spread_estimate}",
-        "rule": "Spread ≥ 5 preferred"
-    }
+    # OT Risk / Spread (+8 max - increased)
+    if spread_estimate >= 10:
+        ot_pts = 8
+        ot_label = "🟢 Low OT risk (≥10)"
+    elif spread_estimate >= 7:
+        ot_pts = 6
+        ot_label = "🟢 Safe (≥7)"
+    elif spread_estimate >= 5:
+        ot_pts = 4
+        ot_label = "🟡 OK (≥5)"
+    elif spread_estimate >= 3:
+        ot_pts = 2
+        ot_label = "🟠 Risky (3-5)"
+    else:
+        ot_pts = 0
+        ot_label = "🔴 High OT risk (<3)"
+    breakdown["OT Risk"] = {"points": ot_pts, "max": 8, "value": spread_estimate, "label": ot_label}
     
-    # All pass?
-    all_pass = all(f["pass"] for f in filters.values())
+    # Early entry bonus (+5 if flagged)
+    if early_entry and q1_total is not None and q1_total < 50:
+        early_pts = 5
+        early_label = "🟢 Locked in early"
+    else:
+        early_pts = 0
+        early_label = "—"
+    if early_entry:
+        breakdown["Early Entry"] = {"points": early_pts, "max": 5, "label": early_label}
     
-    return filters, all_pass
+    # ============================================================
+    # STEP 4: TOTAL SCORE
+    # ============================================================
+    score = q1_pts + wl_pts + price_pts + thresh_pts + rest_pts + ot_pts + early_pts
+    
+    # ============================================================
+    # STEP 5: RECOMMENDATION (requires Q1 confirmation)
+    # ============================================================
+    if q1_total is None:
+        recommendation = "⏳ WAIT FOR Q1"
+        rec_color = "gray"
+    elif score >= 75:
+        recommendation = "🚀 STRONG BET"
+        rec_color = "green"
+    elif score >= 60:
+        recommendation = "✅ GOOD BET"
+        rec_color = "green"
+    elif score >= 45:
+        recommendation = "🟡 MARGINAL - Small position only"
+        rec_color = "yellow"
+    elif score >= 30:
+        recommendation = "⚠️ WEAK - Consider skipping"
+        rec_color = "orange"
+    else:
+        recommendation = "🚫 NO TRADE - Score too low"
+        rec_color = "red"
+    
+    return score, breakdown, recommendation, rec_color, price_ok
 
 # ============================================================
 # STREAMLIT APP
@@ -295,15 +447,20 @@ with st.sidebar:
         help="Only show markets at or above this total"
     )
     
-    # Max NO price
-    max_no_price = st.slider(
-        "Max NO Ask Price",
-        min_value=0.50,
-        max_value=0.75,
-        value=0.68,
-        step=0.01,
-        help="Skip if NO is priced above this (safety already priced in)"
-    )
+    st.divider()
+    
+    # PRICE TOLERANCE LEGEND - HARD RULES
+    st.subheader("💰 PRICE TOLERANCE")
+    st.caption("Hard rules. Simple. Enforceable.")
+    st.markdown("""
+    | Q1 Score | Max NO Ask |
+    |:--------:|:----------:|
+    | **< 48** | **0.78** |
+    | **48-49** | **0.75** |
+    | **50-54** | **0.70** |
+    | **≥ 55** | **NO TRADE** |
+    """)
+    st.caption("Pregame (no Q1 yet): 0.68 max")
     
     st.divider()
     
@@ -331,7 +488,14 @@ with st.sidebar:
             st.write(f"• {team}: {TEAM_PACE[team]:.1f}")
     
     st.divider()
-    st.caption("Last updated: Update TEAM_3PT_PCT and TEAM_PACE weekly")
+    
+    # Kill Switch Warning
+    st.subheader("🛑 KILL SWITCH")
+    st.error("If NO price jumps +5¢ in <30 sec → ABORT")
+    st.caption("Protects against repricing spikes and bot front-running")
+    
+    st.divider()
+    st.caption("⚠️ REST DATA: Update LAST_GAME_DATES daily or automate via API")
 
 # Main content - CENTERED
 if st.button("🔄 Refresh Markets", type="primary"):
@@ -368,19 +532,23 @@ elif not markets:
         except Exception as e:
             st.write(f"Diagnostic error: {e}")
 else:
-    # Filter by max NO price
-    eligible_markets = [m for m in markets if m["no_ask"] <= max_no_price]
+    # No global price filter - regime-aware now
+    eligible_markets = markets  # Show all, let regime logic handle it
     
     # ============================================================
-    # TOP EDGES SECTION - BEST 2-3 OPPORTUNITIES
+    # TOP EDGES SECTION - BEST 2-3 OPPORTUNITIES (PREGAME)
     # ============================================================
     
-    def score_edge(market):
-        """Score each market for edge quality. Higher = better."""
+    def score_pregame_edge(market):
+        """Score each market for PREGAME edge quality. Higher = better."""
         away = market["away_team"]
         home = market["home_team"]
         no_ask = market["no_ask"]
         threshold = market["threshold"]
+        
+        # Pregame: must be under 0.68
+        if no_ask > 0.68:
+            return 0, ["🔴 Price too high for pregame"]
         
         score = 0
         reasons = []
@@ -389,36 +557,42 @@ else:
         if away in watchlist or home in watchlist:
             score += 30
             wt = away if away in watchlist else home
-            reasons.append(f"Watchlist team ({wt})")
+            reasons.append(f"✅ Watchlist team ({wt})")
         
-        # Price: Lower NO = better edge
-        if no_ask <= 0.60:
+        # Price: Lower NO = better edge (pregame scale)
+        if no_ask <= 0.58:
             score += 25
-            reasons.append("Excellent price (≤0.60)")
-        elif no_ask <= 0.65:
+            reasons.append(f"🔥 Elite price ({no_ask:.2f})")
+        elif no_ask <= 0.62:
             score += 20
-            reasons.append("Good price (≤0.65)")
+            reasons.append(f"🟢 Great price ({no_ask:.2f})")
+        elif no_ask <= 0.65:
+            score += 15
+            reasons.append(f"🟢 Good price ({no_ask:.2f})")
         elif no_ask <= 0.68:
             score += 10
-            reasons.append("Acceptable price (≤0.68)")
+            reasons.append(f"🟡 OK price ({no_ask:.2f})")
         
         # Higher threshold = more extreme = better
         if threshold >= 252:
             score += 20
-            reasons.append(f"Very extreme ({threshold})")
+            reasons.append(f"🔥 Very extreme ({threshold})")
         elif threshold >= 250:
             score += 15
-            reasons.append(f"Extreme ({threshold})")
+            reasons.append(f"🟢 Extreme ({threshold})")
         elif threshold >= 248:
             score += 10
-            reasons.append(f"High ({threshold})")
+            reasons.append(f"🟡 High ({threshold})")
+        else:
+            score += 5
+            reasons.append(f"Baseline ({threshold})")
         
         # Short rest bonus
         away_rest = get_rest_days(away)
         home_rest = get_rest_days(home)
         if (away_rest and away_rest <= 1) or (home_rest and home_rest <= 1):
             score += 15
-            reasons.append("Short rest involved")
+            reasons.append("🟢 Short rest involved")
         
         # Both teams extended rest = penalty
         if (away_rest and away_rest >= 3) and (home_rest and home_rest >= 3):
@@ -427,41 +601,39 @@ else:
         
         return score, reasons
     
-    # Score all eligible markets
+    # Score all markets for pregame ranking
     scored_markets = []
     for m in eligible_markets:
-        score, reasons = score_edge(m)
-        scored_markets.append({**m, "score": score, "reasons": reasons})
+        score, reasons = score_pregame_edge(m)
+        if score > 0:  # Only include if passes pregame price gate
+            scored_markets.append({**m, "score": score, "reasons": reasons})
     
     # Sort by score, take top 3
     scored_markets.sort(key=lambda x: x["score"], reverse=True)
     top_edges = scored_markets[:3]
     
     # Display TOP EDGES
-    st.header("🔥 TODAY'S TOP EDGES")
-    st.caption("Best opportunities ranked by watchlist teams, price, threshold, and rest factors")
+    st.header("🔥 TODAY'S TOP EDGES (PREGAME)")
+    st.caption("Best pregame opportunities. Remember: WAIT FOR Q1 before betting. These are watchlist targets.")
     
     if top_edges:
         edge_cols = st.columns(len(top_edges))
         for i, edge in enumerate(top_edges):
             with edge_cols[i]:
                 rank_emoji = ["🥇", "🥈", "🥉"][i]
-                st.subheader(f"{rank_emoji} #{i+1} EDGE")
+                st.subheader(f"{rank_emoji} #{i+1} TARGET")
                 
                 st.markdown(f"### {edge['away_team']} @ {edge['home_team']}")
                 st.metric("Threshold", f"≥ {edge['threshold']}")
+                st.metric("Pregame NO", f"{edge['no_ask']:.2f}")
                 
-                price_color = "🟢" if edge["no_ask"] <= 0.65 else "🟡"
-                st.metric("NO Price", f"{price_color} {edge['no_ask']:.2f}")
-                
-                st.write("**Why this edge:**")
+                st.write("**Why watch this:**")
                 for reason in edge["reasons"]:
                     st.write(f"• {reason}")
                 
-                kalshi_url = f"https://kalshi.com/markets/{edge['ticker']}"
-                st.link_button(f"BET NO on {edge['threshold']}", kalshi_url, type="primary")
+                st.caption("⏳ Wait for Q1 < 55 before entry")
     else:
-        st.warning("No edges meet price criteria today. Patience is the edge.")
+        st.warning("No games meet pregame price criteria (≤0.68). Wait for Q1 confirmation to unlock higher price tolerance.")
     
     st.divider()
     
@@ -470,7 +642,8 @@ else:
     # ============================================================
     
     st.header("📊 All Extreme Totals Markets")
-    st.success(f"Found {len(markets)} extreme totals, {len(eligible_markets)} within price range")
+    pregame_eligible = len([m for m in markets if m["no_ask"] <= 0.68])
+    st.success(f"Found {len(markets)} extreme totals | {pregame_eligible} under pregame limit (≤0.68) | All unlock after Q1")
     
     for market in eligible_markets:
         away = market["away_team"]
@@ -486,6 +659,18 @@ else:
         away_status, away_icon = get_rest_status(away_rest)
         home_status, home_icon = get_rest_status(home_rest)
         
+        # Price status based on hard rules
+        if no_ask <= 0.68:
+            price_status = "🟢 Pregame OK"
+        elif no_ask <= 0.70:
+            price_status = "🟡 Needs Q1 50-54"
+        elif no_ask <= 0.75:
+            price_status = "🟡 Needs Q1 48-49"
+        elif no_ask <= 0.78:
+            price_status = "🟠 Needs Q1 < 48"
+        else:
+            price_status = "🔴 Too expensive"
+        
         with st.container():
             st.subheader(f"🏀 {away} @ {home}")
             
@@ -493,8 +678,8 @@ else:
             with mcol1:
                 st.metric("Threshold", f"{threshold}")
             with mcol2:
-                price_color = "🟢" if no_ask <= 0.65 else "🟡" if no_ask <= 0.68 else "🔴"
-                st.metric("NO Price", f"{price_color} {no_ask:.2f}")
+                st.metric("NO Price", f"{no_ask:.2f}")
+                st.caption(price_status)
             with mcol3:
                 st.write(f"**{watchlist_badge}**")
             
@@ -506,79 +691,157 @@ else:
             st.divider()
     
     # ============================================================
-    # ENTRY CHECKLIST - BELOW MARKETS
+    # CONFIDENCE SCORER - BELOW MARKETS
     # ============================================================
     
-    st.header("✅ ENTRY CHECKLIST")
-    st.caption("Select a game and enter live Q1 data. ALL filters must pass before entry.")
+    st.header("🎯 CONFIDENCE SCORER")
+    st.caption("Gate-first logic: Q1 and price must pass BEFORE bonuses count. No more overconfidence on bad setups.")
     
-    check_col1, check_col2 = st.columns(2)
+    check_col1, check_col2 = st.columns([1, 2])
     
     with check_col1:
         market_options = [f"{m['away_team']} @ {m['home_team']} ({m['threshold']})" for m in markets]
         selected_idx = st.selectbox("Select Game", range(len(market_options)), format_func=lambda x: market_options[x])
         selected_market = markets[selected_idx]
         
-        st.subheader("🔴 LIVE Q1 CHECK")
+        st.subheader("🔴 LIVE INPUTS")
         q1_total = st.number_input(
-            "Enter Q1 Total (after Q1 ends)",
+            "Q1 Combined Score",
             min_value=0, max_value=100, value=0,
-            help="Wait for Q1 to complete. Enter combined score."
+            help="Enter AFTER Q1 ends. This is the primary gate."
         )
         
         spread_est = st.number_input(
-            "Estimated Spread",
+            "Pregame Spread",
             min_value=0.0, max_value=30.0, value=5.0, step=0.5,
-            help="Check pregame spread. ≥5 preferred for OT safety"
+            help="Higher spread = less OT risk"
         )
+        
+        # Early entry flag
+        st.divider()
+        early_entry = st.checkbox(
+            "🔒 Early Entry Lock-In",
+            value=False,
+            help="Check if entering with <90s left in Q1 and score clearly under pace"
+        )
+        if early_entry:
+            st.caption("⚡ You're locking in before Q1 ends. Make sure pace is visibly slow.")
+        
+        # Current price for kill switch
+        st.divider()
+        st.write(f"**Current NO Price:** {selected_market['no_ask']:.2f}")
+        q1_val = q1_total if q1_total > 0 else None
+        max_price, regime = get_price_tolerance(q1_val)
+        st.write(f"**Price Limit ({regime}):** {max_price:.2f}")
     
     with check_col2:
-        q1_val = q1_total if q1_total > 0 else None
-        filters, all_pass = check_all_filters(selected_market, q1_val, watchlist, spread_est)
+        score, breakdown, recommendation, rec_color, price_ok = calculate_confidence_score(
+            selected_market, q1_val, watchlist, spread_est, early_entry
+        )
         
-        st.subheader("Filter Results")
-        for name, result in filters.items():
-            icon = "✅" if result["pass"] else "❌"
-            st.write(f"{icon} **{name.upper()}**: {result['value']}")
+        # Check for gate failure
+        gate_failed = "GATE FAILED" in breakdown
+        
+        if gate_failed:
+            st.error(f"**{breakdown['GATE FAILED']['label']}**")
+            st.caption("Trade rejected at gate level. Bonuses don't matter.")
+        else:
+            # Big score display
+            st.subheader(f"📊 CONFIDENCE: {score}/100")
+            st.progress(min(score / 100, 1.0))
+            
+            if rec_color == "green":
+                st.success(f"**{recommendation}**")
+            elif rec_color == "yellow":
+                st.warning(f"**{recommendation}**")
+            elif rec_color == "orange":
+                st.warning(f"**{recommendation}**")
+            elif rec_color == "red":
+                st.error(f"**{recommendation}**")
+            else:
+                st.info(f"**{recommendation}**")
+            
+            # Breakdown table
+            st.write("**Score Breakdown:**")
+            for factor, data in breakdown.items():
+                if factor == "GATE FAILED":
+                    continue
+                pts = data.get("points", 0)
+                max_pts = data.get("max", 0)
+                label = data.get("label", "")
+                if max_pts > 0:
+                    bar = "█" * int(pts * 10 / max_pts) + "░" * (10 - int(pts * 10 / max_pts))
+                    st.write(f"**{factor}**: {pts}/{max_pts} {bar} {label}")
+                else:
+                    st.write(f"**{factor}**: {label}")
         
         st.divider()
         
-        if all_pass:
-            st.success("🚀 ALL FILTERS PASS - ENTRY ELIGIBLE")
+        # Action button
+        if not gate_failed and score >= 45 and q1_val is not None:
             kalshi_url = f"https://kalshi.com/markets/{selected_market['ticker']}"
-            st.link_button(f"→ BET NO on {selected_market['threshold']}", kalshi_url, type="primary")
+            st.link_button(
+                f"→ BET NO on {selected_market['threshold']} (Confidence: {score}%)", 
+                kalshi_url, 
+                type="primary"
+            )
+            st.caption("🛑 ABORT if price jumps +5¢ suddenly")
+        elif q1_val is None:
+            st.info("Enter Q1 score after first quarter ends")
         else:
-            failed = [k for k, v in filters.items() if not v["pass"]]
-            st.error(f"❌ NO TRADE - Failed: {', '.join(failed)}")
+            st.caption("Trade rejected. Wait for better setup.")
 
 # Bottom section - System Rules
 st.divider()
-with st.expander("📖 SYSTEM RULES (READ THIS)"):
+with st.expander("📖 SYSTEM RULES v3.0 (READ THIS)"):
     st.markdown("""
-    ### THE EDGE
-    You are exploiting tail-risk overpricing. The market overestimates the probability of extreme scoring.
+    ### GATE-FIRST LOGIC
     
-    ### THE BRAKES
-    1. **Low 3PT% teams** - Can't inflate totals through variance
-    2. **Slow pace teams** - Limit possession volume  
-    3. **Short rest** - Fatigue suppresses pace and shooting
-    4. **Price discipline** - NO ≤ 0.68 or safety is already priced
-    5. **OT avoidance** - Overtime kills extreme NOs
-    6. **Q1 confirmation** - Slow Q1 = unsustainable pressure on later quarters
+    **Step 1: Hard Gates (must pass)**
+    - Q1 ≥ 55 → AUTOMATIC REJECT
+    - Price over regime tolerance → REJECT
     
-    ### THE DISCIPLINE
-    - You will trade far less
-    - You will skip many "obvious" games
-    - You will feel bored most nights
-    - **That boredom is the edge**
+    **Step 2: Q1 Regime Score (30 pts max)**
+    - Q1 < 45: 30 pts (ELITE)
+    - Q1 < 48: 27 pts
+    - Q1 48-49: 22 pts
+    - Q1 50-54: 15 pts
+    - Q1 ≥ 55: REJECTED AT GATE
+    
+    **Step 3: Bonus Factors (70 pts max)**
+    - Watchlist Team: +20 pts
+    - Price vs Regime: +20 pts
+    - Rest Advantage: +12 pts
+    - Threshold Height: +10 pts
+    - Low OT Risk: +8 pts
+    
+    ### PRICE TOLERANCE (HARD RULES)
+    | Q1 Score | Max NO Price |
+    |----------|--------------|
+    | < 48 | 0.78 |
+    | 48-49 | 0.75 |
+    | 50-54 | 0.70 |
+    | ≥ 55 | NO TRADE |
+    
+    *Pregame (before Q1): 0.68 max*
+    
+    ### KILL SWITCH
+    🛑 If NO price jumps +5¢ in <30 seconds → ABORT IMMEDIATELY
+    
+    ### RECOMMENDATIONS BY SCORE
+    - **75-100**: 🚀 STRONG BET
+    - **60-74**: ✅ GOOD BET  
+    - **45-59**: 🟡 MARGINAL - Small position
+    - **30-44**: ⚠️ WEAK - Skip
+    - **<30**: 🚫 NO TRADE
     
     ### NEVER
-    - Chase the highest NO blindly
-    - Enter pregame (ALWAYS wait for Q1)
+    - Enter if Q1 ≥ 55
+    - Chase price spikes
     - Double down or martingale
-    - Bet games without a watchlist team
+    - Trust stale rest data
     """)
 
 # Footer
 st.divider()
-st.caption("Extreme Totals NO Finder v1.0 | System designed for patience, not action")
+st.caption("Extreme Totals NO Finder v3.0 | Gate-First Logic | Regime-Aware Pricing")
