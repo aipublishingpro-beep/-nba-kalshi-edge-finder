@@ -264,32 +264,42 @@ FALLBACK_PACE = {
 
 def load_team_data():
     """Load live data, fall back to static if API fails."""
+    
+    # Default to fallbacks
+    team_3pt = FALLBACK_3PT_PCT.copy()
+    team_pace = FALLBACK_PACE.copy()
+    rest_data = {}
+    
+    source_3pt = "🔴 FALLBACK"
+    source_pace = "🔴 FALLBACK"
+    source_rest = "🔴 UNAVAILABLE"
+    
     # Try live 3PT%
-    live_3pt, err_3pt = fetch_live_team_stats()
-    if live_3pt:
-        team_3pt = live_3pt
-        source_3pt = "🟢 LIVE"
-    else:
-        team_3pt = FALLBACK_3PT_PCT
-        source_3pt = f"🔴 FALLBACK ({err_3pt})"
+    try:
+        live_3pt, err_3pt = fetch_live_team_stats()
+        if live_3pt and len(live_3pt) > 0:
+            team_3pt = live_3pt
+            source_3pt = "🟢 LIVE"
+    except Exception as e:
+        pass  # Keep fallback
     
     # Try live Pace
-    live_pace, err_pace = fetch_live_pace()
-    if live_pace:
-        team_pace = live_pace
-        source_pace = "🟢 LIVE"
-    else:
-        team_pace = FALLBACK_PACE
-        source_pace = f"🔴 FALLBACK ({err_pace})"
+    try:
+        live_pace, err_pace = fetch_live_pace()
+        if live_pace and len(live_pace) > 0:
+            team_pace = live_pace
+            source_pace = "🟢 LIVE"
+    except Exception as e:
+        pass  # Keep fallback
     
     # Try live rest days
-    live_rest = fetch_last_game_dates()
-    if live_rest and len(live_rest) > 0:
-        rest_data = live_rest
-        source_rest = "🟢 LIVE"
-    else:
-        rest_data = {}
-        source_rest = "🔴 UNAVAILABLE"
+    try:
+        live_rest = fetch_last_game_dates()
+        if live_rest and len(live_rest) > 0:
+            rest_data = live_rest
+            source_rest = "🟢 LIVE"
+    except Exception as e:
+        pass  # Keep empty
     
     return {
         "3pt": team_3pt,
@@ -308,23 +318,29 @@ def load_team_data():
 
 def get_bottom_3pt_teams(team_3pt, n=8):
     """Bottom N teams by 3PT% - these can't inflate totals through variance"""
+    if not team_3pt:
+        return []
     sorted_teams = sorted(team_3pt.items(), key=lambda x: x[1])
     return [team for team, pct in sorted_teams[:n]]
 
 def get_bottom_pace_teams(team_pace, n=10):
     """Bottom N teams by pace - these limit possession volume"""
+    if not team_pace:
+        return []
     sorted_teams = sorted(team_pace.items(), key=lambda x: x[1])
     return [team for team, pace in sorted_teams[:n]]
 
 def get_primary_watchlist(team_3pt, team_pace):
     """Intersection of bottom 3PT% AND bottom pace teams"""
+    if not team_3pt or not team_pace:
+        return set()
     bottom_3pt = set(get_bottom_3pt_teams(team_3pt, 8))
     bottom_pace = set(get_bottom_pace_teams(team_pace, 10))
     return bottom_3pt.intersection(bottom_pace)
 
 def get_rest_days(team, rest_data):
     """Calculate days since last game using live data"""
-    if team not in rest_data:
+    if not rest_data or team not in rest_data:
         return None
     try:
         last_game = datetime.strptime(rest_data[team], "%Y-%m-%d")
@@ -753,13 +769,20 @@ st.caption("Tail-risk exploitation system. You are not betting averages. You are
 # ============================================================
 # LOAD LIVE DATA FIRST (global scope)
 # ============================================================
-with st.spinner("Loading live NBA data..."):
-    live_data = load_team_data()
-
-TEAM_3PT_PCT = live_data["3pt"]
-TEAM_PACE = live_data["pace"]
-REST_DATA = live_data["rest"]
-DATA_SOURCES = live_data["sources"]
+try:
+    with st.spinner("Loading live NBA data..."):
+        live_data = load_team_data()
+    
+    TEAM_3PT_PCT = live_data["3pt"]
+    TEAM_PACE = live_data["pace"]
+    REST_DATA = live_data["rest"]
+    DATA_SOURCES = live_data["sources"]
+except Exception as e:
+    st.error(f"Error loading data: {e}")
+    TEAM_3PT_PCT = FALLBACK_3PT_PCT.copy()
+    TEAM_PACE = FALLBACK_PACE.copy()
+    REST_DATA = {}
+    DATA_SOURCES = {"3pt": "🔴 ERROR", "pace": "🔴 ERROR", "rest": "🔴 ERROR"}
 
 # Calculate watchlist from live data
 watchlist = get_primary_watchlist(TEAM_3PT_PCT, TEAM_PACE)
