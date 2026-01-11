@@ -21,18 +21,16 @@ st.set_page_config(page_title="Extreme Totals NO Finder", page_icon="🎯", layo
 # ============================================================
 def init_trading():
     if 'kalshi_api_key' not in st.session_state:
-        # Try to load from Streamlit secrets first
         try:
-            st.session_state.kalshi_api_key = st.secrets.get("KALSHI_API_KEY", "")
-        except:
+            st.session_state.kalshi_api_key = st.secrets["KALSHI_API_KEY"]
+        except (KeyError, FileNotFoundError):
             st.session_state.kalshi_api_key = ""
     if 'kalshi_private_key' not in st.session_state:
         try:
-            st.session_state.kalshi_private_key = st.secrets.get("KALSHI_PRIVATE_KEY", "")
-        except:
+            st.session_state.kalshi_private_key = st.secrets["KALSHI_PRIVATE_KEY"]
+        except (KeyError, FileNotFoundError):
             st.session_state.kalshi_private_key = ""
     if 'trading_enabled' not in st.session_state:
-        # Auto-enable if secrets are present
         st.session_state.trading_enabled = bool(st.session_state.kalshi_api_key and st.session_state.kalshi_private_key)
     if 'default_contracts' not in st.session_state:
         st.session_state.default_contracts = 10
@@ -106,9 +104,9 @@ def place_kalshi_order(ticker, side, price_cents, count, api_key, private_key_pe
 # ============================================================
 def init_price_history():
     if 'price_history' not in st.session_state:
-        st.session_state.price_history = {}  # {ticker: [(timestamp, price), ...]}
+        st.session_state.price_history = {}
     if 'spike_alerts' not in st.session_state:
-        st.session_state.spike_alerts = {}  # {ticker: True/False}
+        st.session_state.spike_alerts = {}
 
 def record_price(ticker, price):
     init_price_history()
@@ -116,7 +114,6 @@ def record_price(ticker, price):
     if ticker not in st.session_state.price_history:
         st.session_state.price_history[ticker] = []
     st.session_state.price_history[ticker].append((now, price))
-    # Keep only last 2 minutes of data
     cutoff = now - timedelta(seconds=120)
     st.session_state.price_history[ticker] = [(t, p) for t, p in st.session_state.price_history[ticker] if t > cutoff]
 
@@ -130,7 +127,7 @@ def check_price_spike(ticker, current_price, threshold_cents=5, window_seconds=3
     old_prices = [(t, p) for t, p in st.session_state.price_history[ticker] if t <= cutoff]
     if not old_prices:
         return False, 0
-    oldest_price = old_prices[0][1]  # Price from ~30 seconds ago
+    oldest_price = old_prices[0][1]
     delta = current_price - oldest_price
     if delta >= threshold_cents:
         st.session_state.spike_alerts[ticker] = True
@@ -237,68 +234,44 @@ def get_kalshi_url(market):
 # RECOMMENDED BID CALCULATOR
 # ============================================================
 def calculate_recommended_bid(no_ask, game_state, q1_total=None, is_spiked=False, q1_lock_imminent=False):
-    """
-    Calculate recommended bid based on game state and price.
-    no_ask is in CENTS (0-100), returns bid in CENTS.
-    
-    game_state: 'pregame', 'live_q1', 'post_q1'
-    Returns: (bid_price_cents or None, label, explanation)
-    """
-    # KILL SWITCH - No bid if spiked
     if is_spiked:
         return None, "🛑 DO NOT BID", "Market moved too fast — wait for cooldown"
-    
-    # PREGAME - Patient parking (10¢ below ask, floor at 60¢)
     if game_state == 'pregame':
         bid = max(int(no_ask - 10), 60)
         return bid, "Patient Pregame Bid", "Let price come to you — don't chase"
-    
-    # LIVE Q1 with lock-in imminent (5¢ below ask, cap at 75¢)
     if game_state == 'live_q1' and q1_lock_imminent:
         bid = min(int(no_ask - 5), 75)
         return bid, "Early Live Bid", "Q1 lock-in forming — tighten if desired"
-    
-    # LIVE Q1 without lock-in (8¢ below ask)
     if game_state == 'live_q1':
         bid = max(int(no_ask - 8), 60)
         return bid, "Live Q1 Bid", "Waiting for Q1 end — park conservatively"
-    
-    # POST-Q1 CONFIRMED
     if game_state == 'post_q1':
         if q1_total and q1_total >= 55:
             return None, "🚫 NO TRADE", "Q1 too high — skip this game"
         if no_ask <= 75:
             return None, "✅ ASK ACCEPTABLE", f"Lift ask at {int(no_ask)}¢ if desired"
         else:
-            bid = int(no_ask - 3)  # 3¢ below ask
+            bid = int(no_ask - 3)
             return bid, "Post-Q1 Value Bid", "Information edge confirmed — tight spread OK"
-    
-    # Default fallback
     return max(int(no_ask - 10), 60), "Default Bid", "Conservative parking"
 
 def get_game_state(live_data):
-    """Determine game state from live data."""
     if not live_data:
         return 'pregame', False, None
-    
     period = live_data.get('period', 0)
     quarter = str(live_data.get('quarter', ''))
     clock = live_data.get('clock', '')
     total = live_data.get('total', 0)
-    
-    # Check for Q1 lock-in imminent (Q1, < 1:15 remaining, total < 50)
     q1_lock_imminent = False
     if period == 1 and 'End' not in quarter:
-        # Parse clock to check if < 1:15 remaining
         try:
             if ':' in clock:
                 mins, secs = clock.split(':')
                 total_secs = int(mins) * 60 + int(float(secs))
-                if total_secs <= 75 and total < 50:  # 1:15 = 75 seconds
+                if total_secs <= 75 and total < 50:
                     q1_lock_imminent = True
         except:
             pass
-    
     if period == 0 or live_data.get('status') == '🟡 SCHEDULED':
         return 'pregame', False, None
     elif period == 1 and 'End' in quarter:
@@ -307,27 +280,19 @@ def get_game_state(live_data):
         return 'live_q1', q1_lock_imminent, total
     elif period > 1:
         return 'post_q1', False, total
-    
     return 'pregame', False, None
 
 def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, market_ticker=None):
-    """Render the bid recommendation box with optional Place Bid button. All in one yellow box."""
     game_state, q1_lock_imminent, q1_total = get_game_state(live_data)
     spiked = is_spiked(ticker)
-    
     bid, label, explanation = calculate_recommended_bid(
         no_ask, game_state, q1_total, spiked, q1_lock_imminent
     )
-    
-    # Build display - bid is already in cents
     if spiked:
         st.error(f"**{label}**\n\n{explanation}")
     elif bid is not None:
-        # Check if trading enabled
         init_trading()
         show_trading = st.session_state.trading_enabled and st.session_state.kalshi_api_key and st.session_state.kalshi_private_key
-        
-        # Create unified yellow container
         with st.container():
             st.markdown("""<style>.yellow-box {background-color: #FFD700; padding: 15px; border-radius: 8px; border: 2px solid #FFA500; margin-bottom: 10px;}</style>""", unsafe_allow_html=True)
             st.markdown(f"""
@@ -336,7 +301,6 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, ma
                 <span style="color: #333; font-style: italic;">{label}</span> — <span style="color: #333;">{explanation}</span>
             </div>
             """, unsafe_allow_html=True)
-            
             if show_trading:
                 col1, col2 = st.columns([1, 3])
                 with col1:
@@ -360,7 +324,6 @@ def render_bid_recommendation(no_ask, live_data, ticker, watchlist_team=None, ma
         if "ACCEPTABLE" in label:
             init_trading()
             show_trading = st.session_state.trading_enabled and st.session_state.kalshi_api_key and st.session_state.kalshi_private_key
-            
             with st.container():
                 st.success(f"**{label}**\n\n{explanation}")
                 if show_trading:
@@ -437,7 +400,6 @@ def fetch_extreme_totals(min_threshold=245):
     except Exception as e: return [], str(e), today
 
 def get_price_tolerance(q1_total):
-    """Returns max NO price in CENTS based on Q1 total."""
     if q1_total is None: return 68, "Pregame"
     elif q1_total < 48: return 78, "Q1 < 48"
     elif q1_total < 50: return 75, "Q1 48-49"
@@ -445,7 +407,6 @@ def get_price_tolerance(q1_total):
     else: return 0, "Q1 ≥ 55"
 
 def calculate_confidence(market, q1_total, watchlist, spread_est=5):
-    """Calculate confidence score. Prices are in cents (0-100)."""
     away, home = market["away_team"], market["home_team"]
     threshold, no_ask = market["threshold"], market["no_ask"]
     if q1_total is not None and q1_total >= 55: return 0, "🚫 Q1 ≥ 55 - NO TRADE", "red", {"REJECTED": "Q1 too high"}
@@ -458,7 +419,7 @@ def calculate_confidence(market, q1_total, watchlist, spread_est=5):
     breakdown["Q1 Regime"] = f"{q1_pts}/30"
     if away in watchlist or home in watchlist: score += 20; breakdown["Watchlist"] = "✅ +20"
     else: breakdown["Watchlist"] = "❌ +0"
-    buffer = max_price - no_ask  # Now in cents
+    buffer = max_price - no_ask
     price_pts = 20 if buffer >= 10 else 15 if buffer >= 6 else 10 if buffer >= 3 else 5
     score += price_pts
     breakdown["Price Buffer"] = f"{price_pts}/20"
@@ -502,8 +463,7 @@ with st.sidebar:
         st.session_state.trading_enabled = trading_on
     
     if trading_on:
-        # Check if secrets are loaded
-        secrets_loaded = st.session_state.kalshi_api_key and st.session_state.kalshi_private_key
+        secrets_loaded = bool(st.session_state.kalshi_api_key and st.session_state.kalshi_private_key)
         
         if secrets_loaded:
             st.success("✅ Keys loaded from secrets")
@@ -554,15 +514,12 @@ if error:
 elif not markets:
     st.warning(f"No extreme totals (≥{min_threshold}) for today.")
 else:
-    # Split watchlist markets by price (prices are in cents)
     watchlist_markets = [m for m in markets if m["away_team"] in watchlist or m["home_team"] in watchlist]
     watchlist_green = [m for m in watchlist_markets if m["no_ask"] <= 68]
     watchlist_yellow = [m for m in watchlist_markets if m["no_ask"] > 68]
     non_watchlist = [m for m in markets if m["away_team"] not in watchlist and m["home_team"] not in watchlist]
 
-    # ============================================================
-    # 🟢 GREEN WATCHLIST - TOP PRIORITY
-    # ============================================================
+    # 🟢 GREEN WATCHLIST
     if watchlist_green:
         st.markdown("## 🟢 WATCHLIST - PRICE OK (≤0.68)")
         st.markdown("##### ⭐ Structural brakes + Good pregame price = MONITOR FOR Q1")
@@ -570,11 +527,8 @@ else:
             wl_team = m["away_team"] if m["away_team"] in watchlist else m["home_team"]
             live = get_live_game_data(m["away_team"], m["home_team"], live_scores)
             live_str = f"{live['away_score']}-{live['home_score']} ({live['status']} {live['quarter']} {live['clock']})" if live else "Not started"
-            
-            # KILL SWITCH - Record and check for spike
             record_price(m["ticker"], m["no_ask"])
             spiked, delta = check_price_spike(m["ticker"], m["no_ask"])
-            
             if spiked or is_spiked(m["ticker"]):
                 st.error(f"""
 🛑 **PRICE SPIKE DETECTED — SKIP THIS MARKET**  
@@ -596,9 +550,7 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
                 st.link_button(f"🔗 Open Kalshi - {m['threshold']}", get_kalshi_url(m), type="primary")
             st.markdown("---")
     
-    # ============================================================
-    # 🟡 YELLOW WATCHLIST - WAIT FOR Q1
-    # ============================================================
+    # 🟡 YELLOW WATCHLIST
     if watchlist_yellow:
         st.markdown("## 🟡 WATCHLIST - PRICE HIGH (>0.68)")
         st.markdown("##### ⭐ Structural brakes but price needs Q1 confirmation to unlock")
@@ -606,11 +558,8 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
             wl_team = m["away_team"] if m["away_team"] in watchlist else m["home_team"]
             live = get_live_game_data(m["away_team"], m["home_team"], live_scores)
             live_str = f"{live['away_score']}-{live['home_score']} ({live['status']} {live['quarter']} {live['clock']})" if live else "Not started"
-            
-            # KILL SWITCH - Record and check for spike
             record_price(m["ticker"], m["no_ask"])
             spiked, delta = check_price_spike(m["ticker"], m["no_ask"])
-            
             if spiked or is_spiked(m["ticker"]):
                 st.error(f"""
 🛑 **PRICE SPIKE DETECTED — SKIP THIS MARKET**  
@@ -628,8 +577,6 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
 ⭐ WATCHLIST: **{wl_team}** (Bottom 8 3PT% + Bottom 10 Pace)  
 **Threshold:** {m["threshold"]} | **NO Price:** {int(m["no_ask"])}¢ | **Live:** {live_str}
                 """)
-                
-                # Price unlock guide (prices in cents)
                 if m["no_ask"] <= 70:
                     st.caption(f"💡 Price {int(m['no_ask'])}¢ unlocks at Q1 50-54")
                 elif m["no_ask"] <= 75:
@@ -638,7 +585,6 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
                     st.caption(f"💡 Price {int(m['no_ask'])}¢ unlocks at Q1 <48")
                 else:
                     st.caption(f"🔴 Price {int(m['no_ask'])}¢ - Too expensive even with great Q1")
-                
                 render_bid_recommendation(m["no_ask"], live, m["ticker"], wl_team, m["ticker"])
                 st.link_button(f"🔗 Open Kalshi - {m['threshold']}", get_kalshi_url(m), type="secondary")
             st.markdown("---")
@@ -648,9 +594,7 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
     
     st.divider()
     
-    # ============================================================
     # LIVE SCOREBOARD
-    # ============================================================
     if live_scores:
         st.subheader("📺 LIVE SCOREBOARD")
         games_list = list(live_scores.values())
@@ -665,39 +609,30 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
                         st.success(f"Q1: {game['total']}")
         st.divider()
     
-    # ============================================================
     # ALL OTHER MARKETS
-    # ============================================================
     st.header("📊 All Other Markets")
     for m in non_watchlist:
         away, home, no_ask = m["away_team"], m["home_team"], m["no_ask"]
         live = get_live_game_data(away, home, live_scores)
         p_status = "🟢 OK" if no_ask <= 68 else "🟡 Wait" if no_ask <= 78 else "🔴 Expensive"
-        
-        # Record price for spike detection
         record_price(m["ticker"], no_ask)
         spiked, delta = check_price_spike(m["ticker"], no_ask)
-        
         c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
         c1.subheader(f"🏀 {away} @ {home}")
         c2.metric("LIVE", f"{live['away_score']}-{live['home_score']}" if live else "—")
         c3.metric("Threshold", m["threshold"])
         c4.metric("NO Price", f"{int(no_ask)}¢")
-        
         if spiked or is_spiked(m["ticker"]):
             st.error(f"🛑 PRICE SPIKE +{int(delta)}¢ — DO NOT CHASE")
         elif live:
             st.write(f"{live['status']} {live['quarter']} {live['clock']} | Total: {live['total']} | {p_status}")
         else:
             st.write(f"🟡 PENDING | {p_status}")
-        
         render_bid_recommendation(no_ask, live, m["ticker"], None, m["ticker"])
         st.link_button("🔗 Open Kalshi", get_kalshi_url(m), type="secondary")
         st.divider()
     
-    # ============================================================
     # CONFIDENCE SCORER
-    # ============================================================
     st.header("🎯 CONFIDENCE SCORER")
     col1, col2 = st.columns([1, 2])
     with col1:
@@ -741,4 +676,4 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v5.2 | One-Click Trading | Secrets Support")
+st.caption("v5.3 | One-Click Trading | Fixed Secrets Loading")
