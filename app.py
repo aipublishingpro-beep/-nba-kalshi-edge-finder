@@ -241,8 +241,12 @@ def get_primary_watchlist():
     return set(bottom_3pt).intersection(set(bottom_pace))
 
 def get_kalshi_url(market):
+    ticker = market.get("ticker", "")
+    if ticker:
+        return f"https://kalshi.com/markets/{ticker}"
     event_ticker = market.get("event_ticker", "")
-    if event_ticker: return f"https://kalshi.com/events/{event_ticker}"
+    if event_ticker:
+        return f"https://kalshi.com/events/{event_ticker}"
     return "https://kalshi.com/sports/basketball/Pro%20Basketball%20(M)"
 
 # ============================================================
@@ -700,4 +704,4 @@ Price jumped **+{int(delta)}¢** in 30 seconds! Bots or sharp money moving.
         st.link_button("🔗 Open Kalshi", get_kalshi_url(sel), type="secondary")
 
 st.divider()
-st.caption("v6.2 | GTC Orders - Stay on Book")
+st.caption("v6.3 | Direct Market Links")
