@@ -4,12 +4,239 @@ from datetime import datetime, timedelta
 import pytz
 
 # ============================================================
-# TEAM DATA - 3PT% AND PACE (UPDATE WEEKLY)
+# LIVE DATA FUNCTIONS - NO MORE HARDCODING
 # ============================================================
 
-# 3PT% rankings (lower = worse shooting, more likely to suppress totals)
-# Data source: NBA.com/stats - update weekly
-TEAM_3PT_PCT = {
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def fetch_live_team_stats():
+    """
+    Pull LIVE 3PT% and Pace from NBA.com stats API.
+    Returns: dict with team stats, timestamp
+    """
+    # NBA.com stats endpoint for team stats
+    url = "https://stats.nba.com/stats/leaguedashteamstats"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://www.nba.com/",
+        "Accept": "application/json",
+        "x-nba-stats-origin": "stats",
+        "x-nba-stats-token": "true"
+    }
+    
+    params = {
+        "Conference": "",
+        "DateFrom": "",
+        "DateTo": "",
+        "Division": "",
+        "GameScope": "",
+        "GameSegment": "",
+        "Height": "",
+        "LastNGames": "0",
+        "LeagueID": "00",
+        "Location": "",
+        "MeasureType": "Base",
+        "Month": "0",
+        "OpponentTeamID": "0",
+        "Outcome": "",
+        "PORound": "0",
+        "PaceAdjust": "N",
+        "PerMode": "PerGame",
+        "Period": "0",
+        "PlayerExperience": "",
+        "PlayerPosition": "",
+        "PlusMinus": "N",
+        "Rank": "N",
+        "Season": "2025-26",
+        "SeasonSegment": "",
+        "SeasonType": "Regular Season",
+        "ShotClockRange": "",
+        "StarterBench": "",
+        "TeamID": "0",
+        "TwoWay": "0",
+        "VsConference": "",
+        "VsDivision": ""
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=15)
+        if response.status_code != 200:
+            return None, f"NBA API Error: {response.status_code}"
+        
+        data = response.json()
+        headers_list = data["resultSets"][0]["headers"]
+        rows = data["resultSets"][0]["rowSet"]
+        
+        # Find column indices
+        team_idx = headers_list.index("TEAM_NAME")
+        fg3_pct_idx = headers_list.index("FG3_PCT")
+        
+        team_3pt = {}
+        for row in rows:
+            team_name = row[team_idx]
+            # Clean team name (e.g., "LA Clippers" not "Los Angeles Clippers")
+            team_name = team_name.replace("Los Angeles Clippers", "LA Clippers")
+            team_name = team_name.replace("Los Angeles Lakers", "LA Lakers")
+            team_3pt[team_name] = row[fg3_pct_idx]
+        
+        return team_3pt, None
+        
+    except Exception as e:
+        return None, str(e)
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def fetch_live_pace():
+    """
+    Pull LIVE Pace from NBA.com stats API (Advanced stats).
+    """
+    url = "https://stats.nba.com/stats/leaguedashteamstats"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://www.nba.com/",
+        "Accept": "application/json",
+        "x-nba-stats-origin": "stats",
+        "x-nba-stats-token": "true"
+    }
+    
+    params = {
+        "Conference": "",
+        "DateFrom": "",
+        "DateTo": "",
+        "Division": "",
+        "GameScope": "",
+        "GameSegment": "",
+        "Height": "",
+        "LastNGames": "0",
+        "LeagueID": "00",
+        "Location": "",
+        "MeasureType": "Advanced",  # Advanced for pace
+        "Month": "0",
+        "OpponentTeamID": "0",
+        "Outcome": "",
+        "PORound": "0",
+        "PaceAdjust": "N",
+        "PerMode": "PerGame",
+        "Period": "0",
+        "PlayerExperience": "",
+        "PlayerPosition": "",
+        "PlusMinus": "N",
+        "Rank": "N",
+        "Season": "2025-26",
+        "SeasonSegment": "",
+        "SeasonType": "Regular Season",
+        "ShotClockRange": "",
+        "StarterBench": "",
+        "TeamID": "0",
+        "TwoWay": "0",
+        "VsConference": "",
+        "VsDivision": ""
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=15)
+        if response.status_code != 200:
+            return None, f"NBA API Error: {response.status_code}"
+        
+        data = response.json()
+        headers_list = data["resultSets"][0]["headers"]
+        rows = data["resultSets"][0]["rowSet"]
+        
+        team_idx = headers_list.index("TEAM_NAME")
+        pace_idx = headers_list.index("PACE")
+        
+        team_pace = {}
+        for row in rows:
+            team_name = row[team_idx]
+            team_name = team_name.replace("Los Angeles Clippers", "LA Clippers")
+            team_name = team_name.replace("Los Angeles Lakers", "LA Lakers")
+            team_pace[team_name] = row[pace_idx]
+        
+        return team_pace, None
+        
+    except Exception as e:
+        return None, str(e)
+
+@st.cache_data(ttl=1800)  # Cache for 30 min
+def fetch_last_game_dates():
+    """
+    Pull last game date for each team from NBA scoreboard/schedule.
+    """
+    # Get yesterday and recent days' games
+    et = pytz.timezone('US/Eastern')
+    today = datetime.now(et)
+    
+    last_games = {}
+    
+    # Check last 5 days of games
+    for days_ago in range(1, 6):
+        game_date = today - timedelta(days=days_ago)
+        date_str = game_date.strftime("%Y-%m-%d")
+        
+        url = f"https://stats.nba.com/stats/scoreboardv2"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": "https://www.nba.com/",
+            "x-nba-stats-origin": "stats",
+            "x-nba-stats-token": "true"
+        }
+        params = {
+            "GameDate": date_str,
+            "LeagueID": "00",
+            "DayOffset": "0"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                games = data["resultSets"][0]["rowSet"]
+                headers_list = data["resultSets"][0]["headers"]
+                
+                home_idx = headers_list.index("HOME_TEAM_ID") if "HOME_TEAM_ID" in headers_list else None
+                away_idx = headers_list.index("VISITOR_TEAM_ID") if "VISITOR_TEAM_ID" in headers_list else None
+                
+                # Also try GameHeader resultSet
+                for rs in data["resultSets"]:
+                    if rs["name"] == "GameHeader":
+                        gh_headers = rs["headers"]
+                        gh_rows = rs["rowSet"]
+                        
+                        for row in gh_rows:
+                            home_id = row[gh_headers.index("HOME_TEAM_ID")]
+                            away_id = row[gh_headers.index("VISITOR_TEAM_ID")]
+                            
+                            home_name = TEAM_ID_MAP.get(home_id, None)
+                            away_name = TEAM_ID_MAP.get(away_id, None)
+                            
+                            if home_name and home_name not in last_games:
+                                last_games[home_name] = date_str
+                            if away_name and away_name not in last_games:
+                                last_games[away_name] = date_str
+        except:
+            continue
+    
+    return last_games
+
+# Team ID mapping for NBA API
+TEAM_ID_MAP = {
+    1610612737: "Atlanta", 1610612738: "Boston", 1610612739: "Cleveland",
+    1610612740: "New Orleans", 1610612741: "Chicago", 1610612742: "Dallas",
+    1610612743: "Denver", 1610612744: "Golden State", 1610612745: "Houston",
+    1610612746: "LA Clippers", 1610612747: "LA Lakers", 1610612748: "Miami",
+    1610612749: "Milwaukee", 1610612750: "Minnesota", 1610612751: "Brooklyn",
+    1610612752: "New York", 1610612753: "Orlando", 1610612754: "Indiana",
+    1610612755: "Philadelphia", 1610612756: "Phoenix", 1610612757: "Portland",
+    1610612758: "Sacramento", 1610612759: "San Antonio", 1610612760: "Oklahoma City",
+    1610612761: "Toronto", 1610612762: "Utah", 1610612763: "Memphis",
+    1610612764: "Washington", 1610612765: "Detroit", 1610612766: "Charlotte"
+}
+
+# ============================================================
+# FALLBACK DATA (only used if API fails)
+# ============================================================
+
+FALLBACK_3PT_PCT = {
     "Atlanta": 0.362, "Boston": 0.382, "Brooklyn": 0.348, "Charlotte": 0.341,
     "Chicago": 0.352, "Cleveland": 0.358, "Dallas": 0.371, "Denver": 0.365,
     "Detroit": 0.339, "Golden State": 0.378, "Houston": 0.344, "Indiana": 0.374,
@@ -20,8 +247,7 @@ TEAM_3PT_PCT = {
     "Utah": 0.345, "Washington": 0.336
 }
 
-# Pace rankings (possessions per 48 min - lower = slower, suppresses totals)
-TEAM_PACE = {
+FALLBACK_PACE = {
     "Atlanta": 100.2, "Boston": 98.1, "Brooklyn": 99.4, "Charlotte": 101.3,
     "Chicago": 97.8, "Cleveland": 96.5, "Dallas": 98.7, "Denver": 97.2,
     "Detroit": 99.1, "Golden State": 100.8, "Houston": 101.5, "Indiana": 102.4,
@@ -31,6 +257,92 @@ TEAM_PACE = {
     "Portland": 100.6, "Sacramento": 101.1, "San Antonio": 98.9, "Toronto": 100.4,
     "Utah": 98.2, "Washington": 101.8
 }
+
+# ============================================================
+# LOAD LIVE DATA (with fallback)
+# ============================================================
+
+def load_team_data():
+    """Load live data, fall back to static if API fails."""
+    # Try live 3PT%
+    live_3pt, err_3pt = fetch_live_team_stats()
+    if live_3pt:
+        team_3pt = live_3pt
+        source_3pt = "🟢 LIVE"
+    else:
+        team_3pt = FALLBACK_3PT_PCT
+        source_3pt = f"🔴 FALLBACK ({err_3pt})"
+    
+    # Try live Pace
+    live_pace, err_pace = fetch_live_pace()
+    if live_pace:
+        team_pace = live_pace
+        source_pace = "🟢 LIVE"
+    else:
+        team_pace = FALLBACK_PACE
+        source_pace = f"🔴 FALLBACK ({err_pace})"
+    
+    # Try live rest days
+    live_rest = fetch_last_game_dates()
+    if live_rest and len(live_rest) > 0:
+        rest_data = live_rest
+        source_rest = "🟢 LIVE"
+    else:
+        rest_data = {}
+        source_rest = "🔴 UNAVAILABLE"
+    
+    return {
+        "3pt": team_3pt,
+        "pace": team_pace,
+        "rest": rest_data,
+        "sources": {
+            "3pt": source_3pt,
+            "pace": source_pace,
+            "rest": source_rest
+        }
+    }
+
+# ============================================================
+# WATCHLIST & REST FUNCTIONS (now use live data)
+# ============================================================
+
+def get_bottom_3pt_teams(team_3pt, n=8):
+    """Bottom N teams by 3PT% - these can't inflate totals through variance"""
+    sorted_teams = sorted(team_3pt.items(), key=lambda x: x[1])
+    return [team for team, pct in sorted_teams[:n]]
+
+def get_bottom_pace_teams(team_pace, n=10):
+    """Bottom N teams by pace - these limit possession volume"""
+    sorted_teams = sorted(team_pace.items(), key=lambda x: x[1])
+    return [team for team, pace in sorted_teams[:n]]
+
+def get_primary_watchlist(team_3pt, team_pace):
+    """Intersection of bottom 3PT% AND bottom pace teams"""
+    bottom_3pt = set(get_bottom_3pt_teams(team_3pt, 8))
+    bottom_pace = set(get_bottom_pace_teams(team_pace, 10))
+    return bottom_3pt.intersection(bottom_pace)
+
+def get_rest_days(team, rest_data):
+    """Calculate days since last game using live data"""
+    if team not in rest_data:
+        return None
+    try:
+        last_game = datetime.strptime(rest_data[team], "%Y-%m-%d")
+        today = datetime.now()
+        return (today - last_game).days
+    except:
+        return None
+
+def get_rest_status(days):
+    """Categorize rest status"""
+    if days is None:
+        return "Unknown", "⚪"
+    elif days <= 1:
+        return "Short Rest", "🔴"
+    elif days == 2:
+        return "Normal Rest", "🟡"
+    else:
+        return "Extended Rest", "🟢"
 
 # Team abbreviation mappings
 ABBREV_TO_FULL = {
@@ -223,12 +535,15 @@ def get_price_tolerance(q1_total):
     else:
         return 0.00, "Q1 ≥ 55"
 
-def calculate_confidence_score(market, q1_total, watchlist, spread_estimate=5, early_entry=False):
+def calculate_confidence_score(market, q1_total, watchlist, spread_estimate=5, early_entry=False, rest_data=None):
     """
     RESTRUCTURED: Gate first, then score.
     Q1 is a GATE, bonuses are ADDITIVE.
     Returns: total_score (0-100), breakdown dict, recommendation, rec_color, price_ok
     """
+    if rest_data is None:
+        rest_data = {}
+    
     away = market["away_team"]
     home = market["home_team"]
     threshold = market["threshold"]
@@ -342,9 +657,9 @@ def calculate_confidence_score(market, q1_total, watchlist, spread_estimate=5, e
         thresh_label = "🟡 Baseline (245-247)"
     breakdown["Threshold"] = {"points": thresh_pts, "max": 10, "value": threshold, "label": thresh_label}
     
-    # Rest advantage (+12 max - increased)
-    away_rest = get_rest_days(away)
-    home_rest = get_rest_days(home)
+    # Rest advantage (+12 max - uses live data)
+    away_rest = get_rest_days(away, rest_data)
+    home_rest = get_rest_days(home, rest_data)
     short_rest_count = sum([1 for r in [away_rest, home_rest] if r is not None and r <= 1])
     extended_rest_count = sum([1 for r in [away_rest, home_rest] if r is not None and r >= 3])
     
@@ -439,6 +754,15 @@ st.caption("Tail-risk exploitation system. You are not betting averages. You are
 with st.sidebar:
     st.header("⚙️ System Settings")
     
+    # Load live data FIRST
+    with st.spinner("Loading live NBA data..."):
+        live_data = load_team_data()
+    
+    TEAM_3PT_PCT = live_data["3pt"]
+    TEAM_PACE = live_data["pace"]
+    REST_DATA = live_data["rest"]
+    sources = live_data["sources"]
+    
     # Threshold filter
     min_threshold = st.selectbox(
         "Minimum Threshold",
@@ -446,6 +770,17 @@ with st.sidebar:
         index=0,
         help="Only show markets at or above this total"
     )
+    
+    st.divider()
+    
+    # DATA STATUS
+    st.subheader("📡 DATA STATUS")
+    st.write(f"3PT%: {sources['3pt']}")
+    st.write(f"Pace: {sources['pace']}")
+    st.write(f"Rest: {sources['rest']}")
+    if st.button("🔄 Refresh Data"):
+        st.cache_data.clear()
+        st.rerun()
     
     st.divider()
     
@@ -464,28 +799,32 @@ with st.sidebar:
     
     st.divider()
     
-    # Primary Watchlist
+    # Primary Watchlist - NOW LIVE
     st.subheader("📋 Primary Watchlist")
-    st.caption("Teams in BOTH bottom 8 3PT% AND bottom 10 pace")
-    watchlist = get_primary_watchlist()
+    st.caption("LIVE: Bottom 8 3PT% ∩ Bottom 10 pace")
+    watchlist = get_primary_watchlist(TEAM_3PT_PCT, TEAM_PACE)
     
     if watchlist:
         for team in sorted(watchlist):
             st.write(f"• **{team}**")
-            st.caption(f"  3PT: {TEAM_3PT_PCT[team]:.1%} | Pace: {TEAM_PACE[team]:.1f}")
+            pct = TEAM_3PT_PCT.get(team, 0)
+            pace = TEAM_PACE.get(team, 0)
+            st.caption(f"  3PT: {pct:.1%} | Pace: {pace:.1f}")
     else:
         st.warning("No teams qualify this week")
     
     st.divider()
     
-    # Component Lists
+    # Component Lists - NOW LIVE
     with st.expander("🔍 Bottom 8 3PT% Teams"):
-        for team in get_bottom_3pt_teams(8):
-            st.write(f"• {team}: {TEAM_3PT_PCT[team]:.1%}")
+        for team in get_bottom_3pt_teams(TEAM_3PT_PCT, 8):
+            pct = TEAM_3PT_PCT.get(team, 0)
+            st.write(f"• {team}: {pct:.1%}")
     
     with st.expander("🐢 Bottom 10 Pace Teams"):
-        for team in get_bottom_pace_teams(10):
-            st.write(f"• {team}: {TEAM_PACE[team]:.1f}")
+        for team in get_bottom_pace_teams(TEAM_PACE, 10):
+            pace = TEAM_PACE.get(team, 0)
+            st.write(f"• {team}: {pace:.1f}")
     
     st.divider()
     
@@ -493,9 +832,6 @@ with st.sidebar:
     st.subheader("🛑 KILL SWITCH")
     st.error("If NO price jumps +5¢ in <30 sec → ABORT")
     st.caption("Protects against repricing spikes and bot front-running")
-    
-    st.divider()
-    st.caption("⚠️ REST DATA: Update LAST_GAME_DATES daily or automate via API")
 
 # Main content - CENTERED
 if st.button("🔄 Refresh Markets", type="primary"):
@@ -539,7 +875,7 @@ else:
     # TOP EDGES SECTION - BEST 2-3 OPPORTUNITIES (PREGAME)
     # ============================================================
     
-    def score_pregame_edge(market):
+    def score_pregame_edge(market, team_3pt, team_pace, rest_data):
         """Score each market for PREGAME edge quality. Higher = better."""
         away = market["away_team"]
         home = market["home_team"]
@@ -550,13 +886,16 @@ else:
         if no_ask > 0.68:
             return 0, ["🔴 Price too high for pregame"]
         
+        # Get live watchlist
+        wl = get_primary_watchlist(team_3pt, team_pace)
+        
         score = 0
         reasons = []
         
         # Watchlist team = +30 points
-        if away in watchlist or home in watchlist:
+        if away in wl or home in wl:
             score += 30
-            wt = away if away in watchlist else home
+            wt = away if away in wl else home
             reasons.append(f"✅ Watchlist team ({wt})")
         
         # Price: Lower NO = better edge (pregame scale)
@@ -587,9 +926,9 @@ else:
             score += 5
             reasons.append(f"Baseline ({threshold})")
         
-        # Short rest bonus
-        away_rest = get_rest_days(away)
-        home_rest = get_rest_days(home)
+        # Short rest bonus (live data)
+        away_rest = get_rest_days(away, rest_data)
+        home_rest = get_rest_days(home, rest_data)
         if (away_rest and away_rest <= 1) or (home_rest and home_rest <= 1):
             score += 15
             reasons.append("🟢 Short rest involved")
@@ -604,7 +943,7 @@ else:
     # Score all markets for pregame ranking
     scored_markets = []
     for m in eligible_markets:
-        score, reasons = score_pregame_edge(m)
+        score, reasons = score_pregame_edge(m, TEAM_3PT_PCT, TEAM_PACE, REST_DATA)
         if score > 0:  # Only include if passes pregame price gate
             scored_markets.append({**m, "score": score, "reasons": reasons})
     
@@ -654,8 +993,8 @@ else:
         has_watchlist = away in watchlist or home in watchlist
         watchlist_badge = "✅ WATCHLIST" if has_watchlist else "⚠️ No watchlist team"
         
-        away_rest = get_rest_days(away)
-        home_rest = get_rest_days(home)
+        away_rest = get_rest_days(away, REST_DATA)
+        home_rest = get_rest_days(home, REST_DATA)
         away_status, away_icon = get_rest_status(away_rest)
         home_status, home_icon = get_rest_status(home_rest)
         
@@ -683,7 +1022,9 @@ else:
             with mcol3:
                 st.write(f"**{watchlist_badge}**")
             
-            st.write(f"**Rest:** {away_icon} {away} ({away_rest}d) vs {home_icon} {home} ({home_rest}d)")
+            away_rest_str = f"{away_rest}d" if away_rest is not None else "?"
+            home_rest_str = f"{home_rest}d" if home_rest is not None else "?"
+            st.write(f"**Rest:** {away_icon} {away} ({away_rest_str}) vs {home_icon} {home} ({home_rest_str})")
             
             kalshi_url = f"https://kalshi.com/markets/{market['ticker']}"
             st.markdown(f"[View on Kalshi]({kalshi_url})")
@@ -736,7 +1077,7 @@ else:
     
     with check_col2:
         score, breakdown, recommendation, rec_color, price_ok = calculate_confidence_score(
-            selected_market, q1_val, watchlist, spread_est, early_entry
+            selected_market, q1_val, watchlist, spread_est, early_entry, REST_DATA
         )
         
         # Check for gate failure
@@ -793,8 +1134,14 @@ else:
 
 # Bottom section - System Rules
 st.divider()
-with st.expander("📖 SYSTEM RULES v3.0 (READ THIS)"):
+with st.expander("📖 SYSTEM RULES v4.0 (READ THIS)"):
     st.markdown("""
+    ### 🟢 LIVE DATA
+    - **3PT%**: Pulled from NBA.com (hourly refresh)
+    - **Pace**: Pulled from NBA.com (hourly refresh)
+    - **Rest Days**: Pulled from NBA scoreboard (30 min refresh)
+    - **Watchlist**: Auto-calculated from live stats
+    
     ### GATE-FIRST LOGIC
     
     **Step 1: Hard Gates (must pass)**
@@ -839,9 +1186,8 @@ with st.expander("📖 SYSTEM RULES v3.0 (READ THIS)"):
     - Enter if Q1 ≥ 55
     - Chase price spikes
     - Double down or martingale
-    - Trust stale rest data
     """)
 
 # Footer
 st.divider()
-st.caption("Extreme Totals NO Finder v3.0 | Gate-First Logic | Regime-Aware Pricing")
+st.caption("Extreme Totals NO Finder v4.0 | 🟢 LIVE DATA | Gate-First Logic | Regime-Aware Pricing")
