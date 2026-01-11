@@ -464,23 +464,23 @@ def calculate_confidence(market, q1_total, watchlist, spread_est=5):
 # APP
 # ============================================================
 st.title("🎯 KALSHI EXTREME TOTALS - NO FINDER")
+st.caption("Tail-risk exploitation system. You are not betting averages. You are betting tail collapse.")
 
-# TAB NAVIGATION
-tab1, tab2 = st.tabs(["🔍 EDGE FINDER", "📊 POSITION TRACKER"])
-
-# Initialize position tracker
+# ============================================================
+# POSITION TRACKER (Expandable Section)
+# ============================================================
 if 'tracked_positions' not in st.session_state:
     st.session_state.tracked_positions = []
 
-def calculate_projection(total, minutes_played):
+def calc_projection(total, minutes_played):
     if minutes_played <= 0:
         return None
     return round((total / minutes_played) * 48)
 
-def get_minutes_played(period, clock, status):
-    if status == "🔴 FINAL":
+def calc_minutes_played(period, clock, status):
+    if "FINAL" in status:
         return 48
-    if status == "🟠 HALFTIME":
+    if "HALF" in status:
         return 24
     if period == 0:
         return 0
@@ -495,33 +495,97 @@ def get_minutes_played(period, clock, status):
         pass
     return (period - 1) * 12
 
-def get_position_status(threshold, total, projected, is_final=False):
+def calc_position_status(threshold, total, projected, is_final=False):
     if is_final:
-        if total < threshold:
-            return "✅ WON!", "green"
-        else:
-            return "❌ LOST", "red"
-    
+        return ("✅ WON!", "green") if total < threshold else ("❌ LOST", "red")
     if projected is None or total == 0:
         return "⏳ WAITING", "gray"
-    
     cushion = threshold - projected
-    
-    if cushion > 15:
-        return "🟢 VERY SAFE", "green"
-    elif cushion > 8:
-        return "🟢 LOOKING GOOD", "green"
-    elif cushion > 3:
-        return "🟡 ON TRACK", "yellow"
-    elif cushion > -3:
-        return "🟠 TIGHT", "orange"
-    elif cushion > -10:
-        return "🔴 DANGER", "red"
-    else:
-        return "🔴 LIKELY LOSS", "red"
+    if cushion > 15: return "🟢 VERY SAFE", "green"
+    elif cushion > 8: return "🟢 LOOKING GOOD", "green"
+    elif cushion > 3: return "🟡 ON TRACK", "yellow"
+    elif cushion > -3: return "🟠 TIGHT", "orange"
+    elif cushion > -10: return "🔴 DANGER", "red"
+    else: return "🔴 LIKELY LOSS", "red"
 
-with tab1:
-    st.caption("Tail-risk exploitation system. You are not betting averages. You are betting tail collapse.")
+with st.expander("📊 POSITION TRACKER — Click to track your live bets", expanded=False):
+    tracker_scores = fetch_espn_live_scores()
+    
+    st.subheader("➕ Add Position")
+    tcol1, tcol2, tcol3, tcol4, tcol5 = st.columns([2, 1, 1, 1, 1])
+    
+    with tcol1:
+        game_opts = [(f"{g['away_team']}@{g['home_team']}", f"{g['away_team']} @ {g['home_team']} ({g['status']})") for k, g in tracker_scores.items()]
+        if game_opts:
+            sel_game = st.selectbox("Game", options=[g[0] for g in game_opts], format_func=lambda x: next((g[1] for g in game_opts if g[0] == x), x), key="trk_game")
+        else:
+            sel_game = st.text_input("Game (BKN@MEM)", key="trk_game_txt")
+    with tcol2:
+        trk_thresh = st.number_input("Threshold", 180.0, 280.0, 237.5, 0.5, key="trk_thresh")
+    with tcol3:
+        trk_price = st.number_input("Price ¢", 1, 99, 85, key="trk_price")
+    with tcol4:
+        trk_contracts = st.number_input("Contracts", 1, 1000, 100, key="trk_contracts")
+    with tcol5:
+        st.write("")
+        st.write("")
+        if st.button("➕ ADD", type="primary", key="trk_add"):
+            if sel_game:
+                st.session_state.tracked_positions.append({"game_key": sel_game, "threshold": trk_thresh, "price": trk_price, "contracts": trk_contracts})
+                st.rerun()
+    
+    if st.session_state.tracked_positions:
+        st.divider()
+        for idx, pos in enumerate(st.session_state.tracked_positions):
+            gkey = pos['game_key']
+            gdata = tracker_scores.get(gkey)
+            
+            if gdata:
+                total = gdata['total']
+                period = gdata['period']
+                clock = gdata['clock']
+                status = gdata['status']
+                mins_played = calc_minutes_played(period, clock, status)
+                proj = calc_projection(total, mins_played) if mins_played > 0 else None
+                is_final = "FINAL" in status
+                spread = abs(gdata['away_score'] - gdata['home_score'])
+            else:
+                total, proj, mins_played, is_final, spread = 0, None, 0, False, 0
+                status = "❓ NO DATA"
+            
+            stat_txt, stat_color = calc_position_status(pos['threshold'], total, proj, is_final)
+            cost = pos['contracts'] * pos['price'] / 100
+            win_pnl = pos['contracts'] * (100 - pos['price']) / 100
+            cushion = pos['threshold'] - proj if proj else None
+            
+            colors = {"green": ("#1a3d1a", "#4CAF50"), "yellow": ("#3d3d1a", "#FFD700"), "orange": ("#3d2a1a", "#FF8C00"), "red": ("#3d1a1a", "#f44336"), "gray": ("#222", "#666")}
+            bg, border = colors.get(stat_color, colors["gray"])
+            
+            st.markdown(f'<div style="background:{bg}; border:2px solid {border}; border-radius:8px; padding:12px; margin-bottom:8px;"><b>🏀 {gkey.replace("@", " @ ")} — NO {pos["threshold"]}</b></div>', unsafe_allow_html=True)
+            
+            if gdata:
+                st.write(f"**{gdata['away_score']} - {gdata['home_score']} = {total} pts** | {status} {gdata.get('quarter','')} {clock}")
+            st.markdown(f"### {stat_txt}")
+            
+            if spread <= 5 and period >= 3 and not is_final:
+                st.warning(f"⚠️ OT RISK — Spread only {spread} pts!")
+            
+            pc1, pc2, pc3, pc4, pc5 = st.columns(5)
+            pc1.metric("Position", f"{pos['contracts']} @ {pos['price']}¢")
+            pc2.metric("Cost", f"${cost:.2f}")
+            if proj: 
+                pc3.metric("Projected", f"{proj}")
+                pc4.metric("Cushion", f"{cushion:+.0f}" if cushion else "—")
+            pc5.metric("If Win", f"+${win_pnl:.2f}")
+            
+            if st.button("🗑️ Remove", key=f"rm_{idx}"):
+                st.session_state.tracked_positions.pop(idx)
+                st.rerun()
+            st.divider()
+    else:
+        st.info("No positions tracked yet. Add one above!")
+
+st.divider()
 
 watchlist = get_primary_watchlist()
 
