@@ -58,7 +58,10 @@ def fetch_espn_scores():
 
 def get_minutes_played(period, clock, status_type):
     if status_type == "STATUS_FINAL":
-        return 48
+        if period <= 4:
+            return 48
+        else:
+            return 48 + (period - 4) * 5
     if status_type == "STATUS_HALFTIME":
         return 24
     if period == 0:
@@ -70,11 +73,23 @@ def get_minutes_played(period, clock, status_type):
             mins = int(parts[0])
             secs = int(float(parts[1])) if len(parts) > 1 else 0
         else:
+            # No colon = seconds only (under 1 min)
             mins = 0
-            secs = int(float(clock_str)) if clock_str else 0
-        return (period - 1) * 12 + (12 - mins - secs/60)
+            secs = float(clock_str) if clock_str else 0
+        
+        time_left_in_period = mins + secs/60
+        
+        if period <= 4:
+            # Regular quarters (12 min each)
+            return (period - 1) * 12 + (12 - time_left_in_period)
+        else:
+            # Overtime (5 min each)
+            return 48 + (period - 5) * 5 + (5 - time_left_in_period)
     except:
-        return (period - 1) * 12
+        if period <= 4:
+            return (period - 1) * 12
+        else:
+            return 48 + (period - 5) * 5
 
 def get_minutes_remaining(period, clock, status_type):
     if status_type == "STATUS_FINAL":
@@ -83,8 +98,28 @@ def get_minutes_remaining(period, clock, status_type):
         return 24
     if period == 0:
         return 48
-    played = get_minutes_played(period, clock, status_type)
-    return max(0, 48 - played)
+    
+    try:
+        clock_str = str(clock)
+        if ':' in clock_str:
+            parts = clock_str.split(':')
+            mins = int(parts[0])
+            secs = int(float(parts[1])) if len(parts) > 1 else 0
+        else:
+            mins = 0
+            secs = float(clock_str) if clock_str else 0
+        
+        time_left_in_period = mins + secs/60
+        
+        if period <= 4:
+            remaining_in_quarter = time_left_in_period
+            remaining_quarters = (4 - period) * 12
+            return remaining_in_quarter + remaining_quarters
+        else:
+            # OT: just show time left in this OT period
+            return time_left_in_period
+    except:
+        return 0
 
 def get_status_no(threshold, total, projected, is_final):
     if is_final:
@@ -178,10 +213,17 @@ if st.session_state.positions:
             total = g['total']
             mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
             mins_remaining = get_minutes_remaining(g['period'], g['clock'], g['status_type'])
-            projected = round((total / mins_played) * 48) if mins_played > 0 else None
             is_final = g['status_type'] == "STATUS_FINAL"
             spread = abs(g['away_score'] - g['home_score'])
             actual_pace = round(total / mins_played, 2) if mins_played > 0 else 0
+            
+            # In OT, project based on current + estimated remaining
+            if g['period'] > 4 and not is_final:
+                projected = round(total + (actual_pace * mins_remaining))
+            elif mins_played > 0:
+                projected = round((total / mins_played) * 48)
+            else:
+                projected = None
         else:
             total, projected, mins_played, mins_remaining, spread, is_final, actual_pace = 0, None, 0, 48, 0, False, 0
         
