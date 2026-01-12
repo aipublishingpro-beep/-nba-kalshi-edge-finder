@@ -21,7 +21,8 @@ with st.sidebar:
     **Points from:**  
     • Fatigue (max +4)  
     • Pace (max +2)  
-    • Cushion (max +3)
+    • Cushion (max +3)  
+    • Rested team = -1 each
     """)
     
     st.divider()
@@ -67,6 +68,9 @@ with st.sidebar:
     🏔️ **ALTITUDE**  
     *Denver home = visitors fatigue at 5,280 ft, lean Under*
     
+    ⚡ **RESTED**  
+    *3+ days rest = team comes out hot, Over risk*
+    
     ⚪ **NEUTRAL**  
     *Fresh vs Fresh = no fatigue edge*
     """)
@@ -111,7 +115,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.13")
+    st.caption("v10.14")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -178,6 +182,25 @@ def fetch_yesterday_teams():
         return teams_played
     except:
         return set()
+
+def fetch_recent_teams(days=3):
+    """Fetch teams that played in the last X days"""
+    recent_teams = set()
+    for i in range(1, days + 1):
+        date = (datetime.now(pytz.timezone('US/Eastern')) - timedelta(days=i)).strftime('%Y%m%d')
+        url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={date}"
+        try:
+            resp = requests.get(url, timeout=10)
+            data = resp.json()
+            for event in data.get("events", []):
+                comp = event.get("competitions", [{}])[0]
+                for c in comp.get("competitors", []):
+                    name = c.get("team", {}).get("displayName", "")
+                    team_name = TEAM_ABBREVS.get(name, name)
+                    recent_teams.add(team_name)
+        except:
+            pass
+    return recent_teams
 
 def get_minutes_played(period, clock, status_type):
     if status_type == "STATUS_FINAL":
@@ -285,11 +308,57 @@ if 'initialized' not in st.session_state:
 games = fetch_espn_scores()
 game_list = sorted(list(games.keys()))
 yesterday_teams = fetch_yesterday_teams()
+recent_teams = fetch_recent_teams(3)  # Teams that played in last 3 days
 now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA POSITION TRACKER")
 st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')}")
+
+# ========== P&L TRACKER ==========
+if st.session_state.positions:
+    total_cost = 0
+    total_profit = 0
+    wins = 0
+    losses = 0
+    pending = 0
+    
+    for pos in st.session_state.positions:
+        g = games.get(pos['game'])
+        cost = pos['contracts'] * pos['price'] / 100
+        profit = pos['contracts'] * (100 - pos['price']) / 100
+        total_cost += cost
+        
+        if g and g['status_type'] == "STATUS_FINAL":
+            total = g['total']
+            side = pos.get('side', 'NO')
+            threshold = pos['threshold']
+            
+            if side == "NO":
+                won = total < threshold
+            else:
+                won = total > threshold
+            
+            if won:
+                wins += 1
+                total_profit += profit
+            else:
+                losses += 1
+                total_profit -= cost
+        else:
+            pending += 1
+    
+    pnl_cols = st.columns(5)
+    pnl_cols[0].metric("Positions", len(st.session_state.positions))
+    pnl_cols[1].metric("Won", wins, delta="✅" if wins > 0 else None)
+    pnl_cols[2].metric("Lost", losses, delta="❌" if losses > 0 else None)
+    pnl_cols[3].metric("Pending", pending)
+    if total_profit >= 0:
+        pnl_cols[4].metric("P&L", f"+${total_profit:.2f}", delta="profit", delta_color="normal")
+    else:
+        pnl_cols[4].metric("P&L", f"-${abs(total_profit):.2f}", delta="loss", delta_color="inverse")
+    
+    st.divider()
 
 # ========== EDGE SCANNER ==========
 st.subheader("⚡ EDGE SCANNER")
@@ -341,6 +410,16 @@ for game_key, g in games.items():
         if away_fatigue_score >= 3 and home_fatigue_score == 0:
             fatigue_pts -= 2
             fatigue_tags.append("Blowout -2")
+        
+        # Rested team penalty (3+ days off = Over risk)
+        away_rested = away not in recent_teams
+        home_rested = home not in recent_teams
+        if away_rested:
+            fatigue_pts -= 1
+            fatigue_tags.append(f"{away} rested -1")
+        if home_rested:
+            fatigue_pts -= 1
+            fatigue_tags.append(f"{home} rested -1")
         
         # === PACE SCORE (max 2, min -1) ===
         pace_pts = 0
@@ -552,6 +631,15 @@ if games:
             
             if gf['home'] == "Denver":
                 st.info("🏔️ **ALTITUDE** — Denver home, visitors fatigue at 5,280 ft")
+            
+            # Check for rested teams (3+ days off)
+            away_rested = gf['away'] not in recent_teams
+            home_rested = gf['home'] not in recent_teams
+            
+            if away_rested:
+                st.warning(f"⚡ **RESTED** — {gf['away']} has 3+ days rest (Over risk)")
+            if home_rested:
+                st.warning(f"⚡ **RESTED** — {gf['home']} has 3+ days rest (Over risk)")
             
             away_tags = []
             if gf['away_b2b']:
@@ -821,4 +909,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.13 | Edge Scanner + Fatigue + Pace + Cushion + Position Tracker")
+st.caption("v10.14 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
