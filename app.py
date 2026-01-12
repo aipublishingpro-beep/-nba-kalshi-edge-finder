@@ -166,7 +166,7 @@ st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')}")
 st.subheader("📊 PRE-BET ANALYSIS")
 st.caption("Check your edge BEFORE entering a position")
 
-pa1, pa2, pa3, pa4 = st.columns([2, 1, 1, 1])
+pa1, pa2, pa3 = st.columns([2, 1, 1])
 with pa1:
     game_list = list(games.keys())
     if game_list:
@@ -177,8 +177,6 @@ with pa2:
     analyze_side = st.selectbox("Side", ["NO", "YES"], key="analyze_side")
 with pa3:
     analyze_threshold = st.number_input("Threshold", 180.0, 280.0, 235.5, 0.5, key="analyze_threshold")
-with pa4:
-    kalshi_implied = st.number_input("Kalshi 50¢ line", 180.0, 280.0, 230.0, 0.5, key="kalshi_implied", help="The threshold where NO/YES both cost ~50¢")
 
 # Calculate pre-bet analysis
 if analyze_game and analyze_game in games:
@@ -191,10 +189,8 @@ if analyze_game and analyze_game in games:
         
         if analyze_side == "NO":
             cushion = analyze_threshold - projected
-            kalshi_cushion = analyze_threshold - kalshi_implied
         else:
             cushion = projected - analyze_threshold
-            kalshi_cushion = kalshi_implied - analyze_threshold
         
         size_tier, tier_color = get_size_tier(cushion)
         
@@ -204,14 +200,11 @@ if analyze_game and analyze_game in games:
         
         with col_left:
             st.metric("ESPN Projected Total", f"{projected} pts")
+        
+        with col_right:
             st.metric("Your Cushion", f"{cushion:+.0f} pts", 
                      delta="favorable" if cushion > 0 else "unfavorable",
                      delta_color="normal" if cushion > 0 else "inverse")
-        
-        with col_right:
-            st.metric("Kalshi Implied Total", f"{kalshi_implied}")
-            st.metric("vs Kalshi Cushion", f"{kalshi_cushion:+.0f} pts",
-                     help="Your threshold vs Kalshi's implied total")
         
         # Size recommendation
         st.markdown(f"### <span style='color:{tier_color}'>{size_tier}</span>", unsafe_allow_html=True)
@@ -352,4 +345,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.0 | Pre-Bet Analysis + Position Tracker")
+st.caption("v10.1 | Pre-Bet Analysis + Position Tracker")
