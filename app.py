@@ -19,55 +19,6 @@ with st.sidebar:
     
     st.divider()
     
-    st.subheader("Pace Scanner")
-    st.markdown("""
-    🟢 **SLOW** → Under 4.5/min  
-    *(Good NO spot)*
-    
-    🟡 **AVG** → 4.5 - 4.8/min  
-    *(Neutral)*
-    
-    🟠 **FAST** → 4.8 - 5.2/min  
-    *(Caution for NO)*
-    
-    🔴 **SHOOTOUT** → Over 5.2/min  
-    *(Avoid NO, consider YES)*
-    """)
-    
-    st.divider()
-    
-    st.subheader("Pace Benchmarks")
-    st.markdown("""
-    **Under 4.5** → Slow 🟢  
-    **4.5 - 4.8** → Average 🟡  
-    **4.8 - 5.2** → Fast 🟠  
-    **Over 5.2** → Shootout 🔴
-    """)
-    
-    st.divider()
-    
-    st.subheader("Pace Edge (NO bets)")
-    st.markdown("""
-    **+1.0+** → Comfortable 🟢  
-    **+0.5 to +1.0** → Okay 🟡  
-    **0 to +0.5** → Tight 🟠  
-    **Negative** → Underwater 🔴
-    """)
-    
-    st.divider()
-    
-    st.subheader("Status")
-    st.markdown("""
-    🟢 VERY SAFE → +15 cushion  
-    🟢 LOOKING GOOD → +8 to +15  
-    🟡 ON TRACK → +3 to +8  
-    🟠 TIGHT → -3 to +3  
-    🔴 DANGER → -10 to -3  
-    🔴 LIKELY LOSS → Under -10
-    """)
-    
-    st.divider()
-    
     st.subheader("Fatigue Scanner")
     st.markdown("""
     **Score 3+** → FATIGUED 🔴  
@@ -98,6 +49,45 @@ with st.sidebar:
     
     ⚪ **NEUTRAL**  
     *Fresh vs Fresh = no fatigue edge*
+    """)
+    
+    st.divider()
+    
+    st.subheader("Pace Scanner")
+    st.markdown("""
+    🟢 **SLOW** → Under 4.5/min  
+    *(Good NO spot)*
+    
+    🟡 **AVG** → 4.5 - 4.8/min  
+    *(Neutral)*
+    
+    🟠 **FAST** → 4.8 - 5.2/min  
+    *(Caution for NO)*
+    
+    🔴 **SHOOTOUT** → Over 5.2/min  
+    *(Avoid NO, consider YES)*
+    """)
+    
+    st.divider()
+    
+    st.subheader("Pace Edge (NO bets)")
+    st.markdown("""
+    **+1.0+** → Comfortable 🟢  
+    **+0.5 to +1.0** → Okay 🟡  
+    **0 to +0.5** → Tight 🟠  
+    **Negative** → Underwater 🔴
+    """)
+    
+    st.divider()
+    
+    st.subheader("Status")
+    st.markdown("""
+    🟢 VERY SAFE → +15 cushion  
+    🟢 LOOKING GOOD → +8 to +15  
+    🟡 ON TRACK → +3 to +8  
+    🟠 TIGHT → -3 to +3  
+    🔴 DANGER → -10 to -3  
+    🔴 LIKELY LOSS → Under -10
     """)
     
     st.divider()
@@ -151,6 +141,23 @@ def fetch_espn_scores():
         return games
     except:
         return {}
+
+def fetch_yesterday_teams():
+    yesterday = (datetime.now(pytz.timezone('US/Eastern')) - timedelta(days=1)).strftime('%Y%m%d')
+    url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={yesterday}"
+    try:
+        resp = requests.get(url, timeout=10)
+        data = resp.json()
+        teams_played = set()
+        for event in data.get("events", []):
+            comp = event.get("competitions", [{}])[0]
+            for c in comp.get("competitors", []):
+                name = c.get("team", {}).get("displayName", "")
+                team_name = TEAM_ABBREVS.get(name, name)
+                teams_played.add(team_name)
+        return teams_played
+    except:
+        return set()
 
 def get_minutes_played(period, clock, status_type):
     if status_type == "STATUS_FINAL":
@@ -248,15 +255,16 @@ def get_size_tier(cushion):
     else:
         return "🔴 SKIP — No edge", "#ff0000"
 
-# Initialize - MUST be at very top before any widgets
+# Initialize
 if 'positions' not in st.session_state:
     st.session_state.positions = []
 if 'initialized' not in st.session_state:
     st.session_state.initialized = True
 
-# Fetch games
+# Fetch data
 games = fetch_espn_scores()
 game_list = sorted(list(games.keys()))
+yesterday_teams = fetch_yesterday_teams()
 now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
@@ -284,7 +292,6 @@ with pa2:
 with pa3:
     analyze_threshold = st.number_input("Threshold", 180.0, 280.0, 235.5, 0.5, key="analyze_threshold")
 
-# Calculate pre-bet analysis
 if analyze_game and analyze_game in games:
     g = games.get(analyze_game)
     if not g:
@@ -303,7 +310,6 @@ if analyze_game and analyze_game in games:
         
         size_tier, tier_color = get_size_tier(cushion)
         
-        # Display analysis box
         st.markdown("---")
         col_left, col_right = st.columns(2)
         
@@ -315,7 +321,6 @@ if analyze_game and analyze_game in games:
                      delta="favorable" if cushion > 0 else "unfavorable",
                      delta_color="normal" if cushion > 0 else "inverse")
         
-        # Size recommendation
         st.markdown(f"### <span style='color:{tier_color}'>{size_tier}</span>", unsafe_allow_html=True)
         
         if cushion < 5:
@@ -325,15 +330,12 @@ if analyze_game and analyze_game in games:
         elif cushion >= 20:
             st.success("✅ Strong edge — Consider sizing up")
         
-        # Quick stats - verify we have the right game
         game_display = f"{g['away_team']} @ {g['home_team']}"
         st.caption(f"Current: {g['away_team']} {g['away_score']} - {g['home_team']} {g['home_score']} = {total} pts | Q{g['period']} {g['clock']}")
         
-        # Sanity check - warn if game doesn't match selection
         if analyze_game.replace("@", " @ ") != game_display.replace("@", " @ "):
             st.warning(f"⚠️ Data mismatch! Selected: {analyze_game}, Showing: {game_display}. Click REFRESH.")
         
-        # Quick add from analysis
         st.markdown("---")
         st.markdown("**Quick Add to Track:**")
         qa1, qa2, qa3 = st.columns([1, 1, 1])
@@ -358,18 +360,85 @@ else:
 
 st.divider()
 
+# ========== FATIGUE SCANNER ==========
+st.subheader("😴 FATIGUE SCANNER")
+st.caption("Find teams on back-to-backs and road fatigue — check BEFORE games start")
+
+if games:
+    game_fatigue = []
+    
+    for game_key, g in games.items():
+        away = g['away_team']
+        home = g['home_team']
+        
+        away_b2b = away in yesterday_teams
+        away_score = (2 if away_b2b else 0) + 1
+        
+        home_b2b = home in yesterday_teams
+        home_score = 2 if home_b2b else 0
+        
+        max_score = max(away_score, home_score)
+        if max_score >= 2:
+            game_fatigue.append({
+                "game_key": game_key,
+                "away": away,
+                "home": home,
+                "away_b2b": away_b2b,
+                "home_b2b": home_b2b,
+                "away_score": away_score,
+                "home_score": home_score,
+                "max_score": max_score
+            })
+    
+    game_fatigue.sort(key=lambda x: x['max_score'], reverse=True)
+    
+    if game_fatigue:
+        for gf in game_fatigue:
+            st.markdown(f"### 🏀 {gf['away']} @ {gf['home']}")
+            
+            if gf['away_score'] >= 2 and gf['home_score'] >= 2:
+                st.success("🟢 **BOTH TIRED** — Strong Under spot")
+            elif gf['away_score'] >= 3 and gf['home_score'] == 0:
+                st.success(f"🔥 **BLOWOUT RISK** — Skip NO, consider ML on {gf['home']}")
+            
+            away_tags = []
+            if gf['away_b2b']:
+                away_tags.append("PLAYED YESTERDAY")
+            away_tags.append("ROAD")
+            away_tag_str = " + ".join(away_tags)
+            
+            if gf['away_score'] >= 3:
+                st.error(f"🔴 **{gf['away']}** (Score {gf['away_score']}) — {away_tag_str}")
+            elif gf['away_score'] >= 2:
+                st.warning(f"🟡 **{gf['away']}** (Score {gf['away_score']}) — {away_tag_str}")
+            else:
+                st.caption(f"⚪ {gf['away']} (Score {gf['away_score']}) — {away_tag_str}")
+            
+            if gf['home_b2b']:
+                home_tag_str = "PLAYED YESTERDAY"
+                if gf['home_score'] >= 2:
+                    st.warning(f"🟡 **{gf['home']}** (Score {gf['home_score']}) — {home_tag_str}")
+            else:
+                st.caption(f"⚪ {gf['home']} (Score {gf['home_score']}) — HOME (fresh)")
+            
+            st.markdown("---")
+    else:
+        st.info("No fatigued teams today")
+else:
+    st.info("No games today to analyze")
+
+st.divider()
+
 # ========== PACE SCANNER ==========
 st.subheader("🔥 PACE SCANNER")
-st.caption("Find slow/fast games — updated live")
+st.caption("Find slow/fast games — check DURING games")
 
-# Filter options
 pace_col1, pace_col2 = st.columns([1, 1])
 with pace_col1:
     min_minutes = st.selectbox("Minimum time played", [6, 12, 24], index=0, format_func=lambda x: f"{x} min (~Q{x//12 if x >= 12 else 1}{'H' if x == 24 else ''})")
 with pace_col2:
     sort_order = st.selectbox("Sort by", ["Slowest first (NO hunting)", "Fastest first (YES hunting)"])
 
-# Build pace data
 pace_data = []
 for game_key, g in games.items():
     mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
@@ -389,16 +458,13 @@ for game_key, g in games.items():
             "is_final": g['status_type'] == "STATUS_FINAL"
         })
 
-# Sort
 if sort_order == "Slowest first (NO hunting)":
     pace_data.sort(key=lambda x: x['pace'])
 else:
     pace_data.sort(key=lambda x: x['pace'], reverse=True)
 
-# Display
 if pace_data:
     for p in pace_data:
-        # Determine pace tier
         if p['pace'] < 4.5:
             pace_label = "🟢 SLOW"
             pace_color = "#00ff00"
@@ -542,103 +608,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-
-# ========== FATIGUE SCANNER ==========
-st.subheader("🔍 FATIGUE SCANNER")
-st.caption("Find teams on back-to-backs and road fatigue — prime NO candidates")
-
-def fetch_yesterday_teams():
-    """Fetch which teams played yesterday"""
-    yesterday = (datetime.now(pytz.timezone('US/Eastern')) - timedelta(days=1)).strftime('%Y%m%d')
-    url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={yesterday}"
-    try:
-        resp = requests.get(url, timeout=10)
-        data = resp.json()
-        teams_played = set()
-        for event in data.get("events", []):
-            comp = event.get("competitions", [{}])[0]
-            for c in comp.get("competitors", []):
-                name = c.get("team", {}).get("displayName", "")
-                team_name = TEAM_ABBREVS.get(name, name)
-                teams_played.add(team_name)
-        return teams_played
-    except:
-        return set()
-
-# Get yesterday's teams
-yesterday_teams = fetch_yesterday_teams()
-
-# Calculate fatigue for today's games
-if games:
-    game_fatigue = []
-    
-    for game_key, g in games.items():
-        away = g['away_team']
-        home = g['home_team']
-        
-        # Away team: +2 if B2B, +1 for road
-        away_b2b = away in yesterday_teams
-        away_score = (2 if away_b2b else 0) + 1
-        
-        # Home team: +2 if B2B only
-        home_b2b = home in yesterday_teams
-        home_score = 2 if home_b2b else 0
-        
-        # Only include games where at least one team has score >= 2
-        max_score = max(away_score, home_score)
-        if max_score >= 2:
-            game_fatigue.append({
-                "game_key": game_key,
-                "away": away,
-                "home": home,
-                "away_b2b": away_b2b,
-                "home_b2b": home_b2b,
-                "away_score": away_score,
-                "home_score": home_score,
-                "max_score": max_score
-            })
-    
-    # Sort by max fatigue score descending
-    game_fatigue.sort(key=lambda x: x['max_score'], reverse=True)
-    
-    # Display grouped by game
-    if game_fatigue:
-        for gf in game_fatigue:
-            st.markdown(f"### 🏀 {gf['away']} @ {gf['home']}")
-            
-            # Determine matchup type
-            if gf['away_score'] >= 2 and gf['home_score'] >= 2:
-                st.success("🟢 **BOTH TIRED** — Strong Under spot")
-            elif gf['away_score'] >= 3 and gf['home_score'] == 0:
-                st.success(f"🔥 **BLOWOUT RISK** — Skip NO, consider ML on {gf['home']}")
-            
-            # Away team line
-            away_tags = []
-            if gf['away_b2b']:
-                away_tags.append("PLAYED YESTERDAY")
-            away_tags.append("ROAD")
-            away_tag_str = " + ".join(away_tags)
-            
-            if gf['away_score'] >= 3:
-                st.error(f"🔴 **{gf['away']}** (Score {gf['away_score']}) — {away_tag_str}")
-            elif gf['away_score'] >= 2:
-                st.warning(f"🟡 **{gf['away']}** (Score {gf['away_score']}) — {away_tag_str}")
-            else:
-                st.caption(f"⚪ {gf['away']} (Score {gf['away_score']}) — {away_tag_str}")
-            
-            # Home team line
-            if gf['home_b2b']:
-                home_tag_str = "PLAYED YESTERDAY"
-                if gf['home_score'] >= 2:
-                    st.warning(f"🟡 **{gf['home']}** (Score {gf['home_score']}) — {home_tag_str}")
-            else:
-                st.caption(f"⚪ {gf['home']} (Score {gf['home_score']}) — HOME (fresh)")
-            
-            st.markdown("---")
-    else:
-        st.info("No fatigued teams today")
-else:
-    st.info("No games today to analyze")
-
-st.divider()
-st.caption("v10.11 | Pre-Bet Analysis + Pace Scanner + Position Tracker + Fatigue Scanner")
+st.caption("v10.11 | Pre-Bet Analysis + Fatigue Scanner + Pace Scanner + Position Tracker")
