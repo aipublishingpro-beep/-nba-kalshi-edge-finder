@@ -54,10 +54,10 @@ with st.sidebar:
     st.subheader("Fatigue Scanner")
     st.markdown("""
     **Score 3+** → FATIGUED 🔴  
-    *(B2B + Road = prime NO target)*
+    *(Back-to-back + Road = prime NO target)*
     
     **Score 2** → TIRED 🟡  
-    *(B2B only or Road only)*
+    *(Back-to-back only or Road only)*
     
     **Score 0-1** → Fresh  
     *(No fatigue edge)*
@@ -65,12 +65,26 @@ with st.sidebar:
     
     st.markdown("""
     **Factors:**  
-    • Back-to-back = +2  
+    • Back-to-back (played yesterday) = +2  
     • Road game = +1
     """)
     
     st.divider()
-    st.caption("v10.9")
+    
+    st.subheader("Matchup Types")
+    st.markdown("""
+    🟢 **BOTH TIRED**  
+    *Both teams fatigued = pace drags, sloppy game, STRONG Under*
+    
+    ⚠️ **BLOWOUT RISK**  
+    *Fatigued @ Fresh Home = fresh team runs them off court, score inflates, RISKY Under*
+    
+    ⚪ **NEUTRAL**  
+    *Fresh vs Fresh = no fatigue edge*
+    """)
+    
+    st.divider()
+    st.caption("v10.10")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -475,61 +489,77 @@ def fetch_yesterday_teams():
 # Get yesterday's teams
 yesterday_teams = fetch_yesterday_teams()
 
-# Calculate fatigue for today's teams
+# Calculate fatigue for today's games
 if games:
-    fatigue_data = []
+    game_fatigue = []
     
     for game_key, g in games.items():
-        # Check away team
         away = g['away_team']
-        away_b2b = away in yesterday_teams
-        away_score = (2 if away_b2b else 0) + 1  # +1 for road
-        fatigue_data.append({
-            "team": away,
-            "opponent": g['home_team'],
-            "game": game_key,
-            "b2b": away_b2b,
-            "road": True,
-            "score": away_score
-        })
-        
-        # Check home team
         home = g['home_team']
+        
+        # Away team: +2 if B2B, +1 for road
+        away_b2b = away in yesterday_teams
+        away_score = (2 if away_b2b else 0) + 1
+        
+        # Home team: +2 if B2B only
         home_b2b = home in yesterday_teams
-        home_score = 2 if home_b2b else 0  # No road bonus for home
-        fatigue_data.append({
-            "team": home,
-            "opponent": away,
-            "game": game_key,
-            "b2b": home_b2b,
-            "road": False,
-            "score": home_score
-        })
+        home_score = 2 if home_b2b else 0
+        
+        # Only include games where at least one team has score >= 2
+        max_score = max(away_score, home_score)
+        if max_score >= 2:
+            game_fatigue.append({
+                "game_key": game_key,
+                "away": away,
+                "home": home,
+                "away_b2b": away_b2b,
+                "home_b2b": home_b2b,
+                "away_score": away_score,
+                "home_score": home_score,
+                "max_score": max_score
+            })
     
-    # Sort by fatigue score descending
-    fatigue_data.sort(key=lambda x: x['score'], reverse=True)
+    # Sort by max fatigue score descending
+    game_fatigue.sort(key=lambda x: x['max_score'], reverse=True)
     
-    # Display
-    if fatigue_data:
-        for f in fatigue_data:
-            if f['score'] >= 2:
-                # Show fatigued teams
-                tags = []
-                if f['b2b']:
-                    tags.append("🔴 B2B")
-                if f['road']:
-                    tags.append("✈️ ROAD")
-                
-                tag_str = " | ".join(tags)
-                
-                if f['score'] >= 3:
-                    st.error(f"**{f['team']}** vs {f['opponent']} — Score: {f['score']} — {tag_str}")
-                else:
-                    st.warning(f"**{f['team']}** vs {f['opponent']} — Score: {f['score']} — {tag_str}")
+    # Display grouped by game
+    if game_fatigue:
+        for gf in game_fatigue:
+            st.markdown(f"### 🏀 {gf['away']} @ {gf['home']}")
+            
+            # Determine matchup type
+            if gf['away_score'] >= 2 and gf['home_score'] >= 2:
+                st.success("🟢 **BOTH TIRED** — Strong Under spot")
+            elif gf['away_score'] >= 3 and gf['home_score'] == 0:
+                st.error("⚠️ **BLOWOUT RISK** — Fresh home team may run up score")
+            
+            # Away team line
+            away_tags = []
+            if gf['away_b2b']:
+                away_tags.append("PLAYED YESTERDAY")
+            away_tags.append("ROAD")
+            away_tag_str = " + ".join(away_tags)
+            
+            if gf['away_score'] >= 3:
+                st.error(f"🔴 **{gf['away']}** (Score {gf['away_score']}) — {away_tag_str}")
+            elif gf['away_score'] >= 2:
+                st.warning(f"🟡 **{gf['away']}** (Score {gf['away_score']}) — {away_tag_str}")
+            else:
+                st.caption(f"⚪ {gf['away']} (Score {gf['away_score']}) — {away_tag_str}")
+            
+            # Home team line
+            if gf['home_b2b']:
+                home_tag_str = "PLAYED YESTERDAY"
+                if gf['home_score'] >= 2:
+                    st.warning(f"🟡 **{gf['home']}** (Score {gf['home_score']}) — {home_tag_str}")
+            else:
+                st.caption(f"⚪ {gf['home']} (Score {gf['home_score']}) — HOME (fresh)")
+            
+            st.markdown("---")
     else:
-        st.info("No fatigue data available")
+        st.info("No fatigued teams today")
 else:
     st.info("No games today to analyze")
 
 st.divider()
-st.caption("v10.9 | Pre-Bet Analysis + Position Tracker + Fatigue Scanner")
+st.caption("v10.10 | Pre-Bet Analysis + Position Tracker + Fatigue Scanner")
