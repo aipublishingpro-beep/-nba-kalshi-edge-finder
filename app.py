@@ -47,6 +47,9 @@ with st.sidebar:
     🔥 **BLOWOUT RISK**  
     *Fatigued @ Fresh Home = Skip NO, consider ML on fresh home team*
     
+    🏔️ **ALTITUDE**  
+    *Denver home = visitors fatigue at 5,280 ft, lean Under*
+    
     ⚪ **NEUTRAL**  
     *Fresh vs Fresh = no fatigue edge*
     """)
@@ -91,7 +94,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.11")
+    st.caption("v10.12")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -401,6 +404,9 @@ if games:
             elif gf['away_score'] >= 3 and gf['home_score'] == 0:
                 st.success(f"🔥 **BLOWOUT RISK** — Skip NO, consider ML on {gf['home']}")
             
+            if gf['home'] == "Denver":
+                st.info("🏔️ **ALTITUDE** — Denver home, visitors fatigue at 5,280 ft")
+            
             away_tags = []
             if gf['away_b2b']:
                 away_tags.append("PLAYED YESTERDAY")
@@ -483,6 +489,67 @@ if pace_data:
         st.markdown(f"**{p['away']} @ {p['home']}** — {p['total']} pts in {p['mins']:.0f} min — **{p['pace']}/min** <span style='color:{pace_color}'>**{pace_label}**</span> — Proj: **{p['projected']}** — {status}", unsafe_allow_html=True)
 else:
     st.info(f"No games with {min_minutes}+ minutes played yet")
+
+st.divider()
+
+# ========== CUSHION SCANNER ==========
+st.subheader("🎯 CUSHION SCANNER")
+st.caption("See cushion at common thresholds — find the fat edges")
+
+cushion_col1, cushion_col2 = st.columns([1, 1])
+with cushion_col1:
+    cushion_min_minutes = st.selectbox("Min time played", [6, 12, 24], index=1, format_func=lambda x: f"{x} min", key="cushion_min")
+with cushion_col2:
+    cushion_side = st.selectbox("Bet side", ["NO", "YES"], key="cushion_side")
+
+# Common thresholds
+thresholds = [225.5, 230.5, 235.5, 240.5, 245.5]
+
+cushion_data = []
+for game_key, g in games.items():
+    mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
+    if mins_played >= cushion_min_minutes:
+        pace = g['total'] / mins_played if mins_played > 0 else 0
+        projected = round(pace * 48)
+        cushion_data.append({
+            "game": game_key,
+            "projected": projected,
+            "mins": mins_played,
+            "is_final": g['status_type'] == "STATUS_FINAL"
+        })
+
+if cushion_data:
+    # Header
+    header_cols = st.columns([2, 1] + [1]*len(thresholds))
+    header_cols[0].markdown("**Game**")
+    header_cols[1].markdown("**Proj**")
+    for i, t in enumerate(thresholds):
+        header_cols[i+2].markdown(f"**{t}**")
+    
+    # Rows
+    for cd in cushion_data:
+        row_cols = st.columns([2, 1] + [1]*len(thresholds))
+        row_cols[0].write(cd['game'].replace("@", " @ "))
+        row_cols[1].write(f"{cd['projected']}")
+        
+        for i, t in enumerate(thresholds):
+            if cushion_side == "NO":
+                cushion = t - cd['projected']
+            else:
+                cushion = cd['projected'] - t
+            
+            if cushion >= 20:
+                row_cols[i+2].markdown(f"<span style='color:#00ff00'>**+{cushion:.0f}**</span>", unsafe_allow_html=True)
+            elif cushion >= 10:
+                row_cols[i+2].markdown(f"<span style='color:#ffff00'>**+{cushion:.0f}**</span>", unsafe_allow_html=True)
+            elif cushion >= 5:
+                row_cols[i+2].markdown(f"<span style='color:#ff8800'>**+{cushion:.0f}**</span>", unsafe_allow_html=True)
+            elif cushion >= 0:
+                row_cols[i+2].markdown(f"<span style='color:#ff4444'>+{cushion:.0f}</span>", unsafe_allow_html=True)
+            else:
+                row_cols[i+2].markdown(f"<span style='color:#ff0000'>{cushion:.0f}</span>", unsafe_allow_html=True)
+else:
+    st.info(f"No games with {cushion_min_minutes}+ minutes played yet")
 
 st.divider()
 
@@ -608,4 +675,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.11 | Pre-Bet Analysis + Fatigue Scanner + Pace Scanner + Position Tracker")
+st.caption("v10.12 | Fatigue + Pace + Cushion Scanners + Position Tracker")
