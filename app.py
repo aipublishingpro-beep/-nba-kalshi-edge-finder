@@ -11,19 +11,22 @@ with st.sidebar:
     
     st.subheader("⚡ Edge Scanner")
     st.markdown("""
-    🟢 **8-10** → STRONG NO — Size up  
-    🟢 **6-7** → GOOD NO — Standard  
-    🟡 **4-5** → LEAN NO — Small size  
+    🟢 **8-10** → STRONG — Size up  
+    🟢 **6-7** → GOOD — Standard  
+    🟡 **4-5** → LEAN — Small size  
     🔴 **0-3** → SKIP — No edge
     """)
     
     st.markdown("""
-    **Points from:**  
-    • Fatigue (max +4)  
-    • Pace (max +2)  
-    • Cushion (max +3)  
-    • Division rivals = +1  
-    • Rested team = -1 each
+    **NO scoring:**  
+    • Tired teams = +pts  
+    • Slow pace = +pts  
+    • Rested = -pts  
+    
+    **YES scoring:**  
+    • Rested teams = +pts  
+    • Fast pace = +pts  
+    • Tired = -pts
     """)
     
     st.divider()
@@ -119,7 +122,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.17")
+    st.caption("v10.18")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -467,61 +470,102 @@ for game_key, g in games.items():
         pace = total / mins_played if mins_played > 0 else 0
         projected = round(pace * 48)
         
-        # === FATIGUE SCORE (max 4, min -2) ===
+        # === FATIGUE SCORE ===
         fatigue_pts = 0
         fatigue_tags = []
         
         away_b2b = away in yesterday_teams
         home_b2b = home in yesterday_teams
         
-        if away_b2b:
-            fatigue_pts += 2
-            fatigue_tags.append("Away B2B +2")
-        
-        if away_b2b and home_b2b:
-            fatigue_pts += 1
-            fatigue_tags.append("Both tired +1")
-        
-        if home == "Denver":
-            fatigue_pts += 1
-            fatigue_tags.append("Altitude +1")
-        
-        # Blowout risk penalty
-        away_fatigue_score = (2 if away_b2b else 0) + 1
-        home_fatigue_score = 2 if home_b2b else 0
-        if away_fatigue_score >= 3 and home_fatigue_score == 0:
-            fatigue_pts -= 2
-            fatigue_tags.append("Blowout -2")
-        
-        # Rested team penalty (3+ days off = Over risk)
+        # Rested team check
         away_rested = away not in recent_teams
         home_rested = home not in recent_teams
-        if away_rested:
-            fatigue_pts -= 1
-            fatigue_tags.append(f"{away} rested -1")
-        if home_rested:
-            fatigue_pts -= 1
-            fatigue_tags.append(f"{home} rested -1")
         
-        # Division rivals bonus (tighter games)
-        if are_division_rivals(away, home):
-            fatigue_pts += 1
-            fatigue_tags.append("Division +1")
+        # Division rivals check
+        is_division = are_division_rivals(away, home)
         
-        # === PACE SCORE (max 2, min -1) ===
-        pace_pts = 0
-        if pace < 4.5:
-            pace_pts = 2
-            pace_tag = "Slow +2"
-        elif pace < 4.8:
-            pace_pts = 1
-            pace_tag = "Avg +1"
-        elif pace < 5.2:
-            pace_pts = 0
-            pace_tag = "Fast +0"
+        # Blowout risk check
+        away_fatigue_score = (2 if away_b2b else 0) + 1
+        home_fatigue_score = 2 if home_b2b else 0
+        is_blowout_risk = away_fatigue_score >= 3 and home_fatigue_score == 0
+        
+        if edge_side == "NO":
+            # NO SCORING: Tired = good, Rested = bad, Slow = good
+            if away_b2b:
+                fatigue_pts += 2
+                fatigue_tags.append("Away B2B +2")
+            if away_b2b and home_b2b:
+                fatigue_pts += 1
+                fatigue_tags.append("Both tired +1")
+            if home == "Denver":
+                fatigue_pts += 1
+                fatigue_tags.append("Altitude +1")
+            if is_blowout_risk:
+                fatigue_pts -= 2
+                fatigue_tags.append("Blowout -2")
+            if away_rested:
+                fatigue_pts -= 1
+                fatigue_tags.append(f"{away} rested -1")
+            if home_rested:
+                fatigue_pts -= 1
+                fatigue_tags.append(f"{home} rested -1")
+            if is_division:
+                fatigue_pts += 1
+                fatigue_tags.append("Division +1")
         else:
-            pace_pts = -1
-            pace_tag = "Shootout -1"
+            # YES SCORING: Rested = good, Tired = bad, Fast = good, Blowout = good
+            if away_rested:
+                fatigue_pts += 2
+                fatigue_tags.append(f"{away} rested +2")
+            if home_rested:
+                fatigue_pts += 2
+                fatigue_tags.append(f"{home} rested +2")
+            if is_blowout_risk:
+                fatigue_pts += 2
+                fatigue_tags.append("Blowout +2")
+            if away_b2b:
+                fatigue_pts -= 1
+                fatigue_tags.append("Away B2B -1")
+            if home_b2b:
+                fatigue_pts -= 1
+                fatigue_tags.append("Home B2B -1")
+            if home == "Denver":
+                fatigue_pts -= 1
+                fatigue_tags.append("Altitude -1")
+            if is_division:
+                fatigue_pts -= 1
+                fatigue_tags.append("Division -1")
+        
+        # === PACE SCORE ===
+        pace_pts = 0
+        if edge_side == "NO":
+            # NO: Slow = good
+            if pace < 4.5:
+                pace_pts = 2
+                pace_tag = "Slow +2"
+            elif pace < 4.8:
+                pace_pts = 1
+                pace_tag = "Avg +1"
+            elif pace < 5.2:
+                pace_pts = 0
+                pace_tag = "Fast +0"
+            else:
+                pace_pts = -1
+                pace_tag = "Shootout -1"
+        else:
+            # YES: Fast = good
+            if pace >= 5.2:
+                pace_pts = 2
+                pace_tag = "Shootout +2"
+            elif pace >= 4.8:
+                pace_pts = 1
+                pace_tag = "Fast +1"
+            elif pace >= 4.5:
+                pace_pts = 0
+                pace_tag = "Avg +0"
+            else:
+                pace_pts = -1
+                pace_tag = "Slow -1"
         
         # === CUSHION SCORE (max 3) ===
         if edge_side == "NO":
@@ -944,4 +988,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.17 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
+st.caption("v10.18 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
