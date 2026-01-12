@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 
 st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
@@ -429,4 +429,92 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.8 | Pre-Bet Analysis + Position Tracker")
+
+# ========== FATIGUE SCANNER ==========
+st.subheader("🔍 FATIGUE SCANNER")
+st.caption("Find teams on back-to-backs and road fatigue — prime NO candidates")
+
+def fetch_yesterday_teams():
+    """Fetch which teams played yesterday"""
+    yesterday = (datetime.now(pytz.timezone('US/Eastern')) - timedelta(days=1)).strftime('%Y%m%d')
+    url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={yesterday}"
+    try:
+        resp = requests.get(url, timeout=10)
+        data = resp.json()
+        teams_played = set()
+        for event in data.get("events", []):
+            comp = event.get("competitions", [{}])[0]
+            for c in comp.get("competitors", []):
+                name = c.get("team", {}).get("displayName", "")
+                team_name = TEAM_ABBREVS.get(name, name)
+                teams_played.add(team_name)
+        return teams_played
+    except:
+        return set()
+
+# Get yesterday's teams
+yesterday_teams = fetch_yesterday_teams()
+
+# Calculate fatigue for today's teams
+if games:
+    fatigue_data = []
+    
+    for game_key, g in games.items():
+        # Check away team
+        away = g['away_team']
+        away_b2b = away in yesterday_teams
+        away_score = (2 if away_b2b else 0) + 1  # +1 for road
+        fatigue_data.append({
+            "team": away,
+            "opponent": g['home_team'],
+            "game": game_key,
+            "b2b": away_b2b,
+            "road": True,
+            "score": away_score
+        })
+        
+        # Check home team
+        home = g['home_team']
+        home_b2b = home in yesterday_teams
+        home_score = 2 if home_b2b else 0  # No road bonus for home
+        fatigue_data.append({
+            "team": home,
+            "opponent": away,
+            "game": game_key,
+            "b2b": home_b2b,
+            "road": False,
+            "score": home_score
+        })
+    
+    # Sort by fatigue score descending
+    fatigue_data.sort(key=lambda x: x['score'], reverse=True)
+    
+    # Display
+    if fatigue_data:
+        for f in fatigue_data:
+            if f['score'] >= 2:
+                # Show fatigued teams
+                tags = []
+                if f['b2b']:
+                    tags.append("🔴 B2B")
+                if f['road']:
+                    tags.append("✈️ ROAD")
+                
+                tag_str = " | ".join(tags)
+                
+                if f['score'] >= 3:
+                    st.error(f"**{f['team']}** vs {f['opponent']} — Score: {f['score']} — {tag_str}")
+                else:
+                    st.warning(f"**{f['team']}** vs {f['opponent']} — Score: {f['score']} — {tag_str}")
+        
+        # Show legend
+        st.markdown("---")
+        st.caption("**Fatigue Score:** 3+ = FATIGUED (B2B + Road) | 2 = TIRED (B2B or Road) | 0-1 = Fresh")
+        st.caption("Higher fatigue = better NO candidate (team likely to drag pace)")
+    else:
+        st.info("No fatigue data available")
+else:
+    st.info("No games today to analyze")
+
+st.divider()
+st.caption("v10.9 | Pre-Bet Analysis + Position Tracker + Fatigue Scanner")
