@@ -110,19 +110,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    
-    st.subheader("Status")
-    st.markdown("""
-    🟢 VERY SAFE → +15 cushion  
-    🟢 LOOKING GOOD → +8 to +15  
-    🟡 ON TRACK → +3 to +8  
-    🟠 TIGHT → -3 to +3  
-    🔴 DANGER → -10 to -3  
-    🔴 LIKELY LOSS → Under -10
-    """)
-    
-    st.divider()
-    st.caption("v10.25")
+    st.caption("v10.26")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -320,12 +308,6 @@ def get_size_tier(cushion):
     else:
         return "🔴 SKIP — No edge", "#ff0000"
 
-# Initialize
-if 'positions' not in st.session_state:
-    st.session_state.positions = []
-if 'initialized' not in st.session_state:
-    st.session_state.initialized = True
-
 # Fetch data
 games = fetch_espn_scores()
 game_list = sorted(list(games.keys()))
@@ -334,53 +316,8 @@ recent_teams = fetch_recent_teams(3)
 now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
-st.title("🎯 NBA POSITION TRACKER")
+st.title("🎯 NBA EDGE FINDER")
 st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')}")
-
-# ========== P&L TRACKER ==========
-if st.session_state.positions:
-    total_cost = 0
-    total_profit = 0
-    wins = 0
-    losses = 0
-    pending = 0
-    
-    for pos in st.session_state.positions:
-        g = games.get(pos['game'])
-        cost = pos['contracts'] * pos['price'] / 100
-        profit = pos['contracts'] * (100 - pos['price']) / 100
-        total_cost += cost
-        
-        if g and g['status_type'] == "STATUS_FINAL":
-            total = g['total']
-            side = pos.get('side', 'NO')
-            threshold = pos['threshold']
-            
-            if side == "NO":
-                won = total < threshold
-            else:
-                won = total > threshold
-            
-            if won:
-                wins += 1
-                total_profit += profit
-            else:
-                losses += 1
-                total_profit -= cost
-        else:
-            pending += 1
-    
-    pnl_cols = st.columns(5)
-    pnl_cols[0].metric("Positions", len(st.session_state.positions))
-    pnl_cols[1].metric("Won", wins, delta="✅" if wins > 0 else None)
-    pnl_cols[2].metric("Lost", losses, delta="❌" if losses > 0 else None)
-    pnl_cols[3].metric("Pending", pending)
-    if total_profit >= 0:
-        pnl_cols[4].metric("P&L", f"+${total_profit:.2f}", delta="profit", delta_color="normal")
-    else:
-        pnl_cols[4].metric("P&L", f"-${abs(total_profit):.2f}", delta="loss", delta_color="inverse")
-    
-    st.divider()
 
 # ========== CUSHION SCANNER ==========
 st.subheader("🎯 CUSHION SCANNER")
@@ -992,117 +929,6 @@ else:
 
 st.divider()
 
-# ========== ADD POSITION ==========
-st.subheader("➕ ADD POSITION")
-with st.form("add_position_form", clear_on_submit=True):
-    c1, c2, c3, c4, c5, c6 = st.columns([2,1,1,1,1,1])
-    with c1:
-        if game_list:
-            new_game = st.selectbox("Game", game_list, format_func=lambda x: x.replace("@", " @ "), key="new_game")
-        else:
-            new_game = st.text_input("Game (e.g. Brooklyn@Memphis)")
-    with c2:
-        new_side = st.selectbox("Side", ["NO", "YES"], key="new_side")
-    with c3:
-        new_threshold = st.number_input("Threshold", 180.0, 280.0, 237.5, 0.5, key="new_threshold")
-    with c4:
-        new_price = st.number_input("Price ¢", 1, 99, 85, key="new_price")
-    with c5:
-        new_contracts = st.number_input("Contracts", 1, 1000, 100, key="new_contracts")
-    with c6:
-        st.write("")
-        st.write("")
-        submitted = st.form_submit_button("➕ ADD", type="primary")
-    
-    if submitted:
-        st.session_state.positions.append({
-            "game": new_game, "side": new_side, "threshold": new_threshold,
-            "price": new_price, "contracts": new_contracts
-        })
-
-st.divider()
-
-# ========== POSITIONS ==========
-st.subheader(f"📋 YOUR POSITIONS ({len(st.session_state.positions)})")
-if st.session_state.positions:
-    for i, pos in enumerate(st.session_state.positions):
-        g = games.get(pos['game'])
-        side = pos.get('side', 'NO')
-        
-        if g:
-            total = g['total']
-            mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
-            mins_remaining = get_minutes_remaining(g['period'], g['clock'], g['status_type'])
-            is_final = g['status_type'] == "STATUS_FINAL"
-            spread = abs(g['away_score'] - g['home_score'])
-            actual_pace = round(total / mins_played, 2) if mins_played > 0 else 0
-            
-            if g['period'] > 4 and not is_final:
-                projected = round(total + (actual_pace * mins_remaining))
-            elif mins_played > 0:
-                projected = round((total / mins_played) * 48)
-            else:
-                projected = None
-        else:
-            total, projected, mins_played, mins_remaining, spread, is_final, actual_pace = 0, None, 0, 48, 0, False, 0
-        
-        if side == "NO":
-            status_txt, color = get_status_no(pos['threshold'], total, projected, is_final)
-            cushion = pos['threshold'] - total if is_final else (pos['threshold'] - projected if projected else None)
-            need = pos['threshold'] - total
-            need_label = "Need Under"
-            pace_allowed = round(need / mins_remaining, 2) if mins_remaining > 0 else 0
-        else:
-            status_txt, color = get_status_yes(pos['threshold'], total, projected, is_final)
-            cushion = total - pos['threshold'] if is_final else (projected - pos['threshold'] if projected else None)
-            need = pos['threshold'] - total + 1
-            need_label = "Need Over"
-            pace_allowed = round(need / mins_remaining, 2) if mins_remaining > 0 else 0
-        
-        cost = pos['contracts'] * pos['price'] / 100
-        profit = pos['contracts'] * (100 - pos['price']) / 100
-        
-        st.markdown(f"### 🏀 {pos['game'].replace('@', ' @ ')} — {side} {pos['threshold']}")
-        
-        if g:
-            st.markdown(f"**{g['away_team']}** <span style='color:#00ff00'>**{g['away_score']}**</span> - **{g['home_team']}** <span style='color:#00ff00'>**{g['home_score']}**</span> = <span style='color:#00ff00'>**{total} pts | Q{g['period']} {g['clock']} left**</span>", unsafe_allow_html=True)
-        
-        status_col, refresh_col = st.columns([4, 1])
-        with status_col:
-            st.markdown(f"## <span style='color:{color}'>{status_txt}</span>", unsafe_allow_html=True)
-        with refresh_col:
-            if st.button("🔄 REFRESH", key=f"refresh_{i}", type="primary"):
-                st.rerun()
-        
-        if spread <= 5 and g and g['period'] >= 3 and not is_final:
-            st.error(f"⚠️ OT RISK — Spread only {spread} pts!")
-        
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Position", f"{pos['contracts']} {side} @ {pos['price']}¢")
-        m2.metric("Cost", f"${cost:.2f}")
-        m3.metric("If Win", f"+${profit:.2f}")
-        if projected:
-            m4.metric("Projected", f"{projected}")
-        
-        if mins_played > 0:
-            n1, n2, n3, n4 = st.columns(4)
-            if cushion is not None:
-                n1.metric("Cushion", f"{cushion:+.0f} pts")
-            n2.metric(need_label, f"{need:.1f} pts")
-            if mins_remaining > 0:
-                n3.metric("Pace Allowed", f"{pace_allowed:.1f}/min")
-                n4.metric("Actual Pace", f"{actual_pace:.1f}/min", 
-                         delta=f"{pace_allowed - actual_pace:+.1f}" if side == "NO" else f"{actual_pace - pace_allowed:+.1f}",
-                         delta_color="normal")
-        
-        if st.button("🗑️ Remove", key=f"del_{i}"):
-            st.session_state.positions.pop(i)
-            st.rerun()
-        
-        st.divider()
-else:
-    st.info("👆 Add a position to start tracking")
-
 # ========== SCOREBOARD ==========
 st.subheader("📺 ALL GAMES")
 if games:
@@ -1200,12 +1026,8 @@ with st.expander("📚 HOW TO USE THIS TOOL"):
     **6+ minutes in:**
     1. Check Cushion Scanner for fat edges
     2. Confirm with Edge Scanner (need 6+ score)
-    3. Enter NO/YES positions with cushion
-    
-    **During game:**
-    1. Track positions in Your Positions section
-    2. Monitor pace vs allowed pace
-    3. Watch for OT risk alerts
+    3. Final check in Pre-Bet Analysis
+    4. Enter position on Kalshi
     """)
 
-st.caption("v10.25 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
+st.caption("v10.26 | Edge Finder + Fatigue + Pace + Cushion")
