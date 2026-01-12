@@ -5,7 +5,7 @@ import pytz
 
 st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
 
-st.markdown('<meta http-equiv="refresh" content="10">', unsafe_allow_html=True)
+# Auto-refresh removed - positions now persist. Click any button or refresh manually for new scores.
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
