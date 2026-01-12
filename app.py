@@ -150,9 +150,11 @@ def get_size_tier(cushion):
     else:
         return "🔴 SKIP — No edge", "#ff0000"
 
-# Initialize
+# Initialize - MUST be at very top before any widgets
 if 'positions' not in st.session_state:
     st.session_state.positions = []
+if 'initialized' not in st.session_state:
+    st.session_state.initialized = True
 
 # Fetch games
 games = fetch_espn_scores()
@@ -171,7 +173,6 @@ with pba_header:
 with pba_refresh:
     st.write("")
     if st.button("🔄 REFRESH", key="refresh_analysis", type="primary"):
-        st.cache_data.clear()
         st.rerun()
 
 pa1, pa2, pa3 = st.columns([2, 1, 1])
@@ -235,33 +236,36 @@ st.divider()
 
 # ========== ADD POSITION ==========
 st.subheader("➕ ADD POSITION")
-c1, c2, c3, c4, c5, c6 = st.columns([2,1,1,1,1,1])
-with c1:
-    if game_list:
-        new_game = st.selectbox("Game", game_list, format_func=lambda x: x.replace("@", " @ "), key="new_game")
-    else:
-        new_game = st.text_input("Game (e.g. Brooklyn@Memphis)")
-with c2:
-    new_side = st.selectbox("Side", ["NO", "YES"], key="new_side")
-with c3:
-    new_threshold = st.number_input("Threshold", 180.0, 280.0, 237.5, 0.5, key="new_threshold")
-with c4:
-    new_price = st.number_input("Price ¢", 1, 99, 85, key="new_price")
-with c5:
-    new_contracts = st.number_input("Contracts", 1, 1000, 100, key="new_contracts")
-with c6:
-    st.write("")
-    st.write("")
-    if st.button("➕ ADD", type="primary"):
+with st.form("add_position_form", clear_on_submit=True):
+    c1, c2, c3, c4, c5, c6 = st.columns([2,1,1,1,1,1])
+    with c1:
+        if game_list:
+            new_game = st.selectbox("Game", game_list, format_func=lambda x: x.replace("@", " @ "), key="new_game")
+        else:
+            new_game = st.text_input("Game (e.g. Brooklyn@Memphis)")
+    with c2:
+        new_side = st.selectbox("Side", ["NO", "YES"], key="new_side")
+    with c3:
+        new_threshold = st.number_input("Threshold", 180.0, 280.0, 237.5, 0.5, key="new_threshold")
+    with c4:
+        new_price = st.number_input("Price ¢", 1, 99, 85, key="new_price")
+    with c5:
+        new_contracts = st.number_input("Contracts", 1, 1000, 100, key="new_contracts")
+    with c6:
+        st.write("")
+        st.write("")
+        submitted = st.form_submit_button("➕ ADD", type="primary")
+    
+    if submitted:
         st.session_state.positions.append({
             "game": new_game, "side": new_side, "threshold": new_threshold,
             "price": new_price, "contracts": new_contracts
         })
-        st.rerun()
 
 st.divider()
 
 # ========== POSITIONS ==========
+st.subheader(f"📋 YOUR POSITIONS ({len(st.session_state.positions)})")
 if st.session_state.positions:
     for i, pos in enumerate(st.session_state.positions):
         g = games.get(pos['game'])
@@ -352,4 +356,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.2 | Pre-Bet Analysis + Position Tracker")
+st.caption("v10.3 | Pre-Bet Analysis + Position Tracker")
