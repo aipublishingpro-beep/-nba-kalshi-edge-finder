@@ -201,7 +201,7 @@ if st.session_state.positions:
         st.markdown(f"### 🏀 {pos['game'].replace('@', ' @ ')} — {side} {pos['threshold']}")
         
         if g:
-            st.markdown(f"<span style='color:#00ff00'>**{g['away_team']} {g['away_score']} - {g['home_team']} {g['home_score']} = {total} pts | Q{g['period']} {g['clock']} left | {mins_remaining:.1f} min total left**</span>", unsafe_allow_html=True)
+            st.markdown(f"**{g['away_team']}** <span style='color:#00ff00'>**{g['away_score']}**</span> - **{g['home_team']}** <span style='color:#00ff00'>**{g['home_score']}**</span> = <span style='color:#00ff00'>**{total} pts | Q{g['period']} {g['clock']} left | {mins_remaining:.1f} min total left**</span>", unsafe_allow_html=True)
         
         status_col, refresh_col = st.columns([4, 1])
         with status_col:
