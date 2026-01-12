@@ -122,7 +122,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.19")
+    st.caption("v10.20")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -330,7 +330,7 @@ if 'initialized' not in st.session_state:
 games = fetch_espn_scores()
 game_list = sorted(list(games.keys()))
 yesterday_teams = fetch_yesterday_teams()
-recent_teams = fetch_recent_teams(3)  # Teams that played in last 3 days
+recent_teams = fetch_recent_teams(3)
 now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
@@ -392,7 +392,6 @@ with cushion_col1:
 with cushion_col2:
     cushion_side = st.selectbox("Bet side", ["NO", "YES"], key="cushion_side")
 
-# Common thresholds
 thresholds = [225.5, 230.5, 235.5, 240.5, 245.5]
 
 cushion_data = []
@@ -409,14 +408,12 @@ for game_key, g in games.items():
         })
 
 if cushion_data:
-    # Header
     header_cols = st.columns([2, 1] + [1]*len(thresholds))
     header_cols[0].markdown("**Game**")
     header_cols[1].markdown("**Proj**")
     for i, t in enumerate(thresholds):
         header_cols[i+2].markdown(f"**{t}**")
     
-    # Rows
     for cd in cushion_data:
         row_cols = st.columns([2, 1] + [1]*len(thresholds))
         row_cols[0].write(cd['game'].replace("@", " @ "))
@@ -453,44 +450,37 @@ with edge_col1:
 with edge_col2:
     edge_threshold = st.number_input("Threshold", 210.0, 260.0, 235.5, 0.5, key="edge_threshold")
 
-edge_side = cushion_side  # Sync with Cushion Scanner
+edge_side = cushion_side
 
 edge_data = []
 for game_key, g in games.items():
     mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
     
-    # Basic game info
     away = g['away_team']
     home = g['home_team']
     total = g['total']
     is_final = g['status_type'] == "STATUS_FINAL"
     
-    # Calculate projected
     if mins_played >= edge_min_minutes:
         pace = total / mins_played if mins_played > 0 else 0
         projected = round(pace * 48)
         
-        # === FATIGUE SCORE ===
         fatigue_pts = 0
         fatigue_tags = []
         
         away_b2b = away in yesterday_teams
         home_b2b = home in yesterday_teams
         
-        # Rested team check
         away_rested = away not in recent_teams
         home_rested = home not in recent_teams
         
-        # Division rivals check
         is_division = are_division_rivals(away, home)
         
-        # Blowout risk check
         away_fatigue_score = (2 if away_b2b else 0) + 1
         home_fatigue_score = 2 if home_b2b else 0
         is_blowout_risk = away_fatigue_score >= 3 and home_fatigue_score == 0
         
         if edge_side == "NO":
-            # NO SCORING: Tired = good, Rested = bad, Slow = good
             if away_b2b:
                 fatigue_pts += 2
                 fatigue_tags.append("Away B2B +2")
@@ -513,7 +503,6 @@ for game_key, g in games.items():
                 fatigue_pts += 1
                 fatigue_tags.append("Division +1")
         else:
-            # YES SCORING: Rested = good, Fast = good, Blowout = good
             if away_rested:
                 fatigue_pts += 2
                 fatigue_tags.append(f"{away} rested +2")
@@ -527,10 +516,8 @@ for game_key, g in games.items():
                 fatigue_pts -= 1
                 fatigue_tags.append("Altitude -1")
         
-        # === PACE SCORE ===
         pace_pts = 0
         if edge_side == "NO":
-            # NO: Slow = good
             if pace < 4.5:
                 pace_pts = 2
                 pace_tag = "Slow +2"
@@ -544,7 +531,6 @@ for game_key, g in games.items():
                 pace_pts = -1
                 pace_tag = "Shootout -1"
         else:
-            # YES: Fast = good
             if pace >= 5.0:
                 pace_pts = 3
                 pace_tag = "Shootout +3"
@@ -558,7 +544,6 @@ for game_key, g in games.items():
                 pace_pts = 0
                 pace_tag = "Slow +0"
         
-        # === CUSHION SCORE (max 3) ===
         if edge_side == "NO":
             cushion = edge_threshold - projected
         else:
@@ -573,7 +558,6 @@ for game_key, g in games.items():
         else:
             cushion_pts = 0
         
-        # === TOTAL EDGE SCORE ===
         edge_score = fatigue_pts + pace_pts + cushion_pts
         
         edge_data.append({
@@ -590,12 +574,10 @@ for game_key, g in games.items():
             "is_final": is_final
         })
 
-# Sort by edge score descending
 edge_data.sort(key=lambda x: x['edge_score'], reverse=True)
 
 if edge_data:
     for ed in edge_data:
-        # Determine rating
         side_label = edge_side
         if ed['edge_score'] >= 8:
             rating = f"🟢 STRONG {side_label}"
@@ -652,6 +634,14 @@ if analyze_game and analyze_game in games:
     if not g:
         st.error(f"Game data not found for {analyze_game}")
         st.stop()
+    
+    # Validate we got the right game
+    expected_teams = analyze_game.split("@")
+    if len(expected_teams) == 2:
+        if g['away_team'] != expected_teams[0] or g['home_team'] != expected_teams[1]:
+            st.error(f"⚠️ Data mismatch! Expected {analyze_game}, got {g['away_team']}@{g['home_team']}. Click REFRESH.")
+            st.stop()
+    
     total = g['total']
     mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
     
@@ -685,11 +675,7 @@ if analyze_game and analyze_game in games:
         elif cushion >= 20:
             st.success("✅ Strong edge — Consider sizing up")
         
-        game_display = f"{g['away_team']} @ {g['home_team']}"
         st.caption(f"Current: {g['away_team']} {g['away_score']} - {g['home_team']} {g['home_score']} = {total} pts | Q{g['period']} {g['clock']}")
-        
-        if analyze_game.replace("@", " @ ") != game_display.replace("@", " @ "):
-            st.warning(f"⚠️ Data mismatch! Selected: {analyze_game}, Showing: {game_display}. Click REFRESH.")
         
         st.markdown("---")
         st.markdown("**Quick Add to Track:**")
@@ -759,7 +745,6 @@ if games:
             if gf['home'] == "Denver":
                 st.info("🏔️ **ALTITUDE** — Denver home, visitors fatigue at 5,280 ft")
             
-            # Check for rested teams (3+ days off)
             away_rested = gf['away'] not in recent_teams
             home_rested = gf['home'] not in recent_teams
             
@@ -768,7 +753,6 @@ if games:
             if home_rested:
                 st.warning(f"⚡ **RESTED** — {gf['home']} has 3+ days rest (Over risk)")
             
-            # Check for division rivals
             if are_division_rivals(gf['away'], gf['home']):
                 st.info("🏆 **DIVISION RIVALS** — Physical game, lean Under")
             
@@ -979,4 +963,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.19 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
+st.caption("v10.20 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
