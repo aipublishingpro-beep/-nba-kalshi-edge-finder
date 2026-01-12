@@ -122,7 +122,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.20")
+    st.caption("v10.21")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -645,7 +645,85 @@ if analyze_game and analyze_game in games:
     total = g['total']
     mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
     
+    away = g['away_team']
+    home = g['home_team']
+    
+    # === SITUATIONAL FACTORS (always show) ===
+    st.markdown("---")
+    st.markdown("### 📋 Situational Factors")
+    
+    away_b2b = away in yesterday_teams
+    home_b2b = home in yesterday_teams
+    away_rested = away not in recent_teams
+    home_rested = home not in recent_teams
+    is_division = are_division_rivals(away, home)
+    away_fatigue_score = (2 if away_b2b else 0) + 1
+    home_fatigue_score = 2 if home_b2b else 0
+    is_blowout_risk = away_fatigue_score >= 3 and home_fatigue_score == 0
+    
+    situational_pts = 0
+    
+    if analyze_side == "NO":
+        if away_b2b:
+            st.success(f"✅ {away} on B2B (+2 pts)")
+            situational_pts += 2
+        if home_b2b:
+            st.success(f"✅ {home} on B2B (+2 pts)")
+            situational_pts += 2
+        if away_b2b and home_b2b:
+            st.success("✅ BOTH TIRED — Strong Under spot (+1 bonus)")
+            situational_pts += 1
+        if home == "Denver":
+            st.info("🏔️ ALTITUDE — Denver home (+1 pt)")
+            situational_pts += 1
+        if is_division:
+            st.info("🏆 DIVISION RIVALS — Physical game (+1 pt)")
+            situational_pts += 1
+        if is_blowout_risk:
+            st.warning("⚠️ BLOWOUT RISK — Fatigued road team @ fresh home (-2 pts)")
+            situational_pts -= 2
+        if away_rested:
+            st.warning(f"⚠️ {away} RESTED 3+ days — Over risk (-1 pt)")
+            situational_pts -= 1
+        if home_rested:
+            st.warning(f"⚠️ {home} RESTED 3+ days — Over risk (-1 pt)")
+            situational_pts -= 1
+    else:
+        if away_rested:
+            st.success(f"✅ {away} RESTED 3+ days (+2 pts)")
+            situational_pts += 2
+        if home_rested:
+            st.success(f"✅ {home} RESTED 3+ days (+2 pts)")
+            situational_pts += 2
+        if is_blowout_risk:
+            st.success("✅ BLOWOUT RISK — High scoring potential (+3 pts)")
+            situational_pts += 3
+        if home == "Denver":
+            st.warning("⚠️ ALTITUDE — Denver home, pace may drag (-1 pt)")
+            situational_pts -= 1
+        if away_b2b or home_b2b:
+            st.warning("⚠️ Tired team(s) — May slow pace")
+    
+    if situational_pts >= 3:
+        sit_color = "#00ff00"
+        sit_label = "STRONG"
+    elif situational_pts >= 1:
+        sit_color = "#ffff00"
+        sit_label = "LEAN"
+    elif situational_pts >= 0:
+        sit_color = "#ff8800"
+        sit_label = "NEUTRAL"
+    else:
+        sit_color = "#ff0000"
+        sit_label = "AVOID"
+    
+    st.markdown(f"**Situational Score:** <span style='color:{sit_color}'>**{situational_pts} pts — {sit_label} {analyze_side}**</span>", unsafe_allow_html=True)
+    
+    # === LIVE PROJECTION (only if game started) ===
     if mins_played >= 6:
+        st.markdown("---")
+        st.markdown("### 📊 Live Projection")
+        
         projected = round((total / mins_played) * 48)
         
         if analyze_side == "NO":
@@ -655,7 +733,6 @@ if analyze_game and analyze_game in games:
         
         size_tier, tier_color = get_size_tier(cushion)
         
-        st.markdown("---")
         col_left, col_right = st.columns(2)
         
         with col_left:
@@ -674,28 +751,28 @@ if analyze_game and analyze_game in games:
             st.warning("⚠️ Proceed with caution — Small edge only")
         elif cushion >= 20:
             st.success("✅ Strong edge — Consider sizing up")
-        
-        st.caption(f"Current: {g['away_team']} {g['away_score']} - {g['home_team']} {g['home_score']} = {total} pts | Q{g['period']} {g['clock']}")
-        
-        st.markdown("---")
-        st.markdown("**Quick Add to Track:**")
-        qa1, qa2, qa3 = st.columns([1, 1, 1])
-        with qa1:
-            quick_price = st.number_input("Price ¢", 1, 99, 85, key="quick_price")
-        with qa2:
-            quick_contracts = st.number_input("Contracts", 1, 1000, 100, key="quick_contracts")
-        with qa3:
-            st.write("")
-            st.write("")
-            if st.button("➕ ADD TO TRACK", key="quick_add", type="primary"):
-                st.session_state.positions.append({
-                    "game": analyze_game, "side": analyze_side, "threshold": analyze_threshold,
-                    "price": quick_price, "contracts": quick_contracts
-                })
-                st.rerun()
     else:
-        st.info(f"⏳ Game just started ({mins_played:.1f} min played). Wait for Q1 data before analyzing.")
-        st.caption(f"Current: {g['away_team']} {g['away_score']} - {g['home_team']} {g['home_score']} = {total} pts | Q{g['period']} {g['clock']}")
+        st.markdown("---")
+        st.info(f"⏳ Live projection available after 6 min ({mins_played:.1f} played)")
+    
+    st.caption(f"Current: {g['away_team']} {g['away_score']} - {g['home_team']} {g['home_score']} = {total} pts | Q{g['period']} {g['clock']}")
+    
+    st.markdown("---")
+    st.markdown("**Quick Add to Track:**")
+    qa1, qa2, qa3 = st.columns([1, 1, 1])
+    with qa1:
+        quick_price = st.number_input("Price ¢", 1, 99, 85, key="quick_price")
+    with qa2:
+        quick_contracts = st.number_input("Contracts", 1, 1000, 100, key="quick_contracts")
+    with qa3:
+        st.write("")
+        st.write("")
+        if st.button("➕ ADD TO TRACK", key="quick_add", type="primary"):
+            st.session_state.positions.append({
+                "game": analyze_game, "side": analyze_side, "threshold": analyze_threshold,
+                "price": quick_price, "contracts": quick_contracts
+            })
+            st.rerun()
 else:
     st.info("Select a game above to analyze")
 
@@ -963,4 +1040,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.20 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
+st.caption("v10.21 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
