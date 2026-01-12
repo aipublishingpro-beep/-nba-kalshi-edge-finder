@@ -5,6 +5,53 @@ import pytz
 
 st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
 
+# ========== SIDEBAR LEGEND ==========
+with st.sidebar:
+    st.header("📖 LEGEND")
+    
+    st.subheader("Size Tiers (Cushion)")
+    st.markdown("""
+    🟢 **BIG** → +20 pts or more  
+    🟡 **MEDIUM** → +10 to +19  
+    🟠 **SMALL** → +5 to +9  
+    🔴 **SKIP** → Under +5
+    """)
+    
+    st.divider()
+    
+    st.subheader("Pace Benchmarks")
+    st.markdown("""
+    **Under 4.5** → Slow 🟢  
+    **4.5 - 4.8** → Average 🟡  
+    **4.8 - 5.2** → Fast 🟠  
+    **Over 5.2** → Shootout 🔴
+    """)
+    
+    st.divider()
+    
+    st.subheader("Pace Edge (NO bets)")
+    st.markdown("""
+    **+1.0+** → Comfortable 🟢  
+    **+0.5 to +1.0** → Okay 🟡  
+    **0 to +0.5** → Tight 🟠  
+    **Negative** → Underwater 🔴
+    """)
+    
+    st.divider()
+    
+    st.subheader("Status")
+    st.markdown("""
+    🟢 VERY SAFE → +15 cushion  
+    🟢 LOOKING GOOD → +8 to +15  
+    🟡 ON TRACK → +3 to +8  
+    🟠 TIGHT → -3 to +3  
+    🔴 DANGER → -10 to -3  
+    🔴 LIKELY LOSS → Under -10
+    """)
+    
+    st.divider()
+    st.caption("v10.7")
+
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
     "Charlotte Hornets": "Charlotte", "Chicago Bulls": "Chicago", "Cleveland Cavaliers": "Cleveland",
@@ -226,6 +273,24 @@ if analyze_game and analyze_game in games:
         
         # Quick stats
         st.caption(f"Current: {g['away_team']} {g['away_score']} - {g['home_team']} {g['home_score']} = {total} pts | Q{g['period']} {g['clock']}")
+        
+        # Quick add from analysis
+        st.markdown("---")
+        st.markdown("**Quick Add to Track:**")
+        qa1, qa2, qa3 = st.columns([1, 1, 1])
+        with qa1:
+            quick_price = st.number_input("Price ¢", 1, 99, 85, key="quick_price")
+        with qa2:
+            quick_contracts = st.number_input("Contracts", 1, 1000, 100, key="quick_contracts")
+        with qa3:
+            st.write("")
+            st.write("")
+            if st.button("➕ ADD TO TRACK", key="quick_add", type="primary"):
+                st.session_state.positions.append({
+                    "game": analyze_game, "side": analyze_side, "threshold": analyze_threshold,
+                    "price": quick_price, "contracts": quick_contracts
+                })
+                st.rerun()
     else:
         st.info(f"⏳ Game just started ({mins_played:.1f} min played). Wait for Q1 data before analyzing.")
         st.caption(f"Current: {g['away_team']} {g['away_score']} - {g['home_team']} {g['home_score']} = {total} pts | Q{g['period']} {g['clock']}")
@@ -356,4 +421,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.3 | Pre-Bet Analysis + Position Tracker")
+st.caption("v10.7 | Pre-Bet Analysis + Position Tracker")
