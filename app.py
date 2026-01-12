@@ -64,9 +64,14 @@ def get_minutes_played(period, clock, status_type):
     if period == 0:
         return 0
     try:
-        parts = str(clock).split(':')
-        mins = int(parts[0])
-        secs = int(float(parts[1])) if len(parts) > 1 else 0
+        clock_str = str(clock)
+        if ':' in clock_str:
+            parts = clock_str.split(':')
+            mins = int(parts[0])
+            secs = int(float(parts[1])) if len(parts) > 1 else 0
+        else:
+            mins = 0
+            secs = int(float(clock_str)) if clock_str else 0
         return (period - 1) * 12 + (12 - mins - secs/60)
     except:
         return (period - 1) * 12
