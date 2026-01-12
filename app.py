@@ -122,7 +122,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.22")
+    st.caption("v10.23")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -629,16 +629,31 @@ with pa2:
 with pa3:
     analyze_threshold = st.number_input("Threshold", 180.0, 280.0, 235.5, 0.5, key="analyze_threshold")
 
-if analyze_game and analyze_game in games:
-    g = games[analyze_game]
-    
-    away = g['away_team']
-    home = g['home_team']
-    total = g['total']
-    mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
-    
-    # Show the matchup we're analyzing
-    st.markdown(f"## 🏀 {away} @ {home}")
+if analyze_game:
+    # Parse selected game and find matching data
+    parts = analyze_game.split("@")
+    if len(parts) == 2:
+        selected_away = parts[0]
+        selected_home = parts[1]
+        
+        # Find the game by team names (don't trust dictionary key)
+        g = None
+        for key, game_data in games.items():
+            if game_data['away_team'] == selected_away and game_data['home_team'] == selected_home:
+                g = game_data
+                break
+        
+        if not g:
+            st.error(f"⚠️ Game data not found for {selected_away} @ {selected_home}. Click REFRESH.")
+            st.stop()
+        
+        away = selected_away
+        home = selected_home
+        total = g['total']
+        mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
+        
+        # Show the matchup we're analyzing
+        st.markdown(f"## 🏀 {away} @ {home}")
     
     # === SITUATIONAL FACTORS (always show) ===
     st.markdown("---")
@@ -806,7 +821,8 @@ if analyze_game and analyze_game in games:
             })
             st.rerun()
 else:
-    st.info("Select a game above to analyze")
+    if not analyze_game:
+        st.info("Select a game above to analyze")
 
 st.divider()
 
@@ -1072,4 +1088,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.22 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
+st.caption("v10.23 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
