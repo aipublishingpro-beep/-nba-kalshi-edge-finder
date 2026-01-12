@@ -156,6 +156,7 @@ if 'positions' not in st.session_state:
 
 # Fetch games
 games = fetch_espn_scores()
+game_list = sorted(list(games.keys()))
 now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
@@ -175,7 +176,6 @@ with pba_refresh:
 
 pa1, pa2, pa3 = st.columns([2, 1, 1])
 with pa1:
-    game_list = list(games.keys())
     if game_list:
         analyze_game = st.selectbox("Game to analyze", game_list, format_func=lambda x: x.replace("@", " @ "), key="analyze_game")
     else:
@@ -352,4 +352,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.1 | Pre-Bet Analysis + Position Tracker")
+st.caption("v10.2 | Pre-Bet Analysis + Position Tracker")
