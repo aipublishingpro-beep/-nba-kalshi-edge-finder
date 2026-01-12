@@ -122,7 +122,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.21")
+    st.caption("v10.22")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -630,23 +630,15 @@ with pa3:
     analyze_threshold = st.number_input("Threshold", 180.0, 280.0, 235.5, 0.5, key="analyze_threshold")
 
 if analyze_game and analyze_game in games:
-    g = games.get(analyze_game)
-    if not g:
-        st.error(f"Game data not found for {analyze_game}")
-        st.stop()
-    
-    # Validate we got the right game
-    expected_teams = analyze_game.split("@")
-    if len(expected_teams) == 2:
-        if g['away_team'] != expected_teams[0] or g['home_team'] != expected_teams[1]:
-            st.error(f"⚠️ Data mismatch! Expected {analyze_game}, got {g['away_team']}@{g['home_team']}. Click REFRESH.")
-            st.stop()
-    
-    total = g['total']
-    mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
+    g = games[analyze_game]
     
     away = g['away_team']
     home = g['home_team']
+    total = g['total']
+    mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
+    
+    # Show the matchup we're analyzing
+    st.markdown(f"## 🏀 {away} @ {home}")
     
     # === SITUATIONAL FACTORS (always show) ===
     st.markdown("---")
@@ -662,47 +654,87 @@ if analyze_game and analyze_game in games:
     is_blowout_risk = away_fatigue_score >= 3 and home_fatigue_score == 0
     
     situational_pts = 0
+    factors_found = False
+    
+    # Always show team status
+    col_away, col_home = st.columns(2)
+    with col_away:
+        st.markdown(f"**{away}** (Away)")
+        if away_b2b:
+            st.error("🔴 Back-to-back")
+        elif away_rested:
+            st.success("🟢 Rested (3+ days)")
+        else:
+            st.info("⚪ Normal rest")
+    
+    with col_home:
+        st.markdown(f"**{home}** (Home)")
+        if home_b2b:
+            st.error("🔴 Back-to-back")
+        elif home_rested:
+            st.success("🟢 Rested (3+ days)")
+        else:
+            st.info("⚪ Normal rest")
+    
+    st.markdown("**Edge Factors:**")
     
     if analyze_side == "NO":
         if away_b2b:
             st.success(f"✅ {away} on B2B (+2 pts)")
             situational_pts += 2
+            factors_found = True
         if home_b2b:
             st.success(f"✅ {home} on B2B (+2 pts)")
             situational_pts += 2
+            factors_found = True
         if away_b2b and home_b2b:
             st.success("✅ BOTH TIRED — Strong Under spot (+1 bonus)")
             situational_pts += 1
+            factors_found = True
         if home == "Denver":
             st.info("🏔️ ALTITUDE — Denver home (+1 pt)")
             situational_pts += 1
+            factors_found = True
         if is_division:
             st.info("🏆 DIVISION RIVALS — Physical game (+1 pt)")
             situational_pts += 1
+            factors_found = True
         if is_blowout_risk:
             st.warning("⚠️ BLOWOUT RISK — Fatigued road team @ fresh home (-2 pts)")
             situational_pts -= 2
+            factors_found = True
         if away_rested:
             st.warning(f"⚠️ {away} RESTED 3+ days — Over risk (-1 pt)")
             situational_pts -= 1
+            factors_found = True
         if home_rested:
             st.warning(f"⚠️ {home} RESTED 3+ days — Over risk (-1 pt)")
             situational_pts -= 1
+            factors_found = True
     else:
         if away_rested:
             st.success(f"✅ {away} RESTED 3+ days (+2 pts)")
             situational_pts += 2
+            factors_found = True
         if home_rested:
             st.success(f"✅ {home} RESTED 3+ days (+2 pts)")
             situational_pts += 2
+            factors_found = True
         if is_blowout_risk:
             st.success("✅ BLOWOUT RISK — High scoring potential (+3 pts)")
             situational_pts += 3
+            factors_found = True
         if home == "Denver":
             st.warning("⚠️ ALTITUDE — Denver home, pace may drag (-1 pt)")
             situational_pts -= 1
+            factors_found = True
         if away_b2b or home_b2b:
-            st.warning("⚠️ Tired team(s) — May slow pace")
+            st.warning("⚠️ Tired team(s) — May slow pace (-1 pt)")
+            situational_pts -= 1
+            factors_found = True
+    
+    if not factors_found:
+        st.caption("No special situational factors — standard matchup")
     
     if situational_pts >= 3:
         sit_color = "#00ff00"
@@ -1040,4 +1072,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.21 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
+st.caption("v10.22 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
