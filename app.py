@@ -119,7 +119,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.15")
+    st.caption("v10.16")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -444,11 +444,13 @@ st.divider()
 st.subheader("⚡ EDGE SCANNER")
 st.caption("Step 2: Confirm 6+ score at your chosen threshold")
 
-edge_col1, edge_col2 = st.columns([1, 1])
+edge_col1, edge_col2, edge_col3 = st.columns([1, 1, 1])
 with edge_col1:
     edge_min_minutes = st.selectbox("Min time played", [6, 12, 24], index=1, format_func=lambda x: f"{x} min", key="edge_min")
 with edge_col2:
-    edge_threshold = st.number_input("NO Threshold", 210.0, 260.0, 235.5, 0.5, key="edge_threshold")
+    edge_side = st.selectbox("Bet side", ["NO", "YES"], key="edge_side")
+with edge_col3:
+    edge_threshold = st.number_input("Threshold", 210.0, 260.0, 235.5, 0.5, key="edge_threshold")
 
 edge_data = []
 for game_key, g in games.items():
@@ -522,7 +524,11 @@ for game_key, g in games.items():
             pace_tag = "Shootout -1"
         
         # === CUSHION SCORE (max 3) ===
-        cushion = edge_threshold - projected
+        if edge_side == "NO":
+            cushion = edge_threshold - projected
+        else:
+            cushion = projected - edge_threshold
+            
         if cushion >= 20:
             cushion_pts = 3
         elif cushion >= 10:
@@ -555,14 +561,15 @@ edge_data.sort(key=lambda x: x['edge_score'], reverse=True)
 if edge_data:
     for ed in edge_data:
         # Determine rating
+        side_label = edge_side
         if ed['edge_score'] >= 8:
-            rating = "🟢 STRONG NO"
+            rating = f"🟢 STRONG {side_label}"
             color = "#00ff00"
         elif ed['edge_score'] >= 6:
-            rating = "🟢 GOOD NO"
+            rating = f"🟢 GOOD {side_label}"
             color = "#00ff00"
         elif ed['edge_score'] >= 4:
-            rating = "🟡 LEAN NO"
+            rating = f"🟡 LEAN {side_label}"
             color = "#ffff00"
         else:
             rating = "🔴 SKIP"
@@ -937,4 +944,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.15 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
+st.caption("v10.16 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
