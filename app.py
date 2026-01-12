@@ -122,7 +122,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.24")
+    st.caption("v10.25")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -1114,4 +1114,98 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.24 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
+
+# ========== HOW TO USE ==========
+with st.expander("📚 HOW TO USE THIS TOOL"):
+    st.markdown("""
+    ## Two Betting Strategies
+    
+    This tool supports two distinct edges. Use the right approach for each bet type.
+    
+    ---
+    
+    ### 🎯 MONEYLINE BETS (Pre-Game)
+    
+    **When:** BEFORE tipoff
+    
+    **Use:** Pre-Bet Analysis → Situational Factors
+    
+    **What to look for:**
+    - 🔥 **BLOWOUT RISK** — Fatigued road team @ fresh home = bet the home ML
+    - 🟢 **B2B teams** — Back-to-back = tired legs, fade them
+    - 🏔️ **ALTITUDE** — Teams visiting Denver struggle
+    - 🏆 **DIVISION RIVALS** — Physical games, home team edge
+    
+    **The Logic:** Fatigue is baked in before tipoff. You don't need game data — the edge exists the moment the schedule is set.
+    
+    **Action:** Find BLOWOUT RISK or heavy fatigue mismatches → buy ML pre-game at best price.
+    
+    ---
+    
+    ### 📊 TOTAL BETS - NO/YES (Live)
+    
+    **When:** 6+ MINUTES into game
+    
+    **Use:** Cushion Scanner → Edge Scanner → Pre-Bet Analysis
+    
+    **Step-by-step:**
+    1. **Cushion Scanner** — Find games with +10 or more cushion at your threshold
+    2. **Edge Scanner** — Confirm 6+ edge score (fatigue + pace + cushion combined)
+    3. **Pre-Bet Analysis** — Final check before entry
+    
+    **What to look for:**
+    - 🟢 **+20 cushion** = BIG size (confident)
+    - 🟡 **+10-19 cushion** = MEDIUM size (standard)
+    - 🟠 **+5-9 cushion** = SMALL size (cautious)
+    - 🔴 **Under +5** = SKIP (no edge)
+    
+    **Pace confirmation:**
+    - For NO bets: Want SLOW pace (under 4.5/min)
+    - For YES bets: Want FAST pace (over 4.8/min)
+    
+    **The Logic:** 6 minutes of game data reveals the actual pace. Combined with situational factors, you get a complete picture.
+    
+    **Action:** Wait for data → confirm cushion + pace + edge score → enter position.
+    
+    ---
+    
+    ### ⚠️ KEY RULES
+    
+    1. **Never bet NO on BLOWOUT RISK games** — Blowouts often push totals UP (garbage time)
+    2. **Trust the cushion** — Under +5 = no edge, walk away
+    3. **Edge Score 6+ required** — Below 6 = skip or reduce size
+    4. **Rested teams push OVER** — 3+ days rest = fresh legs = more scoring
+    5. **Both tired = UNDER** — Two fatigued teams = sloppy, slow game
+    
+    ---
+    
+    ### 📈 POSITION SIZING
+    
+    | Cushion | Edge Score | Size |
+    |---------|------------|------|
+    | +20 or more | 8+ | BIG — Max confidence |
+    | +10 to +19 | 6-7 | MEDIUM — Standard |
+    | +5 to +9 | 4-5 | SMALL — Reduced |
+    | Under +5 | 0-3 | SKIP — No edge |
+    
+    ---
+    
+    ### 🔄 WORKFLOW SUMMARY
+    
+    **Pre-game:**
+    1. Check Fatigue Scanner for B2B / BLOWOUT RISK
+    2. Use Pre-Bet Analysis for situational score
+    3. Buy ML on fresh home teams vs fatigued road teams
+    
+    **6+ minutes in:**
+    1. Check Cushion Scanner for fat edges
+    2. Confirm with Edge Scanner (need 6+ score)
+    3. Enter NO/YES positions with cushion
+    
+    **During game:**
+    1. Track positions in Your Positions section
+    2. Monitor pace vs allowed pace
+    3. Watch for OT risk alerts
+    """)
+
+st.caption("v10.25 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
