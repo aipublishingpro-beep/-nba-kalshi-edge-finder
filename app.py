@@ -22,6 +22,7 @@ with st.sidebar:
     • Fatigue (max +4)  
     • Pace (max +2)  
     • Cushion (max +3)  
+    • Division rivals = +1  
     • Rested team = -1 each
     """)
     
@@ -71,6 +72,9 @@ with st.sidebar:
     ⚡ **RESTED**  
     *3+ days rest = team comes out hot, Over risk*
     
+    🏆 **DIVISION RIVALS**  
+    *Same division = physical game, lean Under*
+    
     ⚪ **NEUTRAL**  
     *Fresh vs Fresh = no fatigue edge*
     """)
@@ -115,7 +119,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.14")
+    st.caption("v10.15")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -130,6 +134,21 @@ TEAM_ABBREVS = {
     "Sacramento Kings": "Sacramento", "San Antonio Spurs": "San Antonio", "Toronto Raptors": "Toronto",
     "Utah Jazz": "Utah", "Washington Wizards": "Washington"
 }
+
+NBA_DIVISIONS = {
+    "Atlantic": ["Boston", "Brooklyn", "New York", "Philadelphia", "Toronto"],
+    "Central": ["Chicago", "Cleveland", "Detroit", "Indiana", "Milwaukee"],
+    "Southeast": ["Atlanta", "Charlotte", "Miami", "Orlando", "Washington"],
+    "Northwest": ["Denver", "Minnesota", "Oklahoma City", "Portland", "Utah"],
+    "Pacific": ["Golden State", "LA Clippers", "LA Lakers", "Phoenix", "Sacramento"],
+    "Southwest": ["Dallas", "Houston", "Memphis", "New Orleans", "San Antonio"]
+}
+
+def are_division_rivals(team1, team2):
+    for division, teams in NBA_DIVISIONS.items():
+        if team1 in teams and team2 in teams:
+            return True
+    return False
 
 def fetch_espn_scores():
     url = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
@@ -421,6 +440,11 @@ for game_key, g in games.items():
             fatigue_pts -= 1
             fatigue_tags.append(f"{home} rested -1")
         
+        # Division rivals bonus (tighter games)
+        if are_division_rivals(away, home):
+            fatigue_pts += 1
+            fatigue_tags.append("Division +1")
+        
         # === PACE SCORE (max 2, min -1) ===
         pace_pts = 0
         if pace < 4.5:
@@ -640,6 +664,10 @@ if games:
                 st.warning(f"⚡ **RESTED** — {gf['away']} has 3+ days rest (Over risk)")
             if home_rested:
                 st.warning(f"⚡ **RESTED** — {gf['home']} has 3+ days rest (Over risk)")
+            
+            # Check for division rivals
+            if are_division_rivals(gf['away'], gf['home']):
+                st.info("🏆 **DIVISION RIVALS** — Physical game, lean Under")
             
             away_tags = []
             if gf['away_b2b']:
@@ -909,4 +937,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.14 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
+st.caption("v10.15 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
