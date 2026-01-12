@@ -128,14 +128,8 @@ games = fetch_espn_scores()
 now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
-col_title, col_refresh = st.columns([4, 1])
-with col_title:
-    st.title("🎯 NBA POSITION TRACKER")
-    st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')}")
-with col_refresh:
-    st.write("")
-    if st.button("🔄 REFRESH", type="primary"):
-        st.rerun()
+st.title("🎯 NBA POSITION TRACKER")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')}")
 
 # ========== ADD POSITION ==========
 st.subheader("➕ ADD POSITION")
@@ -209,7 +203,12 @@ if st.session_state.positions:
         if g:
             st.markdown(f"**{g['away_team']} {g['away_score']} - {g['home_team']} {g['home_score']} = {total} pts** | Q{g['period']} {g['clock']} | {mins_remaining:.1f} min left")
         
-        st.markdown(f"## <span style='color:{color}'>{status_txt}</span>", unsafe_allow_html=True)
+        status_col, refresh_col = st.columns([4, 1])
+        with status_col:
+            st.markdown(f"## <span style='color:{color}'>{status_txt}</span>", unsafe_allow_html=True)
+        with refresh_col:
+            if st.button("🔄 REFRESH", key=f"refresh_{i}", type="primary"):
+                st.rerun()
         
         if spread <= 5 and g and g['period'] >= 3 and not is_final:
             st.error(f"⚠️ OT RISK — Spread only {spread} pts!")
