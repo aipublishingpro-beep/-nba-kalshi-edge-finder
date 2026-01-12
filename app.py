@@ -77,7 +77,7 @@ with st.sidebar:
     *Both teams fatigued = pace drags, sloppy game, STRONG Under*
     
     ⚠️ **BLOWOUT RISK**  
-    *Fatigued @ Fresh Home = fresh team runs them off court, score inflates, RISKY Under*
+    *Fatigued @ Fresh Home = Skip NO, consider ML on fresh home team*
     
     ⚪ **NEUTRAL**  
     *Fresh vs Fresh = no fatigue edge*
@@ -531,7 +531,7 @@ if games:
             if gf['away_score'] >= 2 and gf['home_score'] >= 2:
                 st.success("🟢 **BOTH TIRED** — Strong Under spot")
             elif gf['away_score'] >= 3 and gf['home_score'] == 0:
-                st.error("⚠️ **BLOWOUT RISK** — Fresh home team may run up score")
+                st.error(f"⚠️ **BLOWOUT RISK** — Skip NO, consider ML on {gf['home']}")
             
             # Away team line
             away_tags = []
