@@ -19,6 +19,23 @@ with st.sidebar:
     
     st.divider()
     
+    st.subheader("Pace Scanner")
+    st.markdown("""
+    🟢 **SLOW** → Under 4.5/min  
+    *(Good NO spot)*
+    
+    🟡 **AVG** → 4.5 - 4.8/min  
+    *(Neutral)*
+    
+    🟠 **FAST** → 4.8 - 5.2/min  
+    *(Caution for NO)*
+    
+    🔴 **SHOOTOUT** → Over 5.2/min  
+    *(Avoid NO, consider YES)*
+    """)
+    
+    st.divider()
+    
     st.subheader("Pace Benchmarks")
     st.markdown("""
     **Under 4.5** → Slow 🟢  
@@ -84,7 +101,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.10")
+    st.caption("v10.11")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -341,6 +358,68 @@ else:
 
 st.divider()
 
+# ========== PACE SCANNER ==========
+st.subheader("🔥 PACE SCANNER")
+st.caption("Find slow/fast games — updated live")
+
+# Filter options
+pace_col1, pace_col2 = st.columns([1, 1])
+with pace_col1:
+    min_minutes = st.selectbox("Minimum time played", [6, 12, 24], index=0, format_func=lambda x: f"{x} min (~Q{x//12 if x >= 12 else 1}{'H' if x == 24 else ''})")
+with pace_col2:
+    sort_order = st.selectbox("Sort by", ["Slowest first (NO hunting)", "Fastest first (YES hunting)"])
+
+# Build pace data
+pace_data = []
+for game_key, g in games.items():
+    mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
+    if mins_played >= min_minutes:
+        pace = round(g['total'] / mins_played, 2) if mins_played > 0 else 0
+        projected = round(pace * 48)
+        pace_data.append({
+            "game": game_key,
+            "away": g['away_team'],
+            "home": g['home_team'],
+            "total": g['total'],
+            "mins": mins_played,
+            "pace": pace,
+            "projected": projected,
+            "period": g['period'],
+            "clock": g['clock'],
+            "is_final": g['status_type'] == "STATUS_FINAL"
+        })
+
+# Sort
+if sort_order == "Slowest first (NO hunting)":
+    pace_data.sort(key=lambda x: x['pace'])
+else:
+    pace_data.sort(key=lambda x: x['pace'], reverse=True)
+
+# Display
+if pace_data:
+    for p in pace_data:
+        # Determine pace tier
+        if p['pace'] < 4.5:
+            pace_label = "🟢 SLOW"
+            pace_color = "#00ff00"
+        elif p['pace'] < 4.8:
+            pace_label = "🟡 AVG"
+            pace_color = "#ffff00"
+        elif p['pace'] < 5.2:
+            pace_label = "🟠 FAST"
+            pace_color = "#ff8800"
+        else:
+            pace_label = "🔴 SHOOTOUT"
+            pace_color = "#ff0000"
+        
+        status = "FINAL" if p['is_final'] else f"Q{p['period']} {p['clock']}"
+        
+        st.markdown(f"**{p['away']} @ {p['home']}** — {p['total']} pts in {p['mins']:.0f} min — **{p['pace']}/min** <span style='color:{pace_color}'>**{pace_label}**</span> — Proj: **{p['projected']}** — {status}", unsafe_allow_html=True)
+else:
+    st.info(f"No games with {min_minutes}+ minutes played yet")
+
+st.divider()
+
 # ========== ADD POSITION ==========
 st.subheader("➕ ADD POSITION")
 with st.form("add_position_form", clear_on_submit=True):
@@ -562,4 +641,4 @@ else:
     st.info("No games today to analyze")
 
 st.divider()
-st.caption("v10.10 | Pre-Bet Analysis + Position Tracker + Fatigue Scanner")
+st.caption("v10.11 | Pre-Bet Analysis + Pace Scanner + Position Tracker + Fatigue Scanner")
