@@ -56,7 +56,7 @@ def fetch_espn_scores():
     except:
         return {}
 
-def get_minutes(period, clock, status_type):
+def get_minutes_played(period, clock, status_type):
     if status_type == "STATUS_FINAL":
         return 48
     if status_type == "STATUS_HALFTIME":
@@ -71,12 +71,41 @@ def get_minutes(period, clock, status_type):
     except:
         return (period - 1) * 12
 
-def get_status(threshold, total, projected, is_final):
+def get_minutes_remaining(period, clock, status_type):
+    if status_type == "STATUS_FINAL":
+        return 0
+    if status_type == "STATUS_HALFTIME":
+        return 24
+    if period == 0:
+        return 48
+    played = get_minutes_played(period, clock, status_type)
+    return max(0, 48 - played)
+
+def get_status_no(threshold, total, projected, is_final):
     if is_final:
         return ("✅ WON!", "#00ff00") if total < threshold else ("❌ LOST", "#ff0000")
     if projected is None:
         return ("⏳ WAITING", "#888888")
     cushion = threshold - projected
+    if cushion > 15:
+        return ("🟢 VERY SAFE", "#00ff00")
+    elif cushion > 8:
+        return ("🟢 LOOKING GOOD", "#00ff00")
+    elif cushion > 3:
+        return ("🟡 ON TRACK", "#ffff00")
+    elif cushion > -3:
+        return ("🟠 TIGHT", "#ff8800")
+    elif cushion > -10:
+        return ("🔴 DANGER", "#ff0000")
+    else:
+        return ("🔴 LIKELY LOSS", "#ff0000")
+
+def get_status_yes(threshold, total, projected, is_final):
+    if is_final:
+        return ("✅ WON!", "#00ff00") if total > threshold else ("❌ LOST", "#ff0000")
+    if projected is None:
+        return ("⏳ WAITING", "#888888")
+    cushion = projected - threshold
     if cushion > 15:
         return ("🟢 VERY SAFE", "#00ff00")
     elif cushion > 8:
@@ -104,7 +133,7 @@ st.caption(f"Auto-refresh 10s | {now.strftime('%I:%M:%S %p ET')}")
 
 # ========== ADD POSITION ==========
 st.subheader("➕ ADD POSITION")
-c1, c2, c3, c4, c5 = st.columns([2,1,1,1,1])
+c1, c2, c3, c4, c5, c6 = st.columns([2,1,1,1,1,1])
 with c1:
     game_list = list(games.keys())
     if game_list:
@@ -112,17 +141,20 @@ with c1:
     else:
         new_game = st.text_input("Game (e.g. Brooklyn@Memphis)")
 with c2:
-    new_threshold = st.number_input("Threshold", 180.0, 280.0, 237.5, 0.5)
+    new_side = st.selectbox("Side", ["NO", "YES"])
 with c3:
-    new_price = st.number_input("Price ¢", 1, 99, 85)
+    new_threshold = st.number_input("Threshold", 180.0, 280.0, 237.5, 0.5)
 with c4:
-    new_contracts = st.number_input("Contracts", 1, 1000, 100)
+    new_price = st.number_input("Price ¢", 1, 99, 85)
 with c5:
+    new_contracts = st.number_input("Contracts", 1, 1000, 100)
+with c6:
     st.write("")
     st.write("")
     if st.button("➕ ADD", type="primary"):
         st.session_state.positions.append({
             "game": new_game,
+            "side": new_side,
             "threshold": new_threshold,
             "price": new_price,
             "contracts": new_contracts
@@ -135,42 +167,66 @@ st.divider()
 if st.session_state.positions:
     for i, pos in enumerate(st.session_state.positions):
         g = games.get(pos['game'])
+        side = pos.get('side', 'NO')
         
         if g:
             total = g['total']
-            mins = get_minutes(g['period'], g['clock'], g['status_type'])
-            projected = round((total / mins) * 48) if mins > 0 else None
+            mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
+            mins_remaining = get_minutes_remaining(g['period'], g['clock'], g['status_type'])
+            projected = round((total / mins_played) * 48) if mins_played > 0 else None
             is_final = g['status_type'] == "STATUS_FINAL"
             spread = abs(g['away_score'] - g['home_score'])
+            actual_pace = round(total / mins_played, 2) if mins_played > 0 else 0
         else:
-            total, projected, mins, spread, is_final = 0, None, 0, 0, False
+            total, projected, mins_played, mins_remaining, spread, is_final, actual_pace = 0, None, 0, 48, 0, False, 0
         
-        status_txt, color = get_status(pos['threshold'], total, projected, is_final)
-        cushion = pos['threshold'] - projected if projected else None
+        # Calculate based on side
+        if side == "NO":
+            status_txt, color = get_status_no(pos['threshold'], total, projected, is_final)
+            cushion = pos['threshold'] - projected if projected else None
+            need = pos['threshold'] - total
+            need_label = "Need Under"
+            pace_allowed = round(need / mins_remaining, 2) if mins_remaining > 0 else 0
+        else:
+            status_txt, color = get_status_yes(pos['threshold'], total, projected, is_final)
+            cushion = projected - pos['threshold'] if projected else None
+            need = pos['threshold'] - total + 1
+            need_label = "Need Over"
+            pace_allowed = round(need / mins_remaining, 2) if mins_remaining > 0 else 0
+        
         cost = pos['contracts'] * pos['price'] / 100
         profit = pos['contracts'] * (100 - pos['price']) / 100
-        need = pos['threshold'] - total
         
         # Display
-        st.markdown(f"### 🏀 {pos['game'].replace('@', ' @ ')} — NO {pos['threshold']}")
+        st.markdown(f"### 🏀 {pos['game'].replace('@', ' @ ')} — {side} {pos['threshold']}")
         
         if g:
-            st.markdown(f"**{g['away_score']} - {g['home_score']} = {total} pts** | Q{g['period']} {g['clock']}")
+            st.markdown(f"**{g['away_team']} {g['away_score']} - {g['home_team']} {g['home_score']} = {total} pts** | Q{g['period']} {g['clock']} | {mins_remaining:.1f} min left")
         
         st.markdown(f"## <span style='color:{color}'>{status_txt}</span>", unsafe_allow_html=True)
         
         if spread <= 5 and g and g['period'] >= 3 and not is_final:
             st.error(f"⚠️ OT RISK — Spread only {spread} pts!")
         
-        m1, m2, m3, m4, m5, m6 = st.columns(6)
-        m1.metric("Position", f"{pos['contracts']} @ {pos['price']}¢")
+        # Row 1: Position info
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Position", f"{pos['contracts']} {side} @ {pos['price']}¢")
         m2.metric("Cost", f"${cost:.2f}")
+        m3.metric("If Win", f"+${profit:.2f}")
         if projected:
-            m3.metric("Projected", f"{projected}")
-            m4.metric("Cushion", f"{cushion:+.0f}")
-        if total > 0:
-            m5.metric("Need Under", f"{need:.1f}")
-        m6.metric("If Win", f"+${profit:.2f}")
+            m4.metric("Projected", f"{projected}")
+        
+        # Row 2: Live tracking
+        if mins_played > 0:
+            n1, n2, n3, n4 = st.columns(4)
+            if cushion is not None:
+                n1.metric("Cushion", f"{cushion:+.0f} pts")
+            n2.metric(need_label, f"{need:.1f} pts")
+            if mins_remaining > 0:
+                n3.metric("Pace Allowed", f"{pace_allowed:.1f}/min")
+                n4.metric("Actual Pace", f"{actual_pace:.1f}/min", 
+                         delta=f"{pace_allowed - actual_pace:+.1f}" if side == "NO" else f"{actual_pace - pace_allowed:+.1f}",
+                         delta_color="normal")
         
         if st.button("🗑️ Remove", key=f"del_{i}"):
             st.session_state.positions.pop(i)
@@ -191,4 +247,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v8.1 | Position Tracker + Live ESPN")
+st.caption("v9.0 | Position Tracker + Pace Analysis")
