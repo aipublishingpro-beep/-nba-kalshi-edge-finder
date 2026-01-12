@@ -230,13 +230,19 @@ if st.session_state.positions:
         # Calculate based on side
         if side == "NO":
             status_txt, color = get_status_no(pos['threshold'], total, projected, is_final)
-            cushion = pos['threshold'] - projected if projected else None
+            if is_final:
+                cushion = pos['threshold'] - total
+            else:
+                cushion = pos['threshold'] - projected if projected else None
             need = pos['threshold'] - total
             need_label = "Need Under"
             pace_allowed = round(need / mins_remaining, 2) if mins_remaining > 0 else 0
         else:
             status_txt, color = get_status_yes(pos['threshold'], total, projected, is_final)
-            cushion = projected - pos['threshold'] if projected else None
+            if is_final:
+                cushion = total - pos['threshold']
+            else:
+                cushion = projected - pos['threshold'] if projected else None
             need = pos['threshold'] - total + 1
             need_label = "Need Over"
             pace_allowed = round(need / mins_remaining, 2) if mins_remaining > 0 else 0
