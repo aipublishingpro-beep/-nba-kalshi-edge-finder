@@ -119,7 +119,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.16")
+    st.caption("v10.17")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -442,15 +442,15 @@ st.divider()
 
 # ========== EDGE SCANNER ==========
 st.subheader("⚡ EDGE SCANNER")
-st.caption("Step 2: Confirm 6+ score at your chosen threshold")
+st.caption(f"Step 2: Confirm 6+ score at your chosen threshold (using {cushion_side} from above)")
 
-edge_col1, edge_col2, edge_col3 = st.columns([1, 1, 1])
+edge_col1, edge_col2 = st.columns([1, 1])
 with edge_col1:
     edge_min_minutes = st.selectbox("Min time played", [6, 12, 24], index=1, format_func=lambda x: f"{x} min", key="edge_min")
 with edge_col2:
-    edge_side = st.selectbox("Bet side", ["NO", "YES"], key="edge_side")
-with edge_col3:
     edge_threshold = st.number_input("Threshold", 210.0, 260.0, 235.5, 0.5, key="edge_threshold")
+
+edge_side = cushion_side  # Sync with Cushion Scanner
 
 edge_data = []
 for game_key, g in games.items():
@@ -944,4 +944,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.16 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
+st.caption("v10.17 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
