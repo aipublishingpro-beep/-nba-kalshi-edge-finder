@@ -63,6 +63,9 @@ with st.sidebar:
     
     st.subheader("Matchup Types")
     st.markdown("""
+    🏠 **HOME COURT**  
+    *Home team +2 pts — 55-60% historical win rate*
+    
     🟢 **BOTH TIRED**  
     *Both teams fatigued = pace drags, sloppy game, STRONG Under*
     
@@ -110,7 +113,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.26")
+    st.caption("v10.27")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -602,6 +605,9 @@ if analyze_game:
         home_fatigue_score = 2 if home_b2b else 0
         is_blowout_risk = away_fatigue_score >= 3 and home_fatigue_score == 0
         
+        # HOME COURT ADVANTAGE (always show)
+        st.success(f"🏠 **HOME COURT** — {home} has home advantage (+2 pts)")
+        
         # Show critical alerts at top
         if is_blowout_risk:
             if analyze_side == "NO":
@@ -957,6 +963,7 @@ with st.expander("📚 HOW TO USE THIS TOOL"):
     **Use:** Pre-Bet Analysis → Situational Factors
     
     **What to look for:**
+    - 🏠 **HOME COURT** — Home team always has +2 edge (55-60% historical win rate)
     - 🔥 **BLOWOUT RISK** — Fatigued road team @ fresh home = bet the home ML
     - 🟢 **B2B teams** — Back-to-back = tired legs, fade them
     - 🏔️ **ALTITUDE** — Teams visiting Denver struggle
@@ -1030,4 +1037,4 @@ with st.expander("📚 HOW TO USE THIS TOOL"):
     4. Enter position on Kalshi
     """)
 
-st.caption("v10.26 | Edge Finder + Fatigue + Pace + Cushion")
+st.caption("v10.27 | Edge Finder + Fatigue + Pace + Cushion + Home Court")
