@@ -235,7 +235,10 @@ with pa3:
 
 # Calculate pre-bet analysis
 if analyze_game and analyze_game in games:
-    g = games[analyze_game]
+    g = games.get(analyze_game)
+    if not g:
+        st.error(f"Game data not found for {analyze_game}")
+        st.stop()
     total = g['total']
     mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
     
@@ -271,8 +274,13 @@ if analyze_game and analyze_game in games:
         elif cushion >= 20:
             st.success("✅ Strong edge — Consider sizing up")
         
-        # Quick stats
+        # Quick stats - verify we have the right game
+        game_display = f"{g['away_team']} @ {g['home_team']}"
         st.caption(f"Current: {g['away_team']} {g['away_score']} - {g['home_team']} {g['home_score']} = {total} pts | Q{g['period']} {g['clock']}")
+        
+        # Sanity check - warn if game doesn't match selection
+        if analyze_game.replace("@", " @ ") != game_display.replace("@", " @ "):
+            st.warning(f"⚠️ Data mismatch! Selected: {analyze_game}, Showing: {game_display}. Click REFRESH.")
         
         # Quick add from analysis
         st.markdown("---")
@@ -421,4 +429,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.7 | Pre-Bet Analysis + Position Tracker")
+st.caption("v10.8 | Pre-Bet Analysis + Position Tracker")
