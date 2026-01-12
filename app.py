@@ -50,7 +50,27 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.7")
+    
+    st.subheader("Fatigue Scanner")
+    st.markdown("""
+    **Score 3+** → FATIGUED 🔴  
+    *(B2B + Road = prime NO target)*
+    
+    **Score 2** → TIRED 🟡  
+    *(B2B only or Road only)*
+    
+    **Score 0-1** → Fresh  
+    *(No fatigue edge)*
+    """)
+    
+    st.markdown("""
+    **Factors:**  
+    • Back-to-back = +2  
+    • Road game = +1
+    """)
+    
+    st.divider()
+    st.caption("v10.9")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -506,11 +526,6 @@ if games:
                     st.error(f"**{f['team']}** vs {f['opponent']} — Score: {f['score']} — {tag_str}")
                 else:
                     st.warning(f"**{f['team']}** vs {f['opponent']} — Score: {f['score']} — {tag_str}")
-        
-        # Show legend
-        st.markdown("---")
-        st.caption("**Fatigue Score:** 3+ = FATIGUED (B2B + Road) | 2 = TIRED (B2B or Road) | 0-1 = Fresh")
-        st.caption("Higher fatigue = better NO candidate (team likely to drag pace)")
     else:
         st.info("No fatigue data available")
 else:
