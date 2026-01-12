@@ -122,7 +122,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.23")
+    st.caption("v10.24")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -654,6 +654,32 @@ if analyze_game:
         
         # Show the matchup we're analyzing
         st.markdown(f"## 🏀 {away} @ {home}")
+        
+        # Check for key alerts FIRST
+        away_b2b = away in yesterday_teams
+        home_b2b = home in yesterday_teams
+        away_rested = away not in recent_teams
+        home_rested = home not in recent_teams
+        is_division = are_division_rivals(away, home)
+        away_fatigue_score = (2 if away_b2b else 0) + 1
+        home_fatigue_score = 2 if home_b2b else 0
+        is_blowout_risk = away_fatigue_score >= 3 and home_fatigue_score == 0
+        
+        # Show critical alerts at top
+        if is_blowout_risk:
+            if analyze_side == "NO":
+                st.error(f"🔥 **BLOWOUT RISK** — Fatigued {away} @ Fresh {home}. Skip NO, consider ML on {home}")
+            else:
+                st.success(f"🔥 **BLOWOUT RISK** — Fatigued {away} @ Fresh {home}. Good YES/Over spot!")
+        
+        if away_b2b and home_b2b:
+            st.success("🟢 **BOTH TIRED** — Strong Under spot, good NO!")
+        
+        if home == "Denver":
+            st.info(f"🏔️ **ALTITUDE** — {away} traveling to Denver (5,280 ft)")
+        
+        if is_division:
+            st.info(f"🏆 **DIVISION RIVALS** — Physical game expected")
     
     # === SITUATIONAL FACTORS (always show) ===
     st.markdown("---")
@@ -1088,4 +1114,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.23 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
+st.caption("v10.24 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
