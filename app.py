@@ -9,6 +9,23 @@ st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide"
 with st.sidebar:
     st.header("📖 LEGEND")
     
+    st.subheader("⚡ Edge Scanner")
+    st.markdown("""
+    🟢 **8-10** → STRONG NO — Size up  
+    🟢 **6-7** → GOOD NO — Standard  
+    🟡 **4-5** → LEAN NO — Small size  
+    🔴 **0-3** → SKIP — No edge
+    """)
+    
+    st.markdown("""
+    **Points from:**  
+    • Fatigue (max +4)  
+    • Pace (max +2)  
+    • Cushion (max +3)
+    """)
+    
+    st.divider()
+    
     st.subheader("Size Tiers (Cushion)")
     st.markdown("""
     🟢 **BIG** → +20 pts or more  
@@ -94,7 +111,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.12")
+    st.caption("v10.13")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -273,6 +290,135 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 # ========== HEADER ==========
 st.title("🎯 NBA POSITION TRACKER")
 st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')}")
+
+# ========== EDGE SCANNER ==========
+st.subheader("⚡ EDGE SCANNER")
+st.caption("Combined score from Fatigue + Pace + Cushion — one number to decide")
+
+edge_col1, edge_col2 = st.columns([1, 1])
+with edge_col1:
+    edge_min_minutes = st.selectbox("Min time played", [6, 12, 24], index=1, format_func=lambda x: f"{x} min", key="edge_min")
+with edge_col2:
+    edge_threshold = st.number_input("NO Threshold", 210.0, 260.0, 235.5, 0.5, key="edge_threshold")
+
+edge_data = []
+for game_key, g in games.items():
+    mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
+    
+    # Basic game info
+    away = g['away_team']
+    home = g['home_team']
+    total = g['total']
+    is_final = g['status_type'] == "STATUS_FINAL"
+    
+    # Calculate projected
+    if mins_played >= edge_min_minutes:
+        pace = total / mins_played if mins_played > 0 else 0
+        projected = round(pace * 48)
+        
+        # === FATIGUE SCORE (max 4, min -2) ===
+        fatigue_pts = 0
+        fatigue_tags = []
+        
+        away_b2b = away in yesterday_teams
+        home_b2b = home in yesterday_teams
+        
+        if away_b2b:
+            fatigue_pts += 2
+            fatigue_tags.append("Away B2B +2")
+        
+        if away_b2b and home_b2b:
+            fatigue_pts += 1
+            fatigue_tags.append("Both tired +1")
+        
+        if home == "Denver":
+            fatigue_pts += 1
+            fatigue_tags.append("Altitude +1")
+        
+        # Blowout risk penalty
+        away_fatigue_score = (2 if away_b2b else 0) + 1
+        home_fatigue_score = 2 if home_b2b else 0
+        if away_fatigue_score >= 3 and home_fatigue_score == 0:
+            fatigue_pts -= 2
+            fatigue_tags.append("Blowout -2")
+        
+        # === PACE SCORE (max 2, min -1) ===
+        pace_pts = 0
+        if pace < 4.5:
+            pace_pts = 2
+            pace_tag = "Slow +2"
+        elif pace < 4.8:
+            pace_pts = 1
+            pace_tag = "Avg +1"
+        elif pace < 5.2:
+            pace_pts = 0
+            pace_tag = "Fast +0"
+        else:
+            pace_pts = -1
+            pace_tag = "Shootout -1"
+        
+        # === CUSHION SCORE (max 3) ===
+        cushion = edge_threshold - projected
+        if cushion >= 20:
+            cushion_pts = 3
+        elif cushion >= 10:
+            cushion_pts = 2
+        elif cushion >= 5:
+            cushion_pts = 1
+        else:
+            cushion_pts = 0
+        
+        # === TOTAL EDGE SCORE ===
+        edge_score = fatigue_pts + pace_pts + cushion_pts
+        
+        edge_data.append({
+            "game": game_key,
+            "projected": projected,
+            "pace": round(pace, 2),
+            "cushion": cushion,
+            "fatigue_pts": fatigue_pts,
+            "pace_pts": pace_pts,
+            "cushion_pts": cushion_pts,
+            "edge_score": edge_score,
+            "fatigue_tags": fatigue_tags,
+            "pace_tag": pace_tag,
+            "is_final": is_final
+        })
+
+# Sort by edge score descending
+edge_data.sort(key=lambda x: x['edge_score'], reverse=True)
+
+if edge_data:
+    for ed in edge_data:
+        # Determine rating
+        if ed['edge_score'] >= 8:
+            rating = "🟢 STRONG NO"
+            color = "#00ff00"
+        elif ed['edge_score'] >= 6:
+            rating = "🟢 GOOD NO"
+            color = "#00ff00"
+        elif ed['edge_score'] >= 4:
+            rating = "🟡 LEAN NO"
+            color = "#ffff00"
+        else:
+            rating = "🔴 SKIP"
+            color = "#ff0000"
+        
+        status = "FINAL" if ed['is_final'] else "LIVE"
+        
+        st.markdown(f"### {ed['game'].replace('@', ' @ ')} — <span style='color:{color}'>**{ed['edge_score']} pts {rating}**</span>", unsafe_allow_html=True)
+        
+        score_cols = st.columns(4)
+        score_cols[0].metric("Fatigue", f"+{ed['fatigue_pts']}" if ed['fatigue_pts'] >= 0 else f"{ed['fatigue_pts']}")
+        score_cols[1].metric("Pace", f"+{ed['pace_pts']}" if ed['pace_pts'] >= 0 else f"{ed['pace_pts']}", delta=ed['pace_tag'])
+        score_cols[2].metric("Cushion", f"+{ed['cushion_pts']}", delta=f"{ed['cushion']:+.0f} pts")
+        score_cols[3].metric("Projected", f"{ed['projected']}", delta=status)
+        
+        st.markdown("---")
+else:
+    st.info(f"No games with {edge_min_minutes}+ minutes played yet")
+
+st.divider()
 
 # ========== PRE-BET ANALYSIS ==========
 pba_header, pba_refresh = st.columns([4, 1])
@@ -675,4 +821,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.12 | Fatigue + Pace + Cushion Scanners + Position Tracker")
+st.caption("v10.13 | Edge Scanner + Fatigue + Pace + Cushion + Position Tracker")
