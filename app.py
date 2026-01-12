@@ -163,8 +163,15 @@ st.title("🎯 NBA POSITION TRACKER")
 st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')}")
 
 # ========== PRE-BET ANALYSIS ==========
-st.subheader("📊 PRE-BET ANALYSIS")
-st.caption("Check your edge BEFORE entering a position")
+pba_header, pba_refresh = st.columns([4, 1])
+with pba_header:
+    st.subheader("📊 PRE-BET ANALYSIS")
+    st.caption("Check your edge BEFORE entering a position")
+with pba_refresh:
+    st.write("")
+    if st.button("🔄 REFRESH", key="refresh_analysis", type="primary"):
+        st.cache_data.clear()
+        st.rerun()
 
 pa1, pa2, pa3 = st.columns([2, 1, 1])
 with pa1:
