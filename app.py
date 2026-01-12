@@ -128,8 +128,14 @@ games = fetch_espn_scores()
 now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
-st.title("🎯 NBA POSITION TRACKER")
-st.caption(f"Auto-refresh 10s | {now.strftime('%I:%M:%S %p ET')}")
+col_title, col_refresh = st.columns([4, 1])
+with col_title:
+    st.title("🎯 NBA POSITION TRACKER")
+    st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')}")
+with col_refresh:
+    st.write("")
+    if st.button("🔄 REFRESH", type="primary"):
+        st.rerun()
 
 # ========== ADD POSITION ==========
 st.subheader("➕ ADD POSITION")
