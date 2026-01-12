@@ -25,8 +25,8 @@ with st.sidebar:
     
     **YES scoring:**  
     • Rested teams = +pts  
-    • Fast pace = +pts  
-    • Tired = -pts
+    • Fast/Shootout = +pts  
+    • Blowout risk = +pts
     """)
     
     st.divider()
@@ -122,7 +122,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.18")
+    st.caption("v10.19")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -513,7 +513,7 @@ for game_key, g in games.items():
                 fatigue_pts += 1
                 fatigue_tags.append("Division +1")
         else:
-            # YES SCORING: Rested = good, Tired = bad, Fast = good, Blowout = good
+            # YES SCORING: Rested = good, Fast = good, Blowout = good
             if away_rested:
                 fatigue_pts += 2
                 fatigue_tags.append(f"{away} rested +2")
@@ -521,20 +521,11 @@ for game_key, g in games.items():
                 fatigue_pts += 2
                 fatigue_tags.append(f"{home} rested +2")
             if is_blowout_risk:
-                fatigue_pts += 2
-                fatigue_tags.append("Blowout +2")
-            if away_b2b:
-                fatigue_pts -= 1
-                fatigue_tags.append("Away B2B -1")
-            if home_b2b:
-                fatigue_pts -= 1
-                fatigue_tags.append("Home B2B -1")
+                fatigue_pts += 3
+                fatigue_tags.append("Blowout +3")
             if home == "Denver":
                 fatigue_pts -= 1
                 fatigue_tags.append("Altitude -1")
-            if is_division:
-                fatigue_pts -= 1
-                fatigue_tags.append("Division -1")
         
         # === PACE SCORE ===
         pace_pts = 0
@@ -554,18 +545,18 @@ for game_key, g in games.items():
                 pace_tag = "Shootout -1"
         else:
             # YES: Fast = good
-            if pace >= 5.2:
-                pace_pts = 2
-                pace_tag = "Shootout +2"
+            if pace >= 5.0:
+                pace_pts = 3
+                pace_tag = "Shootout +3"
             elif pace >= 4.8:
-                pace_pts = 1
-                pace_tag = "Fast +1"
+                pace_pts = 2
+                pace_tag = "Fast +2"
             elif pace >= 4.5:
-                pace_pts = 0
-                pace_tag = "Avg +0"
+                pace_pts = 1
+                pace_tag = "Avg +1"
             else:
-                pace_pts = -1
-                pace_tag = "Slow -1"
+                pace_pts = 0
+                pace_tag = "Slow +0"
         
         # === CUSHION SCORE (max 3) ===
         if edge_side == "NO":
@@ -988,4 +979,4 @@ if games:
             st.caption(f"Q{g['period']} {g['clock']} | {g['total']} pts")
 
 st.divider()
-st.caption("v10.18 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
+st.caption("v10.19 | P&L + Edge + Fatigue + Pace + Cushion + Position Tracker")
