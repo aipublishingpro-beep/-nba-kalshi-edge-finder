@@ -394,7 +394,7 @@ def calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, aw
         'edge': round(edge, 1),
         'expected_spread': round(weighted_spread, 1),
         'expected_value': round(ev, 2),
-        'recommendation': 'BUY YES' if edge > 5 else ('BUY NO' if edge < -5 else 'NO EDGE'),
+        'recommendation': 'HOME' if edge > 5 else ('AWAY' if edge < -5 else 'NO EDGE'),
         'confidence': 'HIGH' if abs(edge) > 10 else ('MEDIUM' if abs(edge) > 5 else 'LOW'),
         'factors': {
             'rest': round(rest_score * weights['rest'], 2),
@@ -670,7 +670,16 @@ if game_list:
             st.warning(" | ".join(b2b_msg))
         
         # Main output
-        rec_color = "#00ff00" if result['recommendation'] == 'BUY YES' else ("#ff0000" if result['recommendation'] == 'BUY NO' else "#888888")
+        if result['recommendation'] == 'HOME':
+            rec_text = f"BUY {home_team} ML"
+            rec_color = "#00ff00"
+        elif result['recommendation'] == 'AWAY':
+            rec_text = f"BUY {away_team} ML"
+            rec_color = "#ff0000"
+        else:
+            rec_text = "NO EDGE"
+            rec_color = "#888888"
+        
         conf_color = "#00ff00" if result['confidence'] == 'HIGH' else ("#ffff00" if result['confidence'] == 'MEDIUM' else "#888888")
         
         col1, col2, col3 = st.columns(3)
