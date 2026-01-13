@@ -114,7 +114,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.27")
+    st.caption("v10.28")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -329,7 +329,7 @@ st.caption("Step 1: Find the fat edges — pick lowest green threshold")
 
 cushion_col1, cushion_col2 = st.columns([1, 1])
 with cushion_col1:
-    cushion_min_minutes = st.selectbox("Min time played", [6, 12, 24], index=1, format_func=lambda x: f"{x} min", key="cushion_min")
+    cushion_min_minutes = st.selectbox("Min time played", [6, 9, 12, 18, 24], index=1, format_func=lambda x: f"{x} min", key="cushion_min")
 with cushion_col2:
     cushion_side = st.selectbox("Bet side", ["NO", "YES"], key="cushion_side")
 
@@ -387,7 +387,7 @@ st.caption(f"Step 2: Confirm 6+ score at your chosen threshold (using {cushion_s
 
 edge_col1, edge_col2 = st.columns([1, 1])
 with edge_col1:
-    edge_min_minutes = st.selectbox("Min time played", [6, 12, 24], index=1, format_func=lambda x: f"{x} min", key="edge_min")
+    edge_min_minutes = st.selectbox("Min time played", [6, 9, 12, 18, 24], index=2, format_func=lambda x: f"{x} min", key="edge_min")
 with edge_col2:
     edge_threshold = st.number_input("Threshold", 210.0, 260.0, 235.5, 0.5, key="edge_threshold")
 
@@ -885,7 +885,7 @@ st.caption("Find slow/fast games — check DURING games")
 
 pace_col1, pace_col2 = st.columns([1, 1])
 with pace_col1:
-    min_minutes = st.selectbox("Minimum time played", [6, 12, 24], index=0, format_func=lambda x: f"{x} min (~Q{x//12 if x >= 12 else 1}{'H' if x == 24 else ''})")
+    min_minutes = st.selectbox("Minimum time played", [6, 9, 12, 18, 24], index=0, format_func=lambda x: f"{x} min")
 with pace_col2:
     sort_order = st.selectbox("Sort by", ["Slowest first (NO hunting)", "Fastest first (YES hunting)"])
 
@@ -1038,4 +1038,4 @@ with st.expander("📚 HOW TO USE THIS TOOL"):
     4. Enter position on Kalshi
     """)
 
-st.caption("v10.27 | Edge Finder + Fatigue + Pace + Cushion + Home Court")
+st.caption("v10.28 | Edge Finder + Fatigue + Pace + Cushion + Home Court")
