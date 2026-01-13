@@ -131,6 +131,15 @@ def build_kalshi_totals_url(away_team, home_team):
     ticker = f"kxnbatotal-{date_str}{away_code}{home_code}"
     return f"https://kalshi.com/markets/kxnbatotal/pro-basketball-total-points/{ticker}"
 
+def build_kalshi_ml_url(away_team, home_team):
+    """Build Kalshi moneyline URL - takes you to game page"""
+    away_code = KALSHI_CODES.get(away_team, "xxx")
+    home_code = KALSHI_CODES.get(home_team, "xxx")
+    today = datetime.now(pytz.timezone('US/Eastern'))
+    date_str = today.strftime("%y%b%d").lower()
+    ticker = f"kxnbagame-{date_str}{away_code}{home_code}"
+    return f"https://kalshi.com/markets/kxnbagame/pro-basketball-moneyline/{ticker}"
+
 def build_kalshi_ticker(away_team, home_team, threshold):
     """Build full Kalshi ticker for order placement"""
     away_code = KALSHI_CODES.get(away_team, "xxx")
@@ -286,7 +295,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v12.8")
+    st.caption("v12.9")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -711,7 +720,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.8")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.9")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
@@ -765,7 +774,7 @@ if game_list:
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
             col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
             
-            kalshi_url = f"https://kalshi.com/markets/kxnbagame"
+            kalshi_url = build_kalshi_ml_url(p['away'], p['home'])
             col4.link_button(f"🚀 BUY {p['pick'].upper()}", kalshi_url)
     
     if buys:
@@ -781,7 +790,7 @@ if game_list:
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
             col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
             
-            kalshi_url = f"https://kalshi.com/markets/kxnbagame"
+            kalshi_url = build_kalshi_ml_url(p['away'], p['home'])
             col4.link_button(f"🔗 BUY {p['pick'].upper()}", kalshi_url)
     
     if leans:
