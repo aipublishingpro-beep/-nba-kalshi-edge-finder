@@ -11,19 +11,22 @@ if "positions" not in st.session_state:
 # ========== SIDEBAR LEGEND ==========
 with st.sidebar:
     st.header("📖 LEGEND")
+    
     st.subheader("⚡ 12-Factor Edge")
     st.markdown("""
     **Edge > +10%** → HIGH confidence  
     **Edge +5 to +10%** → MEDIUM confidence  
-    **Edge < +5%** → NO EDGE
+    **Edge < +5%** → LOW / NO EDGE
     """)
-    st.divider()
-    st.subheader("🎨 Pick Colors")
+    
     st.markdown("""
-    🟢 **Green** → BUY home team  
-    🔴 **Red** → BUY away team
+    🟢 **Green** → BUY home team ML  
+    🔴 **Red** → BUY away team ML  
+    ⚪ **NO EDGE** → Skip this game
     """)
+    
     st.divider()
+    
     st.subheader("Size Tiers (Cushion)")
     st.markdown("""
     🟢 **BIG** → +20 pts or more  
@@ -31,7 +34,50 @@ with st.sidebar:
     🟠 **SMALL** → +5 to +9  
     🔴 **SKIP** → Under +5
     """)
+    
     st.divider()
+    
+    st.subheader("Fatigue Scanner")
+    st.markdown("""
+    **Score 3+** → FATIGUED 🔴  
+    *(Back-to-back + Road = prime target)*
+    
+    **Score 2** → TIRED 🟡  
+    *(Back-to-back only or Road only)*
+    
+    **Score 0-1** → Fresh  
+    *(No fatigue edge)*
+    """)
+    
+    st.markdown("""
+    **Factors:**  
+    • Back-to-back (played yesterday) = +2  
+    • Road game = +1  
+    • Home court = +2 (for home team ML)
+    """)
+    
+    st.divider()
+    
+    st.subheader("Matchup Types")
+    st.markdown("""
+    🏠 **HOME COURT**  
+    *Home team +3 pts baseline*
+    
+    🟢 **BOTH TIRED**  
+    *Both teams fatigued = pace drags, STRONG Under*
+    
+    🔥 **BLOWOUT RISK**  
+    *Fatigued @ Fresh Home = BUY ML on home*
+    
+    🏔️ **ALTITUDE**  
+    *Denver home = visitors fatigue at 5,280 ft*
+    
+    🏆 **DIVISION RIVALS**  
+    *Same division = tighter game, home edge*
+    """)
+    
+    st.divider()
+    
     st.subheader("Pace Benchmarks")
     st.markdown("""
     🟢 **SLOW** → Under 4.5/min  
@@ -39,6 +85,18 @@ with st.sidebar:
     🟠 **FAST** → 4.8 - 5.2/min  
     🔴 **SHOOTOUT** → Over 5.2/min
     """)
+    
+    st.divider()
+    
+    st.subheader("Position Status")
+    st.markdown("""
+    🟢 VERY SAFE → +15 cushion  
+    🟢 LOOKING GOOD → +8 to +15  
+    🟡 ON TRACK → +3 to +8  
+    🟠 TIGHT → -3 to +3  
+    🔴 DANGER → Under -3
+    """)
+    
     st.divider()
     st.caption("v11.9")
 
@@ -290,10 +348,10 @@ if yesterday_teams:
     st.info(f"📅 **B2B Teams Today:** {', '.join(sorted(yesterday_teams))}")
 
 # ========== 🔥 TOP PICKS ==========
-st.subheader("🔥 TOP PICKS - BEST ML EDGES")
+st.subheader("🔥 TOP PICKS - BLOWOUT RISK (Tired Away @ Fresh Home)")
 
 if game_list:
-    all_edges = []
+    top_picks = []
     for game_key in game_list:
         parts = game_key.split("@")
         away_t = parts[0]
@@ -301,57 +359,39 @@ if game_list:
         
         away_b2b = away_t in yesterday_teams
         home_b2b = home_t in yesterday_teams
-        away_r = 0 if away_b2b else 1
-        home_r = 0 if home_b2b else 1
         
-        home_i, _ = get_injury_score(home_t, injuries)
-        away_i, _ = get_injury_score(away_t, injuries)
-        
-        res = calc_12_factor_edge(home_t, away_t, home_r, away_r, home_i, away_i, 50)
-        
-        edge_val = res['home_win_prob'] - 50
-        if edge_val > 5:
-            pick_team = home_t
-            pick_edge = edge_val
-            pick_side = "HOME"
-            pick_prob = res['home_win_prob']
-        elif edge_val < -5:
-            pick_team = away_t
-            pick_edge = abs(edge_val)
-            pick_side = "AWAY"
-            pick_prob = 100 - res['home_win_prob']
-        else:
-            continue
-        
-        all_edges.append({
-            'game': game_key, 'pick_team': pick_team, 'pick_edge': pick_edge,
-            'pick_side': pick_side, 'pick_prob': pick_prob, 'spread': res['expected_spread'],
-            'away_b2b': away_b2b, 'home_b2b': home_b2b
-        })
-    
-    all_edges.sort(key=lambda x: x['pick_edge'], reverse=True)
-    
-    if all_edges:
-        for pick in all_edges:
-            conf = "HIGH" if pick['pick_edge'] > 10 else "MEDIUM"
-            conf_color = "#00ff00" if conf == "HIGH" else "#ffff00"
-            edge_color = "#00ff00" if pick['pick_side'] == "HOME" else "#ff4444"
+        # ONLY show if away is tired AND home is fresh
+        if away_b2b and not home_b2b:
+            away_r = 0
+            home_r = 1
             
-            b2b_note = ""
-            if pick['away_b2b']:
-                b2b_note += f" 🔴 {pick['game'].split('@')[0]} B2B"
-            if pick['home_b2b']:
-                b2b_note += f" 🔴 {pick['game'].split('@')[1]} B2B"
+            home_i, _ = get_injury_score(home_t, injuries)
+            away_i, _ = get_injury_score(away_t, injuries)
             
+            res = calc_12_factor_edge(home_t, away_t, home_r, away_r, home_i, away_i, 50)
+            
+            top_picks.append({
+                'game': game_key,
+                'home_team': home_t,
+                'away_team': away_t,
+                'home_win_prob': res['home_win_prob'],
+                'spread': res['expected_spread']
+            })
+    
+    # Sort by win probability
+    top_picks.sort(key=lambda x: x['home_win_prob'], reverse=True)
+    
+    if top_picks:
+        for pick in top_picks:
             st.markdown(f"""
-            <div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {edge_color};margin-bottom:10px'>
-                <span style='color:{edge_color};font-size:1.8em;font-weight:bold'>🎯 BUY {pick['pick_team']} ML</span>
-                <span style='color:{conf_color};font-size:1.1em;margin-left:15px'>{conf} (+{pick['pick_edge']:.0f}% edge)</span>
-                <br><span style='color:#aaa;font-size:0.9em'>{pick['game'].replace('@', ' @ ')} | {pick['pick_team']} {pick['pick_prob']:.0f}% to win ({pick['pick_side'].lower()}){b2b_note}</span>
+            <div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid #00ff00;margin-bottom:10px'>
+                <span style='color:#00ff00;font-size:1.8em;font-weight:bold'>🎯 BUY {pick['home_team']} ML</span>
+                <span style='color:#00ff00;font-size:1.1em;margin-left:15px'>HIGH CONFIDENCE</span>
+                <br><span style='color:#aaa;font-size:0.9em'>{pick['game'].replace('@', ' @ ')} | {pick['home_team']} {pick['home_win_prob']:.0f}% to win (home, fresh) | 🔴 {pick['away_team']} B2B (tired)</span>
             </div>
             """, unsafe_allow_html=True)
     else:
-        st.info("⚪ No strong ML edges today - all games within 5% margin")
+        st.info("⚪ No BLOWOUT RISK games today — no tired away team @ fresh home matchups")
 else:
     st.info("No games today")
 
