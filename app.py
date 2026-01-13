@@ -5,6 +5,10 @@ import pytz
 
 st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
 
+# ========== INITIALIZE SESSION STATE ==========
+if "positions" not in st.session_state:
+    st.session_state.positions = []
+
 # ========== SIDEBAR LEGEND ==========
 with st.sidebar:
     st.header("📖 LEGEND")
@@ -114,7 +118,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.28")
+    st.caption("v10.30")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -1038,4 +1042,121 @@ with st.expander("📚 HOW TO USE THIS TOOL"):
     4. Enter position on Kalshi
     """)
 
-st.caption("v10.28 | Edge Finder + Fatigue + Pace + Cushion + Home Court")
+# ========== POSITION TRACKER ==========
+st.subheader("📈 POSITION TRACKER")
+st.caption("Track your active bets with live updates")
+
+if st.session_state.positions:
+    for idx, pos in enumerate(st.session_state.positions):
+        game_key = pos['game']
+        side = pos['side']
+        threshold = pos['threshold']
+        price = pos['price']
+        contracts = pos['contracts']
+        
+        # Find game data
+        g = None
+        parts = game_key.split("@")
+        if len(parts) == 2:
+            for key, game_data in games.items():
+                if game_data['away_team'] == parts[0] and game_data['home_team'] == parts[1]:
+                    g = game_data
+                    break
+        
+        if g:
+            total = g['total']
+            mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
+            is_final = g['status_type'] == "STATUS_FINAL"
+            
+            if mins_played > 0:
+                pace = total / mins_played
+                projected = round(pace * 48)
+            else:
+                projected = None
+            
+            # Calculate status
+            if side == "NO":
+                if is_final:
+                    won = total < threshold
+                    status_text = "✅ WON!" if won else "❌ LOST"
+                    status_color = "#00ff00" if won else "#ff0000"
+                elif projected:
+                    cushion = threshold - projected
+                    if cushion > 10:
+                        status_text = f"🟢 SAFE (+{cushion:.0f})"
+                        status_color = "#00ff00"
+                    elif cushion > 3:
+                        status_text = f"🟡 OK (+{cushion:.0f})"
+                        status_color = "#ffff00"
+                    elif cushion > -3:
+                        status_text = f"🟠 TIGHT ({cushion:+.0f})"
+                        status_color = "#ff8800"
+                    else:
+                        status_text = f"🔴 DANGER ({cushion:+.0f})"
+                        status_color = "#ff0000"
+                else:
+                    status_text = "⏳ WAITING"
+                    status_color = "#888888"
+            else:  # YES
+                if is_final:
+                    won = total > threshold
+                    status_text = "✅ WON!" if won else "❌ LOST"
+                    status_color = "#00ff00" if won else "#ff0000"
+                elif projected:
+                    cushion = projected - threshold
+                    if cushion > 10:
+                        status_text = f"🟢 SAFE (+{cushion:.0f})"
+                        status_color = "#00ff00"
+                    elif cushion > 3:
+                        status_text = f"🟡 OK (+{cushion:.0f})"
+                        status_color = "#ffff00"
+                    elif cushion > -3:
+                        status_text = f"🟠 TIGHT ({cushion:+.0f})"
+                        status_color = "#ff8800"
+                    else:
+                        status_text = f"🔴 DANGER ({cushion:+.0f})"
+                        status_color = "#ff0000"
+                else:
+                    status_text = "⏳ WAITING"
+                    status_color = "#888888"
+            
+            # Calculate P/L
+            cost = price * contracts
+            potential_win = (100 - price) * contracts
+            
+            # Display position
+            pos_cols = st.columns([3, 1, 1, 1, 1, 1])
+            pos_cols[0].markdown(f"**{game_key.replace('@', ' @ ')}**")
+            pos_cols[1].markdown(f"**{side} {threshold}**")
+            pos_cols[2].markdown(f"Proj: **{projected if projected else '—'}**")
+            pos_cols[3].markdown(f"<span style='color:{status_color}'>{status_text}</span>", unsafe_allow_html=True)
+            pos_cols[4].markdown(f"${cost/100:.2f} → ${potential_win/100:.2f}")
+            if pos_cols[5].button("🗑️", key=f"remove_{idx}"):
+                st.session_state.positions.pop(idx)
+                st.rerun()
+            
+            # Show live score
+            game_status = "FINAL" if is_final else f"Q{g['period']} {g['clock']}"
+            st.caption(f"   Live: {g['away_team']} {g['away_score']} - {g['home_team']} {g['home_score']} = {total} pts | {game_status}")
+            st.markdown("---")
+        else:
+            st.warning(f"⚠️ Game not found: {game_key}")
+            if st.button(f"Remove", key=f"remove_missing_{idx}"):
+                st.session_state.positions.pop(idx)
+                st.rerun()
+    
+    # Summary
+    st.markdown("### 💰 Summary")
+    total_cost = sum(p['price'] * p['contracts'] for p in st.session_state.positions)
+    total_potential = sum((100 - p['price']) * p['contracts'] for p in st.session_state.positions)
+    st.markdown(f"**Total Risk:** ${total_cost/100:.2f} | **Total Potential Win:** ${total_potential/100:.2f}")
+    
+    if st.button("🗑️ CLEAR ALL POSITIONS", type="secondary"):
+        st.session_state.positions = []
+        st.rerun()
+else:
+    st.info("No positions tracked yet. Use Pre-Bet Analysis → Quick Add to Track to add positions.")
+
+st.divider()
+
+st.caption("v10.30 | Edge Finder + Fatigue + Pace + Cushion + Position Tracker")
