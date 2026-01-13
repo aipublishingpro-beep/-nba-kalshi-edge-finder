@@ -118,7 +118,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v10.30")
+    st.caption("v10.31")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -780,17 +780,19 @@ if analyze_game:
     
     st.markdown("---")
     st.markdown("**Quick Add to Track:**")
-    qa1, qa2, qa3 = st.columns([1, 1, 1])
+    qa1, qa2, qa3, qa4 = st.columns([2, 1, 1, 1])
     with qa1:
-        quick_price = st.number_input("Price ¢", 1, 99, 85, key="quick_price")
+        track_game = st.selectbox("Game", game_list, index=game_list.index(analyze_game) if analyze_game in game_list else 0, format_func=lambda x: x.replace("@", " @ "), key="track_game")
     with qa2:
-        quick_contracts = st.number_input("Contracts", 1, 1000, 100, key="quick_contracts")
+        quick_price = st.number_input("Price ¢", 1, 99, 85, key="quick_price")
     with qa3:
+        quick_contracts = st.number_input("Contracts", 1, 1000, 100, key="quick_contracts")
+    with qa4:
         st.write("")
         st.write("")
-        if st.button("➕ ADD TO TRACK", key="quick_add", type="primary"):
+        if st.button("➕ ADD", key="quick_add", type="primary"):
             st.session_state.positions.append({
-                "game": analyze_game, "side": analyze_side, "threshold": analyze_threshold,
+                "game": track_game, "side": analyze_side, "threshold": analyze_threshold,
                 "price": quick_price, "contracts": quick_contracts
             })
             st.rerun()
