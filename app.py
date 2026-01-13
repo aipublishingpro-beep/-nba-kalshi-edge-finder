@@ -515,10 +515,9 @@ else:
 
 st.divider()
 
-# ========== 3. 12-FACTOR ANALYSIS ==========
-st.subheader("🔬 12-FACTOR ANALYSIS")
-
-with st.expander("⚙️ Adjust Factor Weights", expanded=False):
+# ========== 3. 12-FACTOR ANALYSIS (COLLAPSED) ==========
+with st.expander("🔬 DEEP DIVE - Analyze Any Game", expanded=False):
+    with st.expander("⚙️ Adjust Factor Weights", expanded=False):
     wcol1, wcol2, wcol3 = st.columns(3)
     with wcol1:
         w_rest = st.slider("🛏️ Rest", 0.0, 2.0, 1.0, 0.1)
