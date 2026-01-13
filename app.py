@@ -359,7 +359,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v14.3")
+    st.caption("v14.4")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -810,14 +810,22 @@ def calc_projected_total(home_team, away_team, yesterday_teams):
     return round(projected)
 
 def calc_recommended_threshold(projected, pick, score):
-    """Calculate recommended threshold based on projected total and confidence"""
+    """Calculate recommended threshold based on projected total and 10-factor score"""
+    # Higher score = more confidence = less cushion needed
+    if score >= 10:
+        cushion = 6
+    elif score >= 9:
+        cushion = 8
+    elif score >= 8:
+        cushion = 10
+    elif score >= 7:
+        cushion = 12
+    else:
+        cushion = 14
+    
     if pick == "NO":
-        # For NO bets, go ABOVE projected
-        cushion = 6 if score >= 8.0 else 8
         threshold = projected + cushion
     else:
-        # For YES bets, go BELOW projected
-        cushion = 6 if score >= 8.0 else 8
         threshold = projected - cushion
     
     # Round to nearest .5
@@ -988,7 +996,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.3")
+st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.4")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
