@@ -328,6 +328,85 @@ st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v11.8")
 if yesterday_teams:
     st.info(f"📅 **B2B Teams Today:** {', '.join(sorted(yesterday_teams)) if yesterday_teams else 'None'}")
 
+# ========== 🔥 TOP PICKS - BEST ML EDGES ==========
+st.subheader("🔥 TOP PICKS - BEST ML EDGES")
+
+if game_list:
+    default_weights = {'rest': 1.0, 'defense': 1.0, 'injury': 1.0, 'pace': 1.0, 'net_rating': 1.0, 
+                       'travel': 1.0, 'splits': 1.0, 'h2h': 1.0, 'altitude': 1.0, 'ft': 1.0, 'reb': 1.0, 'three': 1.0}
+    
+    all_edges = []
+    for game_key in game_list:
+        parts = game_key.split("@")
+        away_t = parts[0]
+        home_t = parts[1]
+        
+        away_b2b = away_t in yesterday_teams
+        home_b2b = home_t in yesterday_teams
+        away_r = 0 if away_b2b else 1
+        home_r = 0 if home_b2b else 1
+        
+        home_i, _ = get_injury_score(home_t, injuries)
+        away_i, _ = get_injury_score(away_t, injuries)
+        
+        # Use 50 as neutral Kalshi price to find raw edge
+        res = calc_12_factor_edge(home_t, away_t, home_r, away_r, home_i, away_i, 50, default_weights)
+        
+        edge_val = res['home_win_prob'] - 50  # How much model favors home
+        if edge_val > 5:
+            pick_team = home_t
+            pick_edge = edge_val
+            pick_side = "HOME"
+        elif edge_val < -5:
+            pick_team = away_t
+            pick_edge = abs(edge_val)
+            pick_side = "AWAY"
+        else:
+            pick_team = None
+            pick_edge = 0
+            pick_side = None
+        
+        if pick_team:
+            all_edges.append({
+                'game': game_key,
+                'pick_team': pick_team,
+                'pick_edge': pick_edge,
+                'pick_side': pick_side,
+                'home_win_prob': res['home_win_prob'],
+                'spread': res['expected_spread'],
+                'away_b2b': away_b2b,
+                'home_b2b': home_b2b
+            })
+    
+    # Sort by edge strength
+    all_edges.sort(key=lambda x: x['pick_edge'], reverse=True)
+    
+    if all_edges:
+        for pick in all_edges:
+            conf = "HIGH" if pick['pick_edge'] > 10 else "MEDIUM"
+            conf_color = "#00ff00" if conf == "HIGH" else "#ffff00"
+            edge_color = "#00ff00" if pick['pick_side'] == "HOME" else "#ff4444"
+            
+            b2b_note = ""
+            if pick['away_b2b']:
+                b2b_note += f" 🔴 {pick['game'].split('@')[0]} B2B"
+            if pick['home_b2b']:
+                b2b_note += f" 🔴 {pick['game'].split('@')[1]} B2B"
+            
+            st.markdown(f"""
+            <div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {edge_color};margin-bottom:10px'>
+                <span style='color:{edge_color};font-size:1.8em;font-weight:bold'>🎯 BUY {pick['pick_team']} ML</span>
+                <span style='color:{conf_color};font-size:1.1em;margin-left:15px'>{conf} (+{pick['pick_edge']:.0f}% edge)</span>
+                <br><span style='color:#aaa;font-size:0.9em'>{pick['game'].replace('@', ' @ ')} | Model: {pick['home_win_prob']:.0f}% home | Spread: {pick['spread']:+.1f}{b2b_note}</span>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("⚪ No strong ML edges today - all games within 5% margin")
+else:
+    st.info("No games today")
+
+st.divider()
+
 # ========== 1. ACTIVE POSITIONS ==========
 st.subheader("📈 ACTIVE POSITIONS")
 
