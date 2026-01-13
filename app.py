@@ -8,6 +8,40 @@ st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide"
 if "positions" not in st.session_state:
     st.session_state.positions = []
 
+# ========== SIDEBAR LEGEND ==========
+with st.sidebar:
+    st.header("📖 LEGEND")
+    st.subheader("⚡ 12-Factor Edge")
+    st.markdown("""
+    **Edge > +10%** → HIGH confidence  
+    **Edge +5 to +10%** → MEDIUM confidence  
+    **Edge < +5%** → NO EDGE
+    """)
+    st.divider()
+    st.subheader("🎨 Pick Colors")
+    st.markdown("""
+    🟢 **Green** → BUY home team  
+    🔴 **Red** → BUY away team
+    """)
+    st.divider()
+    st.subheader("Size Tiers (Cushion)")
+    st.markdown("""
+    🟢 **BIG** → +20 pts or more  
+    🟡 **MEDIUM** → +10 to +19  
+    🟠 **SMALL** → +5 to +9  
+    🔴 **SKIP** → Under +5
+    """)
+    st.divider()
+    st.subheader("Pace Benchmarks")
+    st.markdown("""
+    🟢 **SLOW** → Under 4.5/min  
+    🟡 **AVG** → 4.5 - 4.8/min  
+    🟠 **FAST** → 4.8 - 5.2/min  
+    🔴 **SHOOTOUT** → Over 5.2/min
+    """)
+    st.divider()
+    st.caption("v11.9")
+
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
