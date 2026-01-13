@@ -146,6 +146,33 @@ if "positions" not in st.session_state:
 with st.sidebar:
     st.header("📖 LEGEND")
     
+    st.subheader("🎯 ML Signal Tiers")
+    st.markdown("""
+    🟢 **STRONG BUY** → 8.0+ score  
+    🔵 **BUY** → 6.5 - 7.9 score  
+    🟡 **LEAN** → 5.5 - 6.4 score  
+    ⚪ **TOSS-UP** → 4.5 - 5.4 score  
+    🔴 **SKIP** → Below 4.5
+    """)
+    
+    st.divider()
+    
+    st.subheader("📊 10-Factor System")
+    st.markdown("""
+    1. Rest Advantage  
+    2. Net Rating Edge  
+    3. Defense Ranking  
+    4. Home Court  
+    5. Injury Impact  
+    6. Travel Fatigue  
+    7. Home/Away Splits  
+    8. Division Rivalry  
+    9. Altitude (Denver)  
+    10. Team Quality
+    """)
+    
+    st.divider()
+    
     st.subheader("⚡ 12-Factor Edge")
     st.markdown("""
     **Edge > +10%** → HIGH confidence  
@@ -259,7 +286,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v12.3")
+    st.caption("v12.4")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -494,6 +521,150 @@ def calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, aw
         'expected_spread': round(weighted_spread, 1)
     }
 
+def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
+    """Calculate 10-factor ML score. Returns (pick, score, edge)"""
+    home = TEAM_STATS.get(home_team, {})
+    away = TEAM_STATS.get(away_team, {})
+    home_loc = TEAM_LOCATIONS.get(home_team, (0, 0))
+    away_loc = TEAM_LOCATIONS.get(away_team, (0, 0))
+    
+    score_home = 0
+    score_away = 0
+    
+    # 1. REST ADVANTAGE (0-1)
+    home_b2b = home_team in yesterday_teams
+    away_b2b = away_team in yesterday_teams
+    if away_b2b and not home_b2b:
+        score_home += 1.0
+    elif home_b2b and not away_b2b:
+        score_away += 1.0
+    elif not home_b2b and not away_b2b:
+        score_home += 0.5
+        score_away += 0.5
+    
+    # 2. NET RATING (0-1)
+    home_net = home.get('net_rating', 0)
+    away_net = away.get('net_rating', 0)
+    net_diff = home_net - away_net
+    if net_diff > 5:
+        score_home += 1.0
+    elif net_diff > 2:
+        score_home += 0.7
+    elif net_diff > 0:
+        score_home += 0.5
+    elif net_diff > -2:
+        score_away += 0.5
+    elif net_diff > -5:
+        score_away += 0.7
+    else:
+        score_away += 1.0
+    
+    # 3. DEFENSE RANK (0-1)
+    home_def = home.get('def_rank', 15)
+    away_def = away.get('def_rank', 15)
+    if home_def <= 5:
+        score_home += 1.0
+    elif home_def <= 10:
+        score_home += 0.7
+    elif home_def <= 15:
+        score_home += 0.4
+    if away_def <= 5:
+        score_away += 1.0
+    elif away_def <= 10:
+        score_away += 0.7
+    elif away_def <= 15:
+        score_away += 0.4
+    
+    # 4. HOME COURT (0-1) - Always to home
+    score_home += 1.0
+    
+    # 5. INJURY IMPACT (0-1)
+    home_inj, home_stars = get_injury_score(home_team, injuries)
+    away_inj, away_stars = get_injury_score(away_team, injuries)
+    inj_diff = away_inj - home_inj
+    if inj_diff > 3:
+        score_home += 1.0
+    elif inj_diff > 1:
+        score_home += 0.6
+    elif inj_diff < -3:
+        score_away += 1.0
+    elif inj_diff < -1:
+        score_away += 0.6
+    else:
+        score_home += 0.3
+        score_away += 0.3
+    
+    # 6. TRAVEL FATIGUE (0-1)
+    travel_miles = calc_distance(away_loc, home_loc)
+    if travel_miles > 2000:
+        score_home += 1.0
+    elif travel_miles > 1500:
+        score_home += 0.7
+    elif travel_miles > 1000:
+        score_home += 0.5
+    elif travel_miles > 500:
+        score_home += 0.3
+    
+    # 7. HOME/AWAY SPLITS (0-1)
+    home_hw = home.get('home_win_pct', 0.5)
+    away_aw = away.get('away_win_pct', 0.5)
+    if home_hw > 0.65:
+        score_home += 0.8
+    elif home_hw > 0.55:
+        score_home += 0.5
+    if away_aw < 0.35:
+        score_home += 0.5
+    elif away_aw < 0.45:
+        score_home += 0.3
+    
+    # 8. DIVISION RIVALRY (0-1) - Tighter games, home edge
+    if home.get('division') == away.get('division') and home.get('division'):
+        score_home += 0.5
+    
+    # 9. ALTITUDE - Denver (0-1)
+    if home_team == "Denver":
+        score_home += 1.0
+    
+    # 10. QUALITY FACTOR (0-1) - Better teams more reliable
+    if home_net > 5:
+        score_home += 0.5
+    if away_net > 5:
+        score_away += 0.5
+    
+    # Normalize to 10-point scale
+    total = score_home + score_away
+    if total > 0:
+        home_final = round((score_home / total) * 10, 1)
+        away_final = round((score_away / total) * 10, 1)
+    else:
+        home_final = 5.0
+        away_final = 5.0
+    
+    # Determine pick
+    if home_final >= away_final:
+        pick = home_team
+        score = home_final
+        edge = round((home_final - 5) * 4, 0)  # Convert to edge %
+    else:
+        pick = away_team
+        score = away_final
+        edge = round((away_final - 5) * 4, 0)
+    
+    return pick, score, edge, home_stars, away_stars
+
+def get_signal_tier(score):
+    """Return signal tier based on score"""
+    if score >= 8.0:
+        return "🟢 STRONG BUY", "#00ff00"
+    elif score >= 6.5:
+        return "🔵 BUY", "#00aaff"
+    elif score >= 5.5:
+        return "🟡 LEAN", "#ffff00"
+    elif score >= 4.5:
+        return "⚪ TOSS-UP", "#888888"
+    else:
+        return "🔴 SKIP", "#ff0000"
+
 # ========== FETCH DATA ==========
 games = fetch_espn_scores()
 game_list = sorted(list(games.keys()))
@@ -503,7 +674,105 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.3")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.4")
+
+# ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
+st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
+
+if game_list:
+    # Calculate scores for all games
+    all_picks = []
+    for game_key in game_list:
+        parts = game_key.split("@")
+        away_team = parts[0]
+        home_team = parts[1]
+        
+        pick, score, edge, home_out, away_out = calc_ml_score(home_team, away_team, yesterday_teams, injuries)
+        signal, color = get_signal_tier(score)
+        
+        all_picks.append({
+            'game': game_key,
+            'home': home_team,
+            'away': away_team,
+            'pick': pick,
+            'score': score,
+            'edge': edge,
+            'signal': signal,
+            'color': color,
+            'home_out': home_out,
+            'away_out': away_out
+        })
+    
+    # Sort by score descending
+    all_picks.sort(key=lambda x: x['score'], reverse=True)
+    
+    # Group by tier
+    strong_buys = [p for p in all_picks if p['score'] >= 8.0]
+    buys = [p for p in all_picks if 6.5 <= p['score'] < 8.0]
+    leans = [p for p in all_picks if 5.5 <= p['score'] < 6.5]
+    tossups = [p for p in all_picks if 4.5 <= p['score'] < 5.5]
+    skips = [p for p in all_picks if p['score'] < 4.5]
+    
+    # Display each tier
+    if strong_buys:
+        st.markdown("### 🟢 STRONG BUY")
+        for p in strong_buys:
+            inj_note = ""
+            if p['home_out']:
+                inj_note += f" | 🏥 {p['home']}: {', '.join(p['home_out'][:2])} OUT"
+            if p['away_out']:
+                inj_note += f" | 🏥 {p['away']}: {', '.join(p['away_out'][:2])} OUT"
+            
+            col1, col2, col3 = st.columns([4, 2, 2])
+            col1.markdown(f"**{p['pick']} ML** vs {p['away'] if p['pick'] == p['home'] else p['home']}{inj_note}")
+            col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
+            
+            # Buy button
+            if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
+                if col3.button(f"🚀 BUY", key=f"buy_strong_{p['game']}"):
+                    st.info(f"Go to Kalshi ML market for {p['game']}")
+            else:
+                kalshi_url = f"https://kalshi.com/markets/kxnbagame"
+                col3.link_button("🔗 Kalshi", kalshi_url)
+    
+    if buys:
+        st.markdown("### 🔵 BUY")
+        for p in buys:
+            inj_note = ""
+            if p['home_out']:
+                inj_note += f" | 🏥 {', '.join(p['home_out'][:2])} OUT"
+            if p['away_out']:
+                inj_note += f" | 🏥 {', '.join(p['away_out'][:2])} OUT"
+            
+            col1, col2, col3 = st.columns([4, 2, 2])
+            col1.markdown(f"**{p['pick']} ML** vs {p['away'] if p['pick'] == p['home'] else p['home']}{inj_note}")
+            col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
+            kalshi_url = f"https://kalshi.com/markets/kxnbagame"
+            col3.link_button("🔗 Kalshi", kalshi_url)
+    
+    if leans:
+        st.markdown("### 🟡 LEAN")
+        for p in leans:
+            st.markdown(f"**{p['pick']} ML** vs {p['away'] if p['pick'] == p['home'] else p['home']} — <span style='color:{p['color']}'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
+    
+    if tossups:
+        st.markdown("### ⚪ TOSS-UP")
+        for p in tossups:
+            st.markdown(f"{p['away']} @ {p['home']} — <span style='color:{p['color']}'>{p['score']}/10</span> — No clear edge", unsafe_allow_html=True)
+    
+    if skips:
+        st.markdown("### 🔴 SKIP")
+        for p in skips:
+            st.markdown(f"~~{p['away']} @ {p['home']}~~ — <span style='color:{p['color']}'>{p['score']}/10</span>", unsafe_allow_html=True)
+    
+    # Summary stats
+    st.markdown("---")
+    st.caption(f"📊 {len(strong_buys)} Strong Buys | {len(buys)} Buys | {len(leans)} Leans | {len(tossups)} Toss-ups | {len(skips)} Skips")
+
+else:
+    st.info("No games scheduled today")
+
+st.divider()
 
 if yesterday_teams:
     st.info(f"📅 **B2B Teams Today:** {', '.join(sorted(yesterday_teams))}")
