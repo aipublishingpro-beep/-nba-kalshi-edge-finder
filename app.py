@@ -98,7 +98,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v11.4")
+    st.caption("v11.6")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -233,9 +233,18 @@ def fetch_yesterday_teams():
         for event in data.get("events", []):
             comp = event.get("competitions", [{}])[0]
             for c in comp.get("competitors", []):
-                name = c.get("team", {}).get("displayName", "")
-                team_name = TEAM_ABBREVS.get(name, name)
+                # Get both full name and abbreviated name
+                full_name = c.get("team", {}).get("displayName", "")
+                short_name = c.get("team", {}).get("shortDisplayName", "")
+                abbrev = c.get("team", {}).get("abbreviation", "")
+                
+                # Map to our standard names
+                team_name = TEAM_ABBREVS.get(full_name, full_name)
                 teams_played.add(team_name)
+                
+                # Also add variations just in case
+                if short_name:
+                    teams_played.add(TEAM_ABBREVS.get(short_name, short_name))
         return teams_played
     except:
         return set()
@@ -423,7 +432,11 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v11.4 | 12-Factor Edge System")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v11.6 | 12-Factor Edge System")
+
+# Debug: Show B2B teams at top
+if yesterday_teams:
+    st.info(f"📅 **B2B Teams Today (played yesterday):** {', '.join(sorted(yesterday_teams)) if yesterday_teams else 'None detected'}")
 
 # ========== 1. ACTIVE POSITIONS ==========
 st.subheader("📈 ACTIVE POSITIONS")
@@ -494,12 +507,6 @@ st.divider()
 # ========== 2. FATIGUE SCANNER ==========
 st.subheader("😴 FATIGUE SCANNER")
 st.caption("Find BLOWOUT RISK (ML edge) and BOTH TIRED (NO edge) — check BEFORE games")
-
-# Debug: Show which teams played yesterday
-if yesterday_teams:
-    st.caption(f"📅 Teams that played yesterday: {', '.join(sorted(yesterday_teams))}")
-else:
-    st.caption("📅 No teams found in yesterday's games (API issue?)")
 
 if games:
     fatigue_games = []
@@ -645,9 +652,6 @@ if game_list:
         away_rest = 0 if away_b2b else 1
         home_rest = 0 if home_b2b else 1
         
-        # Debug display
-        st.caption(f"🔍 Rest check: {away_team} B2B={away_b2b} | {home_team} B2B={home_b2b} | Yesterday teams: {len(yesterday_teams)}")
-        
         home_inj, home_stars = get_injury_score(home_team, injuries)
         away_inj, away_stars = get_injury_score(away_team, injuries)
         
@@ -655,6 +659,15 @@ if game_list:
         
         # Display results
         st.markdown(f"## 🏀 {away_team} @ {home_team}")
+        
+        # Show B2B status prominently
+        if away_b2b or home_b2b:
+            b2b_msg = []
+            if away_b2b:
+                b2b_msg.append(f"🔴 {away_team} is B2B (played yesterday)")
+            if home_b2b:
+                b2b_msg.append(f"🔴 {home_team} is B2B (played yesterday)")
+            st.warning(" | ".join(b2b_msg))
         
         # Main output
         rec_color = "#00ff00" if result['recommendation'] == 'BUY YES' else ("#ff0000" if result['recommendation'] == 'BUY NO' else "#888888")
@@ -678,7 +691,8 @@ if game_list:
             
             bcol1, bcol2 = st.columns(2)
             with bcol1:
-                st.markdown(f"• 🛏️ **Rest:** {factors['rest']:+.2f} (diff: {raw['rest_diff']:+d} days)")
+                rest_note = f"({away_team}={'B2B' if away_b2b else 'rested'}, {home_team}={'B2B' if home_b2b else 'rested'})"
+                st.markdown(f"• 🛏️ **Rest:** {factors['rest']:+.2f} {rest_note}")
                 st.markdown(f"• 🛡️ **Defense:** {factors['defense']:+.2f} (rank diff: {raw['def_diff']:+.0f})")
                 st.markdown(f"• 🏥 **Injuries:** {factors['injury']:+.2f} (impact diff: {raw['injury_diff']:+.1f})")
                 st.markdown(f"• ⚡ **Pace:** {factors['pace']:+.2f} (diff: {raw['pace_diff']:+.1f})")
@@ -713,10 +727,14 @@ if game_list:
         q_price = qc3.number_input("Price ¢", 1, 99, 75, key="q_price")
         q_contracts = qc4.number_input("Contracts", 1, 1000, 100, key="q_contracts")
         
-        if st.button(f"➕ ADD {q_side} {q_threshold} TO TRACKER", type="primary", use_container_width=True):
+        add_btn = st.button(f"➕ ADD {q_side} {q_threshold} TO TRACKER", type="primary", use_container_width=True)
+        if add_btn:
             st.session_state.positions.append({
-                "game": analyze_game, "side": q_side, "threshold": q_threshold,
-                "price": q_price, "contracts": q_contracts
+                "game": analyze_game,
+                "side": q_side,
+                "threshold": q_threshold,
+                "price": q_price,
+                "contracts": q_contracts
             })
             st.rerun()
 else:
