@@ -98,7 +98,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v12.1")
+    st.caption("v12.2")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -182,24 +182,24 @@ STAR_PLAYERS = {
 
 # ========== KALSHI TEAM CODES ==========
 KALSHI_CODES = {
-    "Atlanta": "ATL", "Boston": "BOS", "Brooklyn": "BKN", "Charlotte": "CHA",
-    "Chicago": "CHI", "Cleveland": "CLE", "Dallas": "DAL", "Denver": "DEN",
-    "Detroit": "DET", "Golden State": "GSW", "Houston": "HOU", "Indiana": "IND",
-    "LA Clippers": "LAC", "LA Lakers": "LAL", "Memphis": "MEM", "Miami": "MIA",
-    "Milwaukee": "MIL", "Minnesota": "MIN", "New Orleans": "NOP", "New York": "NYK",
-    "Oklahoma City": "OKC", "Orlando": "ORL", "Philadelphia": "PHI", "Phoenix": "PHX",
-    "Portland": "POR", "Sacramento": "SAC", "San Antonio": "SAS", "Toronto": "TOR",
-    "Utah": "UTA", "Washington": "WAS"
+    "Atlanta": "atl", "Boston": "bos", "Brooklyn": "bkn", "Charlotte": "cha",
+    "Chicago": "chi", "Cleveland": "cle", "Dallas": "dal", "Denver": "den",
+    "Detroit": "det", "Golden State": "gsw", "Houston": "hou", "Indiana": "ind",
+    "LA Clippers": "lac", "LA Lakers": "lal", "Memphis": "mem", "Miami": "mia",
+    "Milwaukee": "mil", "Minnesota": "min", "New Orleans": "nop", "New York": "nyk",
+    "Oklahoma City": "okc", "Orlando": "orl", "Philadelphia": "phi", "Phoenix": "phx",
+    "Portland": "por", "Sacramento": "sac", "San Antonio": "sas", "Toronto": "tor",
+    "Utah": "uta", "Washington": "was"
 }
 
-def build_kalshi_totals_url(away_team, home_team, threshold):
-    """Build Kalshi totals URL from game info"""
-    away_code = KALSHI_CODES.get(away_team, "XXX")
-    home_code = KALSHI_CODES.get(home_team, "XXX")
+def build_kalshi_totals_url(away_team, home_team):
+    """Build Kalshi totals URL - takes you to game page where you pick threshold"""
+    away_code = KALSHI_CODES.get(away_team, "xxx")
+    home_code = KALSHI_CODES.get(home_team, "xxx")
     today = datetime.now(pytz.timezone('US/Eastern'))
-    date_str = today.strftime("%y%b%d").upper()  # e.g., 26JAN13
-    ticker = f"kxnbatotal-{date_str}{away_code}{home_code}-t{threshold}".lower()
-    return f"https://kalshi.com/markets/kxnbatotal/professional-basketball-game/{ticker}"
+    date_str = today.strftime("%y%b%d").lower()  # e.g., 26jan13
+    ticker = f"kxnbatotal-{date_str}{away_code}{home_code}"
+    return f"https://kalshi.com/markets/kxnbatotal/pro-basketball-total-points/{ticker}"
 
 def calc_distance(loc1, loc2):
     from math import radians, sin, cos, sqrt, atan2
@@ -363,7 +363,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.1")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.2")
 
 if yesterday_teams:
     st.info(f"📅 **B2B Teams Today:** {', '.join(sorted(yesterday_teams))}")
@@ -508,8 +508,8 @@ if selected_game != "Select a game...":
     parts = selected_game.replace(" @ ", "@").split("@")
     away_t = parts[0]
     home_t = parts[1]
-    kalshi_url = build_kalshi_totals_url(away_t, home_t, threshold_select)
-    st.link_button(f"🔗 BUY on Kalshi → {selected_game} | {threshold_select}", kalshi_url, use_container_width=True)
+    kalshi_url = build_kalshi_totals_url(away_t, home_t)
+    st.link_button(f"🔗 BUY on Kalshi → {selected_game}", kalshi_url, use_container_width=True)
 
 with st.form("add_position_form"):
     p1, p2, p3 = st.columns(3)
@@ -618,7 +618,7 @@ if st.session_state.positions:
             # Buttons row
             btn1, btn2 = st.columns([3, 1])
             parts = game_key.split("@")
-            kalshi_url = build_kalshi_totals_url(parts[0], parts[1], pos['threshold'])
+            kalshi_url = build_kalshi_totals_url(parts[0], parts[1])
             btn1.link_button(f"🔗 Trade on Kalshi", kalshi_url, use_container_width=True)
             if btn2.button("🗑️ Remove", key=f"del_{idx}"):
                 st.session_state.positions.pop(idx)
