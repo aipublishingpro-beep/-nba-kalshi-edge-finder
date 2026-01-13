@@ -398,8 +398,10 @@ else:
 st.divider()
 
 # ========== 12-FACTOR DEEP DIVE (COLLAPSED) ==========
-with st.expander("🔬 12-FACTOR DEEP DIVE - See why each pick has edge"):
+with st.expander("🔬 12-FACTOR DEEP DIVE - See why each TOP PICK has edge"):
     if game_list:
+        # Only show BLOWOUT RISK games (away B2B, home fresh)
+        blowout_games = []
         for game_key in game_list:
             parts = game_key.split("@")
             away_team = parts[0]
@@ -407,68 +409,71 @@ with st.expander("🔬 12-FACTOR DEEP DIVE - See why each pick has edge"):
             
             away_b2b = away_team in yesterday_teams
             home_b2b = home_team in yesterday_teams
-            away_rest = 0 if away_b2b else 1
-            home_rest = 0 if home_b2b else 1
             
-            home_inj, home_stars = get_injury_score(home_team, injuries)
-            away_inj, away_stars = get_injury_score(away_team, injuries)
-            
-            home = TEAM_STATS.get(home_team, {})
-            away = TEAM_STATS.get(away_team, {})
-            home_loc = TEAM_LOCATIONS.get(home_team, (0, 0))
-            away_loc = TEAM_LOCATIONS.get(away_team, (0, 0))
-            travel_miles = calc_distance(away_loc, home_loc)
-            
-            result = calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, away_inj, 50)
-            
-            # Determine recommendation
-            edge_val = result['home_win_prob'] - 50
-            if edge_val > 5:
-                pick_team = home_team
-                pick_text = f"🟢 BUY {home_team} ML"
-            elif edge_val < -5:
-                pick_team = away_team
-                pick_text = f"🔴 BUY {away_team} ML"
-            else:
-                pick_text = "⚪ NO EDGE"
-            
-            st.markdown(f"### {away_team} @ {home_team} → {pick_text}")
-            
-            # Calculate individual factors
-            rest_diff = home_rest - away_rest
-            rest_score = max(-6, min(6, rest_diff * 2))
-            def_score = (away.get('def_rank', 15) - home.get('def_rank', 15)) * 0.15
-            injury_score = (away_inj - home_inj) * 1.5
-            pace_diff = home.get('pace', 100) - away.get('pace', 100)
-            pace_score = pace_diff * 0.1 if home.get('net_rating', 0) > away.get('net_rating', 0) else -pace_diff * 0.1
-            net_score = (home.get('net_rating', 0) - away.get('net_rating', 0)) * 0.8
-            travel_score = 2.5 if travel_miles > 1500 else (1.5 if travel_miles > 1000 else (0.75 if travel_miles > 500 else 0))
-            split_score = (home.get('home_win_pct', 0.5) - 0.5) * 10 + (0.5 - away.get('away_win_pct', 0.5)) * 10
-            h2h_score = 1.5 if home.get('division') == away.get('division') and home.get('division') else 0
-            altitude_score = 2.0 if home_team == "Denver" else 0
-            ft_score = (home.get('ft_rate', 0.25) - away.get('ft_rate', 0.25)) * 20
-            reb_score = (home.get('reb_rate', 50) - away.get('reb_rate', 50)) * 0.3
-            three_score = (home.get('three_pct', 36) - away.get('three_pct', 36)) * 0.5
-            
-            fcol1, fcol2, fcol3 = st.columns(3)
-            with fcol1:
-                st.markdown(f"🛏️ Rest: **{rest_score:+.1f}**")
-                st.markdown(f"🛡️ Defense: **{def_score:+.1f}**")
-                st.markdown(f"🏥 Injuries: **{injury_score:+.1f}**")
-                st.markdown(f"⚡ Pace: **{pace_score:+.1f}**")
-            with fcol2:
-                st.markdown(f"📊 Net Rating: **{net_score:+.1f}**")
-                st.markdown(f"✈️ Travel: **{travel_score:+.1f}**")
-                st.markdown(f"🏠 Splits: **{split_score:+.1f}**")
-                st.markdown(f"⚔️ Division: **{h2h_score:+.1f}**")
-            with fcol3:
-                st.markdown(f"🏔️ Altitude: **{altitude_score:+.1f}**")
-                st.markdown(f"🎯 FT Rate: **{ft_score:+.1f}**")
-                st.markdown(f"🏀 Reb: **{reb_score:+.1f}**")
-                st.markdown(f"🎯 3PT: **{three_score:+.1f}**")
-            
-            st.markdown(f"**🏠 Home Court +3.0 → TOTAL: {result['expected_spread']:+.1f} → {result['home_win_prob']:.0f}% home**")
-            st.markdown("---")
+            # ONLY blowout risk: away tired, home fresh
+            if away_b2b and not home_b2b:
+                blowout_games.append(game_key)
+        
+        if blowout_games:
+            for game_key in blowout_games:
+                parts = game_key.split("@")
+                away_team = parts[0]
+                home_team = parts[1]
+                
+                away_rest = 0
+                home_rest = 1
+                
+                home_inj, home_stars = get_injury_score(home_team, injuries)
+                away_inj, away_stars = get_injury_score(away_team, injuries)
+                
+                home = TEAM_STATS.get(home_team, {})
+                away = TEAM_STATS.get(away_team, {})
+                home_loc = TEAM_LOCATIONS.get(home_team, (0, 0))
+                away_loc = TEAM_LOCATIONS.get(away_team, (0, 0))
+                travel_miles = calc_distance(away_loc, home_loc)
+                
+                result = calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, away_inj, 50)
+                
+                st.markdown(f"### {away_team} @ {home_team} → 🟢 BUY {home_team} ML")
+                st.success(f"🔥 BLOWOUT RISK: {away_team} is B2B (tired) @ {home_team} (fresh)")
+                
+                # Calculate individual factors
+                rest_diff = home_rest - away_rest
+                rest_score = max(-6, min(6, rest_diff * 2))
+                def_score = (away.get('def_rank', 15) - home.get('def_rank', 15)) * 0.15
+                injury_score = (away_inj - home_inj) * 1.5
+                pace_diff = home.get('pace', 100) - away.get('pace', 100)
+                pace_score = pace_diff * 0.1 if home.get('net_rating', 0) > away.get('net_rating', 0) else -pace_diff * 0.1
+                net_score = (home.get('net_rating', 0) - away.get('net_rating', 0)) * 0.8
+                travel_score = 2.5 if travel_miles > 1500 else (1.5 if travel_miles > 1000 else (0.75 if travel_miles > 500 else 0))
+                split_score = (home.get('home_win_pct', 0.5) - 0.5) * 10 + (0.5 - away.get('away_win_pct', 0.5)) * 10
+                h2h_score = 1.5 if home.get('division') == away.get('division') and home.get('division') else 0
+                altitude_score = 2.0 if home_team == "Denver" else 0
+                ft_score = (home.get('ft_rate', 0.25) - away.get('ft_rate', 0.25)) * 20
+                reb_score = (home.get('reb_rate', 50) - away.get('reb_rate', 50)) * 0.3
+                three_score = (home.get('three_pct', 36) - away.get('three_pct', 36)) * 0.5
+                
+                fcol1, fcol2, fcol3 = st.columns(3)
+                with fcol1:
+                    st.markdown(f"🛏️ Rest: **{rest_score:+.1f}**")
+                    st.markdown(f"🛡️ Defense: **{def_score:+.1f}**")
+                    st.markdown(f"🏥 Injuries: **{injury_score:+.1f}**")
+                    st.markdown(f"⚡ Pace: **{pace_score:+.1f}**")
+                with fcol2:
+                    st.markdown(f"📊 Net Rating: **{net_score:+.1f}**")
+                    st.markdown(f"✈️ Travel: **{travel_score:+.1f}**")
+                    st.markdown(f"🏠 Splits: **{split_score:+.1f}**")
+                    st.markdown(f"⚔️ Division: **{h2h_score:+.1f}**")
+                with fcol3:
+                    st.markdown(f"🏔️ Altitude: **{altitude_score:+.1f}**")
+                    st.markdown(f"🎯 FT Rate: **{ft_score:+.1f}**")
+                    st.markdown(f"🏀 Reb: **{reb_score:+.1f}**")
+                    st.markdown(f"🎯 3PT: **{three_score:+.1f}**")
+                
+                st.markdown(f"**🏠 Home Court +3.0 → TOTAL: {result['expected_spread']:+.1f} → {result['home_win_prob']:.0f}% {home_team}**")
+                st.markdown("---")
+        else:
+            st.info("⚪ No BLOWOUT RISK games today to analyze")
     else:
         st.warning("No games available")
 
