@@ -56,7 +56,8 @@ with st.sidebar:
     st.markdown("""
     **Factors:**  
     • Back-to-back (played yesterday) = +2  
-    • Road game = +1
+    • Road game = +1  
+    • Home court = +2 (for home team ML)
     """)
     
     st.divider()
