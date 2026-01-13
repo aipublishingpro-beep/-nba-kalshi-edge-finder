@@ -358,7 +358,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v13.9")
+    st.caption("v14.0")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -770,6 +770,62 @@ def get_signal_tier(score):
     else:
         return None, None  # Not shown
 
+def calc_projected_total(home_team, away_team, yesterday_teams):
+    """Calculate projected total points for a game"""
+    home = TEAM_STATS.get(home_team, {})
+    away = TEAM_STATS.get(away_team, {})
+    
+    # Base total (league average)
+    base_total = 225
+    
+    # Pace adjustment: deviation from league avg pace (100)
+    home_pace = home.get('pace', 100)
+    away_pace = away.get('pace', 100)
+    avg_pace = (home_pace + away_pace) / 2
+    pace_adj = (avg_pace - 100) * 2
+    
+    # Defense adjustment: better defense = lower total
+    home_def = home.get('def_rank', 15)
+    away_def = away.get('def_rank', 15)
+    avg_def = (home_def + away_def) / 2
+    def_adj = (avg_def - 15) * 0.8  # Positive if bad defense, negative if good
+    
+    # Fatigue adjustment: tired teams score less
+    home_b2b = home_team in yesterday_teams
+    away_b2b = away_team in yesterday_teams
+    if home_b2b and away_b2b:
+        fatigue_adj = -6
+    elif home_b2b or away_b2b:
+        fatigue_adj = -3
+    else:
+        fatigue_adj = 0
+    
+    # Altitude adjustment: Denver home = lower scoring
+    altitude_adj = -4 if home_team == "Denver" else 0
+    
+    # Calculate projected total
+    projected = base_total + pace_adj + def_adj + fatigue_adj + altitude_adj
+    
+    return round(projected)
+
+def calc_recommended_threshold(projected, pick, score):
+    """Calculate recommended threshold based on projected total and confidence"""
+    if pick == "NO":
+        # For NO bets, go ABOVE projected
+        cushion = 6 if score >= 8.0 else 8
+        threshold = projected + cushion
+    else:
+        # For YES bets, go BELOW projected
+        cushion = 6 if score >= 8.0 else 8
+        threshold = projected - cushion
+    
+    # Round to nearest .5
+    threshold = round(threshold * 2) / 2
+    if threshold == int(threshold):
+        threshold += 0.5
+    
+    return threshold
+
 def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
     """Calculate 10-factor Totals score. Returns (pick, score, reasons)"""
     home = TEAM_STATS.get(home_team, {})
@@ -931,7 +987,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v13.9")
+st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.0")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
@@ -1025,6 +1081,10 @@ if game_list:
         pick, score, reasons = calc_totals_score(home_team, away_team, yesterday_teams, injuries)
         signal, color = get_totals_signal_tier(score, pick)
         
+        # Calculate projected total and recommended threshold
+        projected = calc_projected_total(home_team, away_team, yesterday_teams)
+        rec_threshold = calc_recommended_threshold(projected, pick, score)
+        
         # Only include STRONG and regular tiers
         if signal is not None:
             all_totals.append({
@@ -1035,7 +1095,9 @@ if game_list:
                 'score': score,
                 'signal': signal,
                 'color': color,
-                'reasons': reasons
+                'reasons': reasons,
+                'projected': projected,
+                'rec_threshold': rec_threshold
             })
     
     # Sort by score descending
@@ -1056,7 +1118,7 @@ if game_list:
             col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
             col1.markdown(f"**{p['away']}** @ **{p['home']}**")
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#aaa'>Proj: <b style='color:#fff'>{p['projected']}</b></span> → <span style='color:#00ff00;font-weight:bold'>BUY NO @ {p['rec_threshold']}+</span>", unsafe_allow_html=True)
             
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🚀 BUY NO", kalshi_url)
@@ -1070,7 +1132,7 @@ if game_list:
             col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
             col1.markdown(f"**{p['away']}** @ **{p['home']}**")
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#aaa'>Proj: <b style='color:#fff'>{p['projected']}</b></span> → <span style='color:#00ff00;font-weight:bold'>BUY YES @ {p['rec_threshold']}-</span>", unsafe_allow_html=True)
             
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🚀 BUY YES", kalshi_url)
@@ -1084,7 +1146,7 @@ if game_list:
             col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
             col1.markdown(f"**{p['away']}** @ **{p['home']}**")
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#aaa'>Proj: <b style='color:#fff'>{p['projected']}</b></span> → <span style='color:#00aaff;font-weight:bold'>BUY NO @ {p['rec_threshold']}+</span>", unsafe_allow_html=True)
             
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🔗 BUY NO", kalshi_url)
@@ -1098,7 +1160,7 @@ if game_list:
             col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
             col1.markdown(f"**{p['away']}** @ **{p['home']}**")
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#aaa'>Proj: <b style='color:#fff'>{p['projected']}</b></span> → <span style='color:#00aaff;font-weight:bold'>BUY YES @ {p['rec_threshold']}-</span>", unsafe_allow_html=True)
             
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🔗 BUY YES", kalshi_url)
