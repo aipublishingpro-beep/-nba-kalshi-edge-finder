@@ -199,9 +199,7 @@ with st.sidebar:
     st.markdown("""
     🟢 **STRONG BUY** → 8.0+ score  
     🔵 **BUY** → 6.5 - 7.9 score  
-    🟡 **LEAN** → 5.5 - 6.4 score  
-    ⚪ **TOSS-UP** → 4.5 - 5.4 score  
-    🔴 **SKIP** → Below 4.5
+    ⚪ Below 6.5 → Not shown
     """)
     
     st.divider()
@@ -242,9 +240,7 @@ with st.sidebar:
     st.markdown("""
     🟢 **STRONG NO/YES** → 8.0+ score  
     🔵 **NO/YES** → 6.5 - 7.9 score  
-    🟡 **LEAN NO/YES** → 5.5 - 6.4  
-    ⚪ **TOSS-UP** → 4.5 - 5.4  
-    🔴 **SKIP** → Below 4.5
+    ⚪ Below 6.5 → Not shown
     """)
     
     st.divider()
@@ -362,7 +358,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v13.8")
+    st.caption("v13.9")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -578,7 +574,7 @@ def calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, aw
     pace_score = pace_diff * 0.1 if home['net_rating'] > away['net_rating'] else -pace_diff * 0.1
     net_score = (home['net_rating'] - away['net_rating']) * 0.8
     travel_score = 2.5 if travel_miles > 1500 else (1.5 if travel_miles > 1000 else (0.75 if travel_miles > 500 else 0))
-    split_score = (home['home_win_pct'] - 0.5) * 10 + (0.5 - away['away_win_pct']) * 10
+    split_score = (home.get('home_win_pct', 0.5) - 0.5) * 10 + (0.5 - away.get('away_win_pct', 0.5)) * 10
     h2h_score = 1.5 if home.get('division') == away.get('division') and home.get('division') else 0
     altitude_score = 2.0 if home_team == "Denver" else 0
     ft_score = (home.get('ft_rate', 0.25) - away.get('ft_rate', 0.25)) * 20
@@ -771,12 +767,8 @@ def get_signal_tier(score):
         return "🟢 STRONG BUY", "#00ff00"
     elif score >= 6.5:
         return "🔵 BUY", "#00aaff"
-    elif score >= 5.5:
-        return "🟡 LEAN", "#ffff00"
-    elif score >= 4.5:
-        return "⚪ TOSS-UP", "#888888"
     else:
-        return "🔴 SKIP", "#ff0000"
+        return None, None  # Not shown
 
 def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
     """Calculate 10-factor Totals score. Returns (pick, score, reasons)"""
@@ -927,12 +919,8 @@ def get_totals_signal_tier(score, pick):
         return f"🟢 STRONG {pick}", "#00ff00"
     elif score >= 6.5:
         return f"🔵 {pick}", "#00aaff"
-    elif score >= 5.5:
-        return f"🟡 LEAN {pick}", "#ffff00"
-    elif score >= 4.5:
-        return "⚪ TOSS-UP", "#888888"
     else:
-        return "🔴 SKIP", "#ff0000"
+        return None, None  # Not shown
 
 # ========== FETCH DATA ==========
 games = fetch_espn_scores()
@@ -943,7 +931,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v13.8")
+st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v13.9")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
@@ -959,19 +947,21 @@ if game_list:
         pick, score, edge, reasons, home_out, away_out = calc_ml_score(home_team, away_team, yesterday_teams, injuries)
         signal, color = get_signal_tier(score)
         
-        all_picks.append({
-            'game': game_key,
-            'home': home_team,
-            'away': away_team,
-            'pick': pick,
-            'score': score,
-            'edge': edge,
-            'signal': signal,
-            'color': color,
-            'reasons': reasons,
-            'home_out': home_out,
-            'away_out': away_out
-        })
+        # Only include STRONG BUY and BUY
+        if signal is not None:
+            all_picks.append({
+                'game': game_key,
+                'home': home_team,
+                'away': away_team,
+                'pick': pick,
+                'score': score,
+                'edge': edge,
+                'signal': signal,
+                'color': color,
+                'reasons': reasons,
+                'home_out': home_out,
+                'away_out': away_out
+            })
     
     # Sort by score descending
     all_picks.sort(key=lambda x: x['score'], reverse=True)
@@ -979,9 +969,6 @@ if game_list:
     # Group by tier
     strong_buys = [p for p in all_picks if p['score'] >= 8.0]
     buys = [p for p in all_picks if 6.5 <= p['score'] < 8.0]
-    leans = [p for p in all_picks if 5.5 <= p['score'] < 6.5]
-    tossups = [p for p in all_picks if 4.5 <= p['score'] < 5.5]
-    skips = [p for p in all_picks if p['score'] < 4.5]
     
     # Display each tier
     if strong_buys:
@@ -1016,32 +1003,12 @@ if game_list:
             kalshi_url = build_kalshi_ml_url(p['away'], p['home'])
             col4.link_button(f"🔗 BUY {p['pick'].upper()}", kalshi_url)
     
-    if leans:
-        st.markdown("### 🟡 LEAN")
-        for p in leans:
-            reasons_str = " • ".join(p['reasons'][:3]) if p['reasons'] else ""
-            is_home_pick = p['pick'] == p['home']
-            opponent = p['away'] if is_home_pick else p['home']
-            home_away_tag = "🏠" if is_home_pick else "✈️"
-            
-            col1, col2, col3 = st.columns([3, 2, 5])
-            col1.markdown(f"**<span style='color:#ffff00'>{p['pick']}</span>** {home_away_tag} vs {opponent}", unsafe_allow_html=True)
-            col2.markdown(f"<span style='color:{p['color']}'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
-            col3.markdown(f"<span style='color:#888;font-size:0.85em'>{reasons_str}</span>", unsafe_allow_html=True)
-    
-    if tossups:
-        st.markdown("### ⚪ TOSS-UP")
-        for p in tossups:
-            st.markdown(f"<span style='color:#888'>{p['away']}</span> ✈️ @ <span style='color:#888'>{p['home']}</span> 🏠 — <span style='color:{p['color']}'>{p['score']}/10</span> — No clear edge", unsafe_allow_html=True)
-    
-    if skips:
-        st.markdown("### 🔴 SKIP")
-        for p in skips:
-            st.markdown(f"~~{p['away']} @ {p['home']}~~ — <span style='color:{p['color']}'>{p['score']}/10</span>", unsafe_allow_html=True)
+    if not strong_buys and not buys:
+        st.info("⚪ No actionable ML plays today (no games scoring 6.5+)")
     
     # Summary stats
     st.markdown("---")
-    st.caption(f"📊 {len(strong_buys)} Strong Buys | {len(buys)} Buys | {len(leans)} Leans | {len(tossups)} Toss-ups | {len(skips)} Skips")
+    st.caption(f"📊 {len(strong_buys)} Strong Buys | {len(buys)} Buys | {len(game_list) - len(strong_buys) - len(buys)} skipped (below 6.5)")
 
 else:
     st.info("No games scheduled today")
@@ -1062,16 +1029,18 @@ if game_list:
         pick, score, reasons = calc_totals_score(home_team, away_team, yesterday_teams, injuries)
         signal, color = get_totals_signal_tier(score, pick)
         
-        all_totals.append({
-            'game': game_key,
-            'home': home_team,
-            'away': away_team,
-            'pick': pick,
-            'score': score,
-            'signal': signal,
-            'color': color,
-            'reasons': reasons
-        })
+        # Only include STRONG and regular tiers
+        if signal is not None:
+            all_totals.append({
+                'game': game_key,
+                'home': home_team,
+                'away': away_team,
+                'pick': pick,
+                'score': score,
+                'signal': signal,
+                'color': color,
+                'reasons': reasons
+            })
     
     # Sort by score descending
     all_totals.sort(key=lambda x: x['score'], reverse=True)
@@ -1081,10 +1050,6 @@ if game_list:
     strong_yes = [p for p in all_totals if p['score'] >= 8.0 and p['pick'] == "YES"]
     reg_no = [p for p in all_totals if 6.5 <= p['score'] < 8.0 and p['pick'] == "NO"]
     reg_yes = [p for p in all_totals if 6.5 <= p['score'] < 8.0 and p['pick'] == "YES"]
-    lean_no = [p for p in all_totals if 5.5 <= p['score'] < 6.5 and p['pick'] == "NO"]
-    lean_yes = [p for p in all_totals if 5.5 <= p['score'] < 6.5 and p['pick'] == "YES"]
-    tossups_t = [p for p in all_totals if 4.5 <= p['score'] < 5.5]
-    skips_t = [p for p in all_totals if p['score'] < 4.5]
     
     # Display STRONG NO
     if strong_no:
@@ -1142,43 +1107,13 @@ if game_list:
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🔗 BUY YES", kalshi_url)
     
-    # Display LEAN NO
-    if lean_no:
-        st.markdown("### 🟡 LEAN NO (Under)")
-        for p in lean_no:
-            reasons_str = " • ".join(p['reasons'][:3]) if p['reasons'] else ""
-            col1, col2, col3 = st.columns([3, 2, 5])
-            col1.markdown(f"{p['away']} @ {p['home']}")
-            col2.markdown(f"<span style='color:{p['color']}'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"<span style='color:#888;font-size:0.85em'>{reasons_str}</span>", unsafe_allow_html=True)
-    
-    # Display LEAN YES
-    if lean_yes:
-        st.markdown("### 🟡 LEAN YES (Over)")
-        for p in lean_yes:
-            reasons_str = " • ".join(p['reasons'][:3]) if p['reasons'] else ""
-            col1, col2, col3 = st.columns([3, 2, 5])
-            col1.markdown(f"{p['away']} @ {p['home']}")
-            col2.markdown(f"<span style='color:{p['color']}'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"<span style='color:#888;font-size:0.85em'>{reasons_str}</span>", unsafe_allow_html=True)
-    
-    # Display TOSS-UP
-    if tossups_t:
-        st.markdown("### ⚪ TOSS-UP")
-        for p in tossups_t:
-            st.markdown(f"{p['away']} @ {p['home']} — <span style='color:{p['color']}'>{p['score']}/10</span> — No clear edge", unsafe_allow_html=True)
-    
-    # Display SKIP
-    if skips_t:
-        st.markdown("### 🔴 SKIP")
-        for p in skips_t:
-            st.markdown(f"~~{p['away']} @ {p['home']}~~ — <span style='color:{p['color']}'>{p['score']}/10</span>", unsafe_allow_html=True)
+    if not strong_no and not strong_yes and not reg_no and not reg_yes:
+        st.info("⚪ No actionable totals plays today (no games scoring 6.5+)")
     
     # Summary
     st.markdown("---")
-    total_no = len(strong_no) + len(reg_no) + len(lean_no)
-    total_yes = len(strong_yes) + len(reg_yes) + len(lean_yes)
-    st.caption(f"📊 {len(strong_no)+len(strong_yes)} Strong | {len(reg_no)+len(reg_yes)} Regular | {len(lean_no)+len(lean_yes)} Leans | NO: {total_no} | YES: {total_yes}")
+    total_actionable = len(strong_no) + len(strong_yes) + len(reg_no) + len(reg_yes)
+    st.caption(f"📊 {len(strong_no)+len(strong_yes)} Strong | {len(reg_no)+len(reg_yes)} Regular | {len(game_list) - total_actionable} skipped (below 6.5)")
 
 else:
     st.info("No games scheduled today")
