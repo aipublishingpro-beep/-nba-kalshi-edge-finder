@@ -26,7 +26,7 @@ with st.sidebar:
     🟠 4.8-5.2 FAST | 🔴 >5.2 SHOOTOUT
     """)
     st.divider()
-    st.caption("v10.34")
+st.caption("v10.34")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
