@@ -2,8 +2,142 @@ import streamlit as st
 import requests
 from datetime import datetime, timedelta
 import pytz
+import uuid
+import base64
+
+# Try to import cryptography for trading (optional)
+try:
+    from cryptography.hazmat.primitives import serialization, hashes
+    from cryptography.hazmat.primitives.asymmetric import padding
+    from cryptography.hazmat.backends import default_backend
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    CRYPTO_AVAILABLE = False
 
 st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
+
+# ============================================================
+# KALSHI TRADING API
+# ============================================================
+def init_trading():
+    if 'kalshi_api_key' not in st.session_state:
+        try:
+            st.session_state.kalshi_api_key = st.secrets.get("KALSHI_API_KEY", "")
+        except:
+            st.session_state.kalshi_api_key = ""
+    if 'kalshi_private_key' not in st.session_state:
+        try:
+            st.session_state.kalshi_private_key = st.secrets.get("KALSHI_PRIVATE_KEY", "")
+        except:
+            st.session_state.kalshi_private_key = ""
+    if 'trading_enabled' not in st.session_state:
+        st.session_state.trading_enabled = bool(st.session_state.kalshi_api_key and st.session_state.kalshi_private_key)
+    if 'default_contracts' not in st.session_state:
+        st.session_state.default_contracts = 10
+
+def create_kalshi_signature(private_key_pem, timestamp, method, path):
+    """Create signature for Kalshi API authentication using RSA-PSS."""
+    if not CRYPTO_AVAILABLE:
+        return None
+    try:
+        private_key = serialization.load_pem_private_key(
+            private_key_pem.encode(), password=None, backend=default_backend()
+        )
+        path_without_query = path.split('?')[0]
+        message = f"{timestamp}{method}{path_without_query}".encode('utf-8')
+        signature = private_key.sign(
+            message,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.DIGEST_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        return base64.b64encode(signature).decode()
+    except Exception as e:
+        return None
+
+def place_kalshi_order(ticker, side, price_cents, count, api_key, private_key_pem):
+    """Place a limit order on Kalshi. Returns (success, message)."""
+    if not CRYPTO_AVAILABLE:
+        return False, "cryptography library not installed"
+    try:
+        path = '/trade-api/v2/portfolio/orders'
+        timestamp = str(int(datetime.now().timestamp() * 1000))
+        signature = create_kalshi_signature(private_key_pem, timestamp, "POST", path)
+        
+        if not signature:
+            return False, "Failed to create signature - check private key"
+        
+        headers = {
+            'KALSHI-ACCESS-KEY': api_key,
+            'KALSHI-ACCESS-SIGNATURE': signature,
+            'KALSHI-ACCESS-TIMESTAMP': timestamp,
+            'Content-Type': 'application/json'
+        }
+        
+        # Build order data based on side (YES or NO)
+        order_data = {
+            "ticker": ticker,
+            "action": "buy",
+            "side": side.lower(),
+            "count": count,
+            "type": "limit",
+            "client_order_id": str(uuid.uuid4())
+        }
+        
+        # Set price based on side
+        if side.lower() == "no":
+            order_data["no_price"] = price_cents
+        else:
+            order_data["yes_price"] = price_cents
+        
+        response = requests.post(
+            f"https://api.elections.kalshi.com{path}",
+            headers=headers,
+            json=order_data,
+            timeout=10
+        )
+        
+        if response.status_code == 201:
+            order = response.json().get('order', {})
+            return True, f"✅ Order placed! {count}x {side} @ {price_cents}¢"
+        else:
+            error_msg = response.json().get('error', {}).get('message', response.text)
+            return False, f"❌ Error: {error_msg}"
+    except Exception as e:
+        return False, f"❌ Error: {str(e)}"
+
+init_trading()
+
+# ========== KALSHI TEAM CODES ==========
+KALSHI_CODES = {
+    "Atlanta": "atl", "Boston": "bos", "Brooklyn": "bkn", "Charlotte": "cha",
+    "Chicago": "chi", "Cleveland": "cle", "Dallas": "dal", "Denver": "den",
+    "Detroit": "det", "Golden State": "gsw", "Houston": "hou", "Indiana": "ind",
+    "LA Clippers": "lac", "LA Lakers": "lal", "Memphis": "mem", "Miami": "mia",
+    "Milwaukee": "mil", "Minnesota": "min", "New Orleans": "nop", "New York": "nyk",
+    "Oklahoma City": "okc", "Orlando": "orl", "Philadelphia": "phi", "Phoenix": "phx",
+    "Portland": "por", "Sacramento": "sac", "San Antonio": "sas", "Toronto": "tor",
+    "Utah": "uta", "Washington": "was"
+}
+
+def build_kalshi_totals_url(away_team, home_team):
+    """Build Kalshi totals URL - takes you to game page where you pick threshold"""
+    away_code = KALSHI_CODES.get(away_team, "xxx")
+    home_code = KALSHI_CODES.get(home_team, "xxx")
+    today = datetime.now(pytz.timezone('US/Eastern'))
+    date_str = today.strftime("%y%b%d").lower()
+    ticker = f"kxnbatotal-{date_str}{away_code}{home_code}"
+    return f"https://kalshi.com/markets/kxnbatotal/pro-basketball-total-points/{ticker}"
+
+def build_kalshi_ticker(away_team, home_team, threshold):
+    """Build full Kalshi ticker for order placement"""
+    away_code = KALSHI_CODES.get(away_team, "xxx")
+    home_code = KALSHI_CODES.get(home_team, "xxx")
+    today = datetime.now(pytz.timezone('US/Eastern'))
+    date_str = today.strftime("%y%b%d").upper()
+    return f"KXNBATOTAL-{date_str}{away_code.upper()}{home_code.upper()}-T{threshold}"
 
 if "positions" not in st.session_state:
     st.session_state.positions = []
@@ -98,7 +232,34 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v12.2")
+    
+    st.subheader("🚀 ONE-CLICK TRADING")
+    
+    if not CRYPTO_AVAILABLE:
+        st.warning("Add `cryptography` to requirements.txt")
+    else:
+        st.session_state.trading_enabled = st.toggle("Enable Trading", value=st.session_state.trading_enabled)
+        
+        if st.session_state.trading_enabled:
+            if st.session_state.kalshi_api_key:
+                st.success("✅ API Key loaded")
+            else:
+                st.session_state.kalshi_api_key = st.text_input("API Key", type="password")
+            
+            if st.session_state.kalshi_private_key:
+                st.success("✅ Private Key loaded")
+            else:
+                st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", height=100, type="default")
+            
+            st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, max_value=500, value=st.session_state.default_contracts)
+            
+            if st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
+                st.success("✅ Ready to trade!")
+            else:
+                st.info("Enter API credentials above")
+    
+    st.divider()
+    st.caption("v12.3")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -179,27 +340,6 @@ STAR_PLAYERS = {
     "Sacramento": ["De'Aaron Fox", "Domantas Sabonis"], "San Antonio": ["Victor Wembanyama"],
     "Toronto": ["Scottie Barnes"], "Utah": ["Lauri Markkanen"], "Washington": ["Jordan Poole"]
 }
-
-# ========== KALSHI TEAM CODES ==========
-KALSHI_CODES = {
-    "Atlanta": "atl", "Boston": "bos", "Brooklyn": "bkn", "Charlotte": "cha",
-    "Chicago": "chi", "Cleveland": "cle", "Dallas": "dal", "Denver": "den",
-    "Detroit": "det", "Golden State": "gsw", "Houston": "hou", "Indiana": "ind",
-    "LA Clippers": "lac", "LA Lakers": "lal", "Memphis": "mem", "Miami": "mia",
-    "Milwaukee": "mil", "Minnesota": "min", "New Orleans": "nop", "New York": "nyk",
-    "Oklahoma City": "okc", "Orlando": "orl", "Philadelphia": "phi", "Phoenix": "phx",
-    "Portland": "por", "Sacramento": "sac", "San Antonio": "sas", "Toronto": "tor",
-    "Utah": "uta", "Washington": "was"
-}
-
-def build_kalshi_totals_url(away_team, home_team):
-    """Build Kalshi totals URL - takes you to game page where you pick threshold"""
-    away_code = KALSHI_CODES.get(away_team, "xxx")
-    home_code = KALSHI_CODES.get(home_team, "xxx")
-    today = datetime.now(pytz.timezone('US/Eastern'))
-    date_str = today.strftime("%y%b%d").lower()  # e.g., 26jan13
-    ticker = f"kxnbatotal-{date_str}{away_code}{home_code}"
-    return f"https://kalshi.com/markets/kxnbatotal/pro-basketball-total-points/{ticker}"
 
 def calc_distance(loc1, loc2):
     from math import radians, sin, cos, sqrt, atan2
@@ -363,7 +503,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.2")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.3")
 
 if yesterday_teams:
     st.info(f"📅 **B2B Teams Today:** {', '.join(sorted(yesterday_teams))}")
@@ -509,30 +649,63 @@ if selected_game != "Select a game...":
     away_t = parts[0]
     home_t = parts[1]
     kalshi_url = build_kalshi_totals_url(away_t, home_t)
-    st.link_button(f"🔗 BUY on Kalshi → {selected_game}", kalshi_url, use_container_width=True)
+    st.link_button(f"🔗 View {selected_game} on Kalshi", kalshi_url, use_container_width=True)
 
 with st.form("add_position_form"):
     p1, p2, p3 = st.columns(3)
     
-    side = p1.selectbox("📊 Side", ["NO (Under)", "YES (Over)"])
-    price_paid = p2.number_input("💵 Price Paid (¢)", min_value=1, max_value=99, value=50, step=1)
-    contracts = p3.number_input("📄 Contracts", min_value=1, max_value=1000, value=10, step=1)
+    side = p1.selectbox("📊 Side", ["NO (Under)", "YES (Over)"], key="side_form")
+    price_paid = p2.number_input("💵 Price (¢)", min_value=1, max_value=99, value=50, step=1, key="price_form")
+    contracts = p3.number_input("📄 Contracts", min_value=1, max_value=1000, value=st.session_state.default_contracts, step=1)
     
-    submitted = st.form_submit_button("✅ ADD POSITION (after you buy)", use_container_width=True)
+    # ONE-CLICK BUY inside form
+    if st.session_state.trading_enabled and st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
+        buy_col, add_col = st.columns(2)
+        buy_now = buy_col.form_submit_button("🚀 BUY ON KALSHI NOW", use_container_width=True, type="primary")
+        add_manual = add_col.form_submit_button("✅ ADD POSITION (manual)", use_container_width=True)
+    else:
+        buy_now = False
+        add_manual = st.form_submit_button("✅ ADD POSITION (after you buy)", use_container_width=True)
     
-    if submitted and selected_game != "Select a game...":
+    if selected_game != "Select a game...":
         game_key = selected_game.replace(" @ ", "@")
         side_clean = "NO" if "NO" in side else "YES"
+        parts = game_key.split("@")
         
-        st.session_state.positions.append({
-            'game': game_key,
-            'side': side_clean,
-            'threshold': threshold_select,
-            'price': price_paid,
-            'contracts': contracts,
-            'cost': round(price_paid * contracts / 100, 2)
-        })
-        st.rerun()
+        if buy_now:
+            ticker = build_kalshi_ticker(parts[0], parts[1], threshold_select)
+            success, msg = place_kalshi_order(
+                ticker=ticker,
+                side=side_clean,
+                price_cents=price_paid,
+                count=contracts,
+                api_key=st.session_state.kalshi_api_key,
+                private_key_pem=st.session_state.kalshi_private_key
+            )
+            if success:
+                st.success(msg)
+                st.session_state.positions.append({
+                    'game': game_key,
+                    'side': side_clean,
+                    'threshold': threshold_select,
+                    'price': price_paid,
+                    'contracts': contracts,
+                    'cost': round(price_paid * contracts / 100, 2)
+                })
+                st.rerun()
+            else:
+                st.error(msg)
+        
+        if add_manual:
+            st.session_state.positions.append({
+                'game': game_key,
+                'side': side_clean,
+                'threshold': threshold_select,
+                'price': price_paid,
+                'contracts': contracts,
+                'cost': round(price_paid * contracts / 100, 2)
+            })
+            st.rerun()
 
 st.divider()
 
