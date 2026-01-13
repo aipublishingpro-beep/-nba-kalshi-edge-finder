@@ -286,7 +286,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v12.5")
+    st.caption("v12.6")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -707,7 +707,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.5")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.6")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
@@ -752,41 +752,51 @@ if game_list:
         st.markdown("### 🟢 STRONG BUY")
         for p in strong_buys:
             reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
+            is_home_pick = p['pick'] == p['home']
+            opponent = p['away'] if is_home_pick else p['home']
+            home_away_tag = "🏠" if is_home_pick else "✈️"
             
-            col1, col2, col3, col4 = st.columns([3, 2, 4, 1])
-            col1.markdown(f"**{p['pick']} ML** vs {p['away'] if p['pick'] == p['home'] else p['home']}")
+            col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
+            col1.markdown(f"**<span style='color:#00ff00'>{p['pick']}</span>** {home_away_tag} vs {opponent}", unsafe_allow_html=True)
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
             col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
             
             kalshi_url = f"https://kalshi.com/markets/kxnbagame"
-            col4.link_button("🚀", kalshi_url)
+            col4.link_button(f"🚀 BUY {p['pick'].upper()}", kalshi_url)
     
     if buys:
         st.markdown("### 🔵 BUY")
         for p in buys:
             reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
+            is_home_pick = p['pick'] == p['home']
+            opponent = p['away'] if is_home_pick else p['home']
+            home_away_tag = "🏠" if is_home_pick else "✈️"
             
-            col1, col2, col3, col4 = st.columns([3, 2, 4, 1])
-            col1.markdown(f"**{p['pick']} ML** vs {p['away'] if p['pick'] == p['home'] else p['home']}")
+            col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
+            col1.markdown(f"**<span style='color:#00aaff'>{p['pick']}</span>** {home_away_tag} vs {opponent}", unsafe_allow_html=True)
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
             col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
             
             kalshi_url = f"https://kalshi.com/markets/kxnbagame"
-            col4.link_button("🔗", kalshi_url)
+            col4.link_button(f"🔗 BUY {p['pick'].upper()}", kalshi_url)
     
     if leans:
         st.markdown("### 🟡 LEAN")
         for p in leans:
             reasons_str = " • ".join(p['reasons'][:3]) if p['reasons'] else ""
+            is_home_pick = p['pick'] == p['home']
+            opponent = p['away'] if is_home_pick else p['home']
+            home_away_tag = "🏠" if is_home_pick else "✈️"
+            
             col1, col2, col3 = st.columns([3, 2, 5])
-            col1.markdown(f"**{p['pick']} ML** vs {p['away'] if p['pick'] == p['home'] else p['home']}")
+            col1.markdown(f"**<span style='color:#ffff00'>{p['pick']}</span>** {home_away_tag} vs {opponent}", unsafe_allow_html=True)
             col2.markdown(f"<span style='color:{p['color']}'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
             col3.markdown(f"<span style='color:#888;font-size:0.85em'>{reasons_str}</span>", unsafe_allow_html=True)
     
     if tossups:
         st.markdown("### ⚪ TOSS-UP")
         for p in tossups:
-            st.markdown(f"{p['away']} @ {p['home']} — <span style='color:{p['color']}'>{p['score']}/10</span> — No clear edge", unsafe_allow_html=True)
+            st.markdown(f"<span style='color:#888'>{p['away']}</span> ✈️ @ <span style='color:#888'>{p['home']}</span> 🏠 — <span style='color:{p['color']}'>{p['score']}/10</span> — No clear edge", unsafe_allow_html=True)
     
     if skips:
         st.markdown("### 🔴 SKIP")
