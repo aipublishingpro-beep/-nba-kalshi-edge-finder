@@ -539,28 +539,39 @@ for gk, g in games.items():
         cush_data.append({"game": gk, "proj": proj})
 
 if cush_data:
-    hcols = st.columns([2, 1] + [1]*len(thresholds))
-    hcols[0].markdown("**Game**")
-    hcols[1].markdown("**Proj**")
-    for i, t in enumerate(thresholds):
-        hcols[i+2].markdown(f"**{t}**")
-    
+    # Only show games that have at least one threshold with +10 or more cushion
+    good_games = []
     for cd in cush_data:
-        rcols = st.columns([2, 1] + [1]*len(thresholds))
-        rcols[0].write(cd['game'].replace("@", " @ "))
-        rcols[1].write(f"{cd['proj']}")
-        for i, t in enumerate(thresholds):
+        has_edge = False
+        for t in thresholds:
             c = (t - cd['proj']) if cush_side == "NO" else (cd['proj'] - t)
-            if c >= 20:
-                rcols[i+2].markdown(f"<span style='color:#00ff00'>**+{c:.0f}**</span>", unsafe_allow_html=True)
-            elif c >= 10:
-                rcols[i+2].markdown(f"<span style='color:#ffff00'>**+{c:.0f}**</span>", unsafe_allow_html=True)
-            elif c >= 5:
-                rcols[i+2].markdown(f"<span style='color:#ff8800'>**+{c:.0f}**</span>", unsafe_allow_html=True)
-            elif c >= 0:
-                rcols[i+2].markdown(f"<span style='color:#ff4444'>+{c:.0f}</span>", unsafe_allow_html=True)
-            else:
-                rcols[i+2].markdown(f"<span style='color:#ff0000'>{c:.0f}</span>", unsafe_allow_html=True)
+            if c >= 10:
+                has_edge = True
+                break
+        if has_edge:
+            good_games.append(cd)
+    
+    if good_games:
+        hcols = st.columns([2, 1] + [1]*len(thresholds))
+        hcols[0].markdown("**Game**")
+        hcols[1].markdown("**Proj**")
+        for i, t in enumerate(thresholds):
+            hcols[i+2].markdown(f"**{t}**")
+        
+        for cd in good_games:
+            rcols = st.columns([2, 1] + [1]*len(thresholds))
+            rcols[0].write(cd['game'].replace("@", " @ "))
+            rcols[1].write(f"{cd['proj']}")
+            for i, t in enumerate(thresholds):
+                c = (t - cd['proj']) if cush_side == "NO" else (cd['proj'] - t)
+                if c >= 20:
+                    rcols[i+2].markdown(f"<span style='color:#00ff00'>**+{c:.0f}** 🟢</span>", unsafe_allow_html=True)
+                elif c >= 10:
+                    rcols[i+2].markdown(f"<span style='color:#ffff00'>**+{c:.0f}** 🟡</span>", unsafe_allow_html=True)
+                else:
+                    rcols[i+2].markdown(f"<span style='color:#666'>—</span>", unsafe_allow_html=True)
+    else:
+        st.info("⚪ No games with +10 or more cushion right now")
 else:
     st.info(f"No games with {cush_min}+ minutes played yet")
 
