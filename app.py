@@ -195,19 +195,18 @@ def fetch_kalshi_market_line(away_team, home_team):
         home_code = KALSHI_CODES.get(home_team, "xxx")
         today = datetime.now(pytz.timezone('US/Eastern'))
         
-        # Try lowercase format like: kxnbatotal-25jan13atlal
-        date_str = today.strftime("%y%b%d").lower()
-        event_ticker = f"kxnbatotal-{date_str}{away_code}{home_code}"
+        # Try uppercase format
+        date_str = today.strftime("%y%b%d").upper()
+        event_ticker = f"KXNBATOTAL-{date_str}{away_code.upper()}{home_code.upper()}"
         
-        # Try public API endpoint
-        url = f"https://api.elections.kalshi.com/trade-api/v2/markets?event_ticker={event_ticker.upper()}"
+        # Fetch markets
+        url = f"https://api.elections.kalshi.com/trade-api/v2/markets?event_ticker={event_ticker}"
         resp = requests.get(url, timeout=10)
         
         debug_info = {
             "event_ticker": event_ticker,
             "url": url,
-            "status_code": resp.status_code,
-            "response": resp.text[:500] if resp.text else "empty"
+            "status_code": resp.status_code
         }
         
         if resp.status_code != 200:
@@ -216,42 +215,30 @@ def fetch_kalshi_market_line(away_team, home_team):
         data = resp.json()
         markets = data.get("markets", [])
         
-        if not markets:
-            # Try series ticker instead
-            url2 = f"https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXNBATOTAL"
-            resp2 = requests.get(url2, timeout=10)
-            debug_info["url2"] = url2
-            debug_info["status_code2"] = resp2.status_code
-            
-            if resp2.status_code == 200:
-                data2 = resp2.json()
-                markets = data2.get("markets", [])
-                debug_info["markets_found"] = len(markets)
+        debug_info["markets_count"] = len(markets)
         
         if not markets:
             return None, None, debug_info
         
-        # Find threshold closest to 50/50
+        # Parse markets - use floor_strike for threshold, yes_ask or last_price for price
         best_threshold = None
         best_diff = 100
         all_thresholds = []
         
         for market in markets:
-            ticker = market.get("ticker", "")
-            yes_price = market.get("yes_ask", 50) or market.get("last_price", 50) or 50
+            thresh = market.get("floor_strike")
+            yes_price = market.get("yes_ask") or market.get("last_price") or 50
             
-            # Extract threshold from ticker
-            if "-T" in ticker:
-                try:
-                    thresh = float(ticker.split("-T")[1])
-                    all_thresholds.append({"threshold": thresh, "yes_price": yes_price})
-                    
-                    diff = abs(yes_price - 50)
-                    if diff < best_diff:
-                        best_diff = diff
-                        best_threshold = thresh
-                except:
-                    pass
+            if thresh:
+                all_thresholds.append({"threshold": thresh, "yes_price": yes_price})
+                
+                # How close to 50?
+                diff = abs(yes_price - 50)
+                if diff < best_diff:
+                    best_diff = diff
+                    best_threshold = thresh
+        
+        debug_info["thresholds_found"] = len(all_thresholds)
         
         return best_threshold, all_thresholds, debug_info
     except Exception as e:
