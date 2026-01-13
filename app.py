@@ -286,7 +286,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v12.6")
+    st.caption("v12.7")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -587,9 +587,8 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     elif away_def <= 15:
         score_away += 0.4
     
-    # 4. HOME COURT (0-1) - Always to home
+    # 4. HOME COURT (0-1) - Always to home (shown by 🏠 emoji next to team name)
     score_home += 1.0
-    reasons_home.append("🏠 Home")
     
     # 5. INJURY IMPACT (0-1)
     home_inj, home_stars = get_injury_score(home_team, injuries)
@@ -707,7 +706,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.6")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.7")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
