@@ -123,22 +123,23 @@ KALSHI_CODES = {
 }
 
 def build_kalshi_totals_url(away_team, home_team):
-    """Build Kalshi totals URL - takes you to game page where you pick threshold"""
+    """Build Kalshi totals URL - takes you directly to order book"""
     away_code = KALSHI_CODES.get(away_team, "xxx")
     home_code = KALSHI_CODES.get(home_team, "xxx")
     today = datetime.now(pytz.timezone('US/Eastern'))
     date_str = today.strftime("%y%b%d").lower()
-    ticker = f"kxnbatotal-{date_str}{away_code}{home_code}"
-    return f"https://kalshi.com/markets/kxnbatotal/pro-basketball-total-points/{ticker}"
+    # Use event ticker for totals (shows all thresholds)
+    event_ticker = f"kxnbatotal-{date_str}{away_code}{home_code}"
+    return f"https://kalshi.com/events/{event_ticker}"
 
 def build_kalshi_ml_url(away_team, home_team):
-    """Build Kalshi moneyline URL - takes you to game page"""
+    """Build Kalshi moneyline URL - takes you directly to order book"""
     away_code = KALSHI_CODES.get(away_team, "xxx")
     home_code = KALSHI_CODES.get(home_team, "xxx")
     today = datetime.now(pytz.timezone('US/Eastern'))
     date_str = today.strftime("%y%b%d").lower()
     ticker = f"kxnbagame-{date_str}{away_code}{home_code}"
-    return f"https://kalshi.com/markets/kxnbagame/pro-basketball-moneyline/{ticker}"
+    return f"https://kalshi.com/markets/{ticker}"
 
 def build_kalshi_ticker(away_team, home_team, threshold):
     """Build full Kalshi ticker for order placement"""
@@ -295,7 +296,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v12.9")
+    st.caption("v13.0")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -720,7 +721,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.9")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v13.0")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
