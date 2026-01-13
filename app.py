@@ -8,33 +8,6 @@ st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide"
 if "positions" not in st.session_state:
     st.session_state.positions = []
 
-# ========== SIDEBAR LEGEND ==========
-with st.sidebar:
-    st.header("📖 LEGEND")
-    st.subheader("⚡ 12-Factor Edge")
-    st.markdown("""
-    **Edge > +10%** → HIGH confidence  
-    **Edge +5 to +10%** → MEDIUM confidence  
-    **Edge < +5%** → NO EDGE
-    """)
-    st.divider()
-    st.subheader("Size Tiers (Cushion)")
-    st.markdown("""
-    🟢 **BIG** → +20 pts or more  
-    🟡 **MEDIUM** → +10 to +19  
-    🟠 **SMALL** → +5 to +9  
-    🔴 **SKIP** → Under +5
-    """)
-    st.divider()
-    st.subheader("Fatigue Scanner")
-    st.markdown("""
-    **Score 3+** → FATIGUED 🔴  
-    **Score 2** → TIRED 🟡  
-    **Score 0-1** → Fresh
-    """)
-    st.divider()
-    st.caption("v11.8")
-
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -234,7 +207,7 @@ def get_minutes_played(period, clock, status_type):
     except:
         return (period - 1) * 12 if period <= 4 else 48 + (period - 5) * 5
 
-def calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, away_inj, kalshi_price, weights):
+def calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, away_inj, kalshi_price):
     home = TEAM_STATS.get(home_team, {"pace": 100, "def_rank": 15, "net_rating": 0, "ft_rate": 0.25, "reb_rate": 50, "three_pct": 36, "home_win_pct": 0.5, "away_win_pct": 0.5, "division": ""})
     away = TEAM_STATS.get(away_team, {"pace": 100, "def_rank": 15, "net_rating": 0, "ft_rate": 0.25, "reb_rate": 50, "three_pct": 36, "home_win_pct": 0.5, "away_win_pct": 0.5, "division": ""})
     home_loc = TEAM_LOCATIONS.get(home_team, (0, 0))
@@ -257,61 +230,15 @@ def calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, aw
     three_score = (home.get('three_pct', 36) - away.get('three_pct', 36)) * 0.5
     home_court = 3.0
     
-    weighted_spread = (
-        home_court +
-        rest_score * weights['rest'] +
-        def_score * weights['defense'] +
-        injury_score * weights['injury'] +
-        pace_score * weights['pace'] +
-        net_score * weights['net_rating'] +
-        travel_score * weights['travel'] +
-        split_score * weights['splits'] +
-        h2h_score * weights['h2h'] +
-        altitude_score * weights['altitude'] +
-        ft_score * weights['ft'] +
-        reb_score * weights['reb'] +
-        three_score * weights['three']
-    )
-    
+    weighted_spread = home_court + rest_score + def_score + injury_score + pace_score + net_score + travel_score + split_score + h2h_score + altitude_score + ft_score + reb_score + three_score
     home_win_prob = max(5, min(95, 50 + weighted_spread * 2.5))
     edge = home_win_prob - kalshi_price
-    
-    if edge > 0:
-        ev = (home_win_prob / 100) * (100 - kalshi_price) - ((100 - home_win_prob) / 100) * kalshi_price
-    else:
-        ev = ((100 - home_win_prob) / 100) * kalshi_price - (home_win_prob / 100) * (100 - kalshi_price)
     
     return {
         'home_win_prob': round(home_win_prob, 1),
         'kalshi_price': kalshi_price,
         'edge': round(edge, 1),
-        'expected_spread': round(weighted_spread, 1),
-        'expected_value': round(ev, 2),
-        'factors': {
-            'rest': round(rest_score * weights['rest'], 2),
-            'defense': round(def_score * weights['defense'], 2),
-            'injury': round(injury_score * weights['injury'], 2),
-            'pace': round(pace_score * weights['pace'], 2),
-            'net_rating': round(net_score * weights['net_rating'], 2),
-            'travel': round(travel_score * weights['travel'], 2),
-            'splits': round(split_score * weights['splits'], 2),
-            'h2h': round(h2h_score * weights['h2h'], 2),
-            'altitude': round(altitude_score * weights['altitude'], 2),
-            'ft': round(ft_score * weights['ft'], 2),
-            'reb': round(reb_score * weights['reb'], 2),
-            'three': round(three_score * weights['three'], 2),
-            'home_court': home_court
-        },
-        'raw': {
-            'rest_diff': rest_diff,
-            'def_diff': round(away['def_rank'] - home['def_rank'], 1),
-            'injury_diff': round(away_inj - home_inj, 1),
-            'pace_diff': round(pace_diff, 1),
-            'net_diff': round(home['net_rating'] - away['net_rating'], 1),
-            'travel_miles': round(travel_miles, 0),
-            'is_division': home.get('division') == away.get('division'),
-            'is_denver': home_team == "Denver"
-        }
+        'expected_spread': round(weighted_spread, 1)
     }
 
 # ========== FETCH DATA ==========
@@ -323,18 +250,15 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v11.8")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v11.9")
 
 if yesterday_teams:
-    st.info(f"📅 **B2B Teams Today:** {', '.join(sorted(yesterday_teams)) if yesterday_teams else 'None'}")
+    st.info(f"📅 **B2B Teams Today:** {', '.join(sorted(yesterday_teams))}")
 
-# ========== 🔥 TOP PICKS - BEST ML EDGES ==========
+# ========== 🔥 TOP PICKS ==========
 st.subheader("🔥 TOP PICKS - BEST ML EDGES")
 
 if game_list:
-    default_weights = {'rest': 1.0, 'defense': 1.0, 'injury': 1.0, 'pace': 1.0, 'net_rating': 1.0, 
-                       'travel': 1.0, 'splits': 1.0, 'h2h': 1.0, 'altitude': 1.0, 'ft': 1.0, 'reb': 1.0, 'three': 1.0}
-    
     all_edges = []
     for game_key in game_list:
         parts = game_key.split("@")
@@ -349,43 +273,35 @@ if game_list:
         home_i, _ = get_injury_score(home_t, injuries)
         away_i, _ = get_injury_score(away_t, injuries)
         
-        # Use 50 as neutral Kalshi price to find raw edge
-        res = calc_12_factor_edge(home_t, away_t, home_r, away_r, home_i, away_i, 50, default_weights)
+        res = calc_12_factor_edge(home_t, away_t, home_r, away_r, home_i, away_i, 50)
         
-        edge_val = res['home_win_prob'] - 50  # How much model favors home
+        edge_val = res['home_win_prob'] - 50
         if edge_val > 5:
             pick_team = home_t
             pick_edge = edge_val
             pick_side = "HOME"
+            pick_prob = res['home_win_prob']
         elif edge_val < -5:
             pick_team = away_t
             pick_edge = abs(edge_val)
             pick_side = "AWAY"
+            pick_prob = 100 - res['home_win_prob']
         else:
-            pick_team = None
-            pick_edge = 0
-            pick_side = None
+            continue
         
-        if pick_team:
-            all_edges.append({
-                'game': game_key,
-                'pick_team': pick_team,
-                'pick_edge': pick_edge,
-                'pick_side': pick_side,
-                'home_win_prob': res['home_win_prob'],
-                'spread': res['expected_spread'],
-                'away_b2b': away_b2b,
-                'home_b2b': home_b2b
-            })
+        all_edges.append({
+            'game': game_key, 'pick_team': pick_team, 'pick_edge': pick_edge,
+            'pick_side': pick_side, 'pick_prob': pick_prob, 'spread': res['expected_spread'],
+            'away_b2b': away_b2b, 'home_b2b': home_b2b
+        })
     
-    # Sort by edge strength
     all_edges.sort(key=lambda x: x['pick_edge'], reverse=True)
     
     if all_edges:
         for pick in all_edges:
             conf = "HIGH" if pick['pick_edge'] > 10 else "MEDIUM"
             conf_color = "#00ff00" if conf == "HIGH" else "#ffff00"
-            edge_color = "#00ff00" if pick['pick_side'] == "HOME" else "#ff4444"  # Green=home, Red=away
+            edge_color = "#00ff00" if pick['pick_side'] == "HOME" else "#ff4444"
             
             b2b_note = ""
             if pick['away_b2b']:
@@ -393,17 +309,11 @@ if game_list:
             if pick['home_b2b']:
                 b2b_note += f" 🔴 {pick['game'].split('@')[1]} B2B"
             
-            # Show win prob for the PICKED team, not just home %
-            if pick['pick_side'] == "HOME":
-                pick_prob = pick['home_win_prob']
-            else:
-                pick_prob = 100 - pick['home_win_prob']
-            
             st.markdown(f"""
             <div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {edge_color};margin-bottom:10px'>
                 <span style='color:{edge_color};font-size:1.8em;font-weight:bold'>🎯 BUY {pick['pick_team']} ML</span>
                 <span style='color:{conf_color};font-size:1.1em;margin-left:15px'>{conf} (+{pick['pick_edge']:.0f}% edge)</span>
-                <br><span style='color:#aaa;font-size:0.9em'>{pick['game'].replace('@', ' @ ')} | {pick['pick_team']} {pick_prob:.0f}% to win ({pick['pick_side'].lower()}){b2b_note}</span>
+                <br><span style='color:#aaa;font-size:0.9em'>{pick['game'].replace('@', ' @ ')} | {pick['pick_team']} {pick['pick_prob']:.0f}% to win ({pick['pick_side'].lower()}){b2b_note}</span>
             </div>
             """, unsafe_allow_html=True)
     else:
@@ -413,29 +323,22 @@ else:
 
 st.divider()
 
-# ========== 1. ACTIVE POSITIONS ==========
+# ========== ACTIVE POSITIONS ==========
 st.subheader("📈 ACTIVE POSITIONS")
 
 if st.session_state.positions:
     for idx, pos in enumerate(st.session_state.positions):
         game_key = pos['game']
-        side = pos['side']
-        threshold = pos['threshold']
         g = games.get(game_key)
-        
         if g:
             total = g['total']
             mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
             is_final = g['status_type'] == "STATUS_FINAL"
             projected = round((total / mins) * 48) if mins > 0 else None
-            
-            if side == "NO":
-                cushion = (threshold - projected) if projected else 0
-            else:
-                cushion = (projected - threshold) if projected else 0
+            cushion = (pos['threshold'] - projected) if pos['side'] == "NO" and projected else ((projected - pos['threshold']) if projected else 0)
             
             if is_final:
-                won = (total < threshold) if side == "NO" else (total > threshold)
+                won = (total < pos['threshold']) if pos['side'] == "NO" else (total > pos['threshold'])
                 status = "✅ WON!" if won else "❌ LOST"
                 color = "#00ff00" if won else "#ff0000"
             elif projected:
@@ -451,177 +354,24 @@ if st.session_state.positions:
                 status, color = "⏳", "#888888"
             
             game_status = "FINAL" if is_final else f"Q{g['period']} {g['clock']}"
-            
             c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 2, 1])
-            c1.markdown(f"**{game_key.replace('@', ' @ ')}**<br><small>{game_status} | {total} pts</small>", unsafe_allow_html=True)
-            c2.markdown(f"**{side} {threshold}**")
+            c1.markdown(f"**{game_key.replace('@', ' @ ')}**<br><small>{game_status}</small>", unsafe_allow_html=True)
+            c2.markdown(f"**{pos['side']} {pos['threshold']}**")
             c3.markdown(f"Proj: **{projected if projected else '—'}**")
             c4.markdown(f"<span style='color:{color};font-size:1.2em'><b>{status}</b></span>", unsafe_allow_html=True)
             if c5.button("❌", key=f"del_{idx}"):
                 st.session_state.positions.pop(idx)
                 st.rerun()
     
-    total_cost = sum(p['price'] * p['contracts'] for p in st.session_state.positions) / 100
-    total_pot = sum((100 - p['price']) * p['contracts'] for p in st.session_state.positions) / 100
-    sc1, sc2 = st.columns([4, 1])
-    sc1.markdown(f"**💰 Risk: ${total_cost:.2f} | Potential: ${total_pot:.2f}**")
-    if sc2.button("🗑️ Clear All"):
+    if st.button("🗑️ Clear All Positions"):
         st.session_state.positions = []
         st.rerun()
 else:
-    st.info("No positions yet. Find edge below ⬇️")
+    st.info("No positions tracked")
 
 st.divider()
 
-# ========== 2. FATIGUE SCANNER ==========
-st.subheader("😴 FATIGUE SCANNER")
-
-if games:
-    fatigue_games = []
-    for game_key, g in games.items():
-        away = g['away_team']
-        home = g['home_team']
-        away_b2b = away in yesterday_teams
-        home_b2b = home in yesterday_teams
-        away_score = (2 if away_b2b else 0) + 1
-        home_score = 2 if home_b2b else 0
-        
-        fatigue_games.append({
-            "game": game_key, "away": away, "home": home,
-            "away_b2b": away_b2b, "home_b2b": home_b2b,
-            "away_score": away_score, "home_score": home_score,
-            "is_blowout_risk": away_score >= 3 and home_score == 0,
-            "is_both_tired": away_b2b and home_b2b,
-            "is_denver": home == "Denver"
-        })
-    
-    fatigue_games.sort(key=lambda x: (x['is_blowout_risk'], x['is_both_tired'], x['away_score']), reverse=True)
-    edge_games = [g for g in fatigue_games if g['is_blowout_risk'] or g['is_both_tired'] or g['is_denver'] or g['away_score'] >= 3]
-    
-    if edge_games:
-        for gf in edge_games:
-            st.markdown(f"### 🏀 {gf['away']} @ {gf['home']}")
-            if gf['is_blowout_risk']:
-                st.success(f"🔥 **BLOWOUT RISK** — Fatigued {gf['away']} @ Fresh {gf['home']}. **BUY {gf['home']} ML**")
-            elif gf['is_both_tired']:
-                st.info("🟢 **BOTH TIRED** — Strong Under spot")
-            if gf['is_denver']:
-                st.warning("🏔️ **ALTITUDE** — Denver home")
-            st.markdown("---")
-    else:
-        st.info("No fatigue edges today")
-else:
-    st.info("No games today")
-
-st.divider()
-
-# ========== 3. 12-FACTOR ANALYSIS (COLLAPSED) ==========
-with st.expander("🔬 DEEP DIVE - Analyze Any Game", expanded=False):
-    with st.expander("⚙️ Adjust Factor Weights", expanded=False):
-    wcol1, wcol2, wcol3 = st.columns(3)
-    with wcol1:
-        w_rest = st.slider("🛏️ Rest", 0.0, 2.0, 1.0, 0.1)
-        w_def = st.slider("🛡️ Defense", 0.0, 2.0, 1.0, 0.1)
-        w_inj = st.slider("🏥 Injuries", 0.0, 2.0, 1.0, 0.1)
-        w_pace = st.slider("⚡ Pace", 0.0, 2.0, 1.0, 0.1)
-    with wcol2:
-        w_net = st.slider("📊 Net Rating", 0.0, 2.0, 1.0, 0.1)
-        w_travel = st.slider("✈️ Travel", 0.0, 2.0, 1.0, 0.1)
-        w_splits = st.slider("🏠 Splits", 0.0, 2.0, 1.0, 0.1)
-        w_h2h = st.slider("⚔️ Division", 0.0, 2.0, 1.0, 0.1)
-    with wcol3:
-        w_altitude = st.slider("🏔️ Altitude", 0.0, 2.0, 1.0, 0.1)
-        w_ft = st.slider("🎯 FT Rate", 0.0, 2.0, 1.0, 0.1)
-        w_reb = st.slider("🏀 Rebounding", 0.0, 2.0, 1.0, 0.1)
-        w_three = st.slider("🎯 3PT%", 0.0, 2.0, 1.0, 0.1)
-
-weights = {
-    'rest': w_rest, 'defense': w_def, 'injury': w_inj, 'pace': w_pace,
-    'net_rating': w_net, 'travel': w_travel, 'splits': w_splits, 'h2h': w_h2h,
-    'altitude': w_altitude, 'ft': w_ft, 'reb': w_reb, 'three': w_three
-}
-
-if game_list:
-    fc1, fc2 = st.columns([3, 1])
-    analyze_game = fc1.selectbox("Select Game", game_list, format_func=lambda x: x.replace("@", " @ "), key="analyze_game")
-    kalshi_price = fc2.number_input("Kalshi Price ¢", 1, 99, 60, key="kalshi_price")
-    
-    if analyze_game:
-        parts = analyze_game.split("@")
-        away_team = parts[0]
-        home_team = parts[1]
-        
-        away_b2b = away_team in yesterday_teams
-        home_b2b = home_team in yesterday_teams
-        away_rest = 0 if away_b2b else 1
-        home_rest = 0 if home_b2b else 1
-        
-        home_inj, home_stars = get_injury_score(home_team, injuries)
-        away_inj, away_stars = get_injury_score(away_team, injuries)
-        
-        result = calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, away_inj, kalshi_price, weights)
-        
-        st.markdown(f"## 🏀 {away_team} @ {home_team}")
-        
-        if away_b2b or home_b2b:
-            b2b_msg = []
-            if away_b2b:
-                b2b_msg.append(f"🔴 {away_team} B2B")
-            if home_b2b:
-                b2b_msg.append(f"🔴 {home_team} B2B")
-            st.warning(" | ".join(b2b_msg))
-        
-        # Just show the metrics - no big recommendation box (that's in TOP PICKS)
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Model Win Prob", f"{result['home_win_prob']}% home")
-        col2.metric("Kalshi Price", f"{result['kalshi_price']}¢")
-        col3.metric("Edge", f"{result['edge']:+.1f}%")
-        
-        col4, col5 = st.columns(2)
-        col4.metric("Expected Spread", f"{result['expected_spread']:+.1f}")
-        col5.metric("Expected Value", f"{result['expected_value']:+.2f}¢")
-        
-        with st.expander("📊 FACTOR BREAKDOWN", expanded=True):
-            factors = result['factors']
-            raw = result['raw']
-            bcol1, bcol2 = st.columns(2)
-            with bcol1:
-                st.markdown(f"• 🛏️ **Rest:** {factors['rest']:+.2f}")
-                st.markdown(f"• 🛡️ **Defense:** {factors['defense']:+.2f}")
-                st.markdown(f"• 🏥 **Injuries:** {factors['injury']:+.2f}")
-                st.markdown(f"• ⚡ **Pace:** {factors['pace']:+.2f}")
-                st.markdown(f"• 📊 **Net Rating:** {factors['net_rating']:+.2f}")
-                st.markdown(f"• ✈️ **Travel:** {factors['travel']:+.2f}")
-            with bcol2:
-                st.markdown(f"• 🏠 **Splits:** {factors['splits']:+.2f}")
-                st.markdown(f"• ⚔️ **Division:** {factors['h2h']:+.2f}")
-                st.markdown(f"• 🏔️ **Altitude:** {factors['altitude']:+.2f}")
-                st.markdown(f"• 🎯 **FT Rate:** {factors['ft']:+.2f}")
-                st.markdown(f"• 🏀 **Rebounding:** {factors['reb']:+.2f}")
-                st.markdown(f"• 🎯 **3PT%:** {factors['three']:+.2f}")
-            st.markdown(f"• 🏠 **Home Court:** +{factors['home_court']:.1f}")
-            st.markdown(f"**TOTAL: {result['expected_spread']:+.1f}**")
-        
-        st.markdown("---")
-        st.markdown("**Add Total Position:**")
-        qc1, qc2, qc3, qc4 = st.columns([1, 2, 1, 1])
-        q_side = qc1.selectbox("Side", ["NO", "YES"], key="q_side")
-        q_threshold = qc2.number_input("Threshold", 200.0, 280.0, 235.5, 0.5, key="q_thresh")
-        q_price = qc3.number_input("Price ¢", 1, 99, 75, key="q_price")
-        q_contracts = qc4.number_input("Contracts", 1, 1000, 100, key="q_contracts")
-        
-        if st.button(f"➕ ADD {q_side} {q_threshold} TO TRACKER", type="primary", use_container_width=True):
-            st.session_state.positions.append({
-                "game": analyze_game, "side": q_side, "threshold": q_threshold,
-                "price": q_price, "contracts": q_contracts
-            })
-            st.rerun()
-else:
-    st.warning("No games available")
-
-st.divider()
-
-# ========== 4. CUSHION SCANNER ==========
+# ========== CUSHION SCANNER ==========
 st.subheader("🎯 CUSHION SCANNER")
 
 cs1, cs2 = st.columns([1, 1])
@@ -665,7 +415,7 @@ else:
 
 st.divider()
 
-# ========== 5. PACE SCANNER ==========
+# ========== PACE SCANNER ==========
 st.subheader("🔥 PACE SCANNER")
 
 pace_data = []
@@ -696,7 +446,7 @@ else:
 
 st.divider()
 
-# ========== 6. ALL GAMES ==========
+# ========== ALL GAMES ==========
 st.subheader("📺 ALL GAMES")
 if games:
     cols = st.columns(4)
@@ -710,4 +460,4 @@ else:
     st.info("No games today")
 
 st.divider()
-st.caption("⚠️ For entertainment only. Not financial advice. You may lose money.")
+st.caption("⚠️ For entertainment only. Not financial advice.")
