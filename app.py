@@ -594,11 +594,35 @@ if cush_data:
                     pace_score = -1 if cush_side == "NO" else 2
                     pace_label = "🔴 SHOT"
             
+            # 3PT% score (both teams)
+            home_stats = TEAM_STATS.get(home_team, {})
+            away_stats = TEAM_STATS.get(away_team, {})
+            home_3pt = home_stats.get('three_pct', 36)
+            away_3pt = away_stats.get('three_pct', 36)
+            avg_3pt = (home_3pt + away_3pt) / 2
+            
+            three_score = 0
+            if avg_3pt < 35.5:
+                three_score = 0.5 if cush_side == "NO" else -0.5
+            elif avg_3pt > 37.5:
+                three_score = -0.5 if cush_side == "NO" else 0.5
+            
+            # FT Rate score (both teams)
+            home_ft = home_stats.get('ft_rate', 0.25)
+            away_ft = away_stats.get('ft_rate', 0.25)
+            avg_ft = (home_ft + away_ft) / 2
+            
+            ft_score = 0
+            if avg_ft < 0.24:
+                ft_score = 0.5 if cush_side == "NO" else -0.5
+            elif avg_ft > 0.27:
+                ft_score = -0.5 if cush_side == "NO" else 0.5
+            
             # Use middle threshold (235.5) for cushion score
             mid_cushion = (235.5 - cd['proj']) if cush_side == "NO" else (cd['proj'] - 235.5)
             cushion_score = 3 if mid_cushion >= 20 else (2 if mid_cushion >= 10 else (1 if mid_cushion >= 5 else 0))
             
-            total_score = max(0, min(10, fatigue_score + pace_score + cushion_score))
+            total_score = max(0, min(10, fatigue_score + pace_score + cushion_score + three_score + ft_score))
             cd['edge_score'] = total_score
             cd['pace_val'] = pace_val
             cd['pace_label'] = pace_label
