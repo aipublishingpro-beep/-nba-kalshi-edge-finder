@@ -415,7 +415,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v14.7")
+    st.caption("v14.8")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -1052,7 +1052,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.7")
+st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.8")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
@@ -1185,10 +1185,10 @@ if game_list:
     if strong_no:
         st.markdown("### 🟢 STRONG NO (Under)")
         for p in strong_no:
-            col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
+            col1, col2, col3, col4 = st.columns([2, 2, 5, 2])
             col1.markdown(f"**{p['away']}** @ **{p['home']}**")
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"Proj: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00ff00;font-weight:bold'>BUY NO @ {p['rec_threshold']}+</span>", unsafe_allow_html=True)
+            col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00ff00;font-weight:bold'>SAFE: NO @ {p['rec_threshold']}+</span>", unsafe_allow_html=True)
             
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🚀 BUY NO", kalshi_url)
@@ -1197,10 +1197,10 @@ if game_list:
     if strong_yes:
         st.markdown("### 🟢 STRONG YES (Over)")
         for p in strong_yes:
-            col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
+            col1, col2, col3, col4 = st.columns([2, 2, 5, 2])
             col1.markdown(f"**{p['away']}** @ **{p['home']}**")
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"Proj: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00ff00;font-weight:bold'>BUY YES @ {p['rec_threshold']}-</span>", unsafe_allow_html=True)
+            col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00ff00;font-weight:bold'>SAFE: YES @ {p['rec_threshold']}-</span>", unsafe_allow_html=True)
             
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🚀 BUY YES", kalshi_url)
@@ -1209,10 +1209,10 @@ if game_list:
     if reg_no:
         st.markdown("### 🔵 NO (Under)")
         for p in reg_no:
-            col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
+            col1, col2, col3, col4 = st.columns([2, 2, 5, 2])
             col1.markdown(f"**{p['away']}** @ **{p['home']}**")
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"Proj: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00aaff;font-weight:bold'>BUY NO @ {p['rec_threshold']}+</span>", unsafe_allow_html=True)
+            col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00aaff;font-weight:bold'>SAFE: NO @ {p['rec_threshold']}+</span>", unsafe_allow_html=True)
             
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🔗 BUY NO", kalshi_url)
@@ -1221,10 +1221,10 @@ if game_list:
     if reg_yes:
         st.markdown("### 🔵 YES (Over)")
         for p in reg_yes:
-            col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
+            col1, col2, col3, col4 = st.columns([2, 2, 5, 2])
             col1.markdown(f"**{p['away']}** @ **{p['home']}**")
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"Proj: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00aaff;font-weight:bold'>BUY YES @ {p['rec_threshold']}-</span>", unsafe_allow_html=True)
+            col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00aaff;font-weight:bold'>SAFE: YES @ {p['rec_threshold']}-</span>", unsafe_allow_html=True)
             
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🔗 BUY YES", kalshi_url)
