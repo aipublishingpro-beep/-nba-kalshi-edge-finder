@@ -16,22 +16,41 @@ except ImportError:
 
 st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
 
-# ========== AUTO-REFRESH EVERY 30 SECONDS ==========
-st.markdown("""
-<meta http-equiv="refresh" content="30">
-<style>
-/* Make all link buttons green */
-.stLinkButton > a {
-    background-color: #00aa00 !important;
-    border-color: #00aa00 !important;
-    color: white !important;
-}
-.stLinkButton > a:hover {
-    background-color: #00cc00 !important;
-    border-color: #00cc00 !important;
-}
-</style>
-""", unsafe_allow_html=True)
+# ========== AUTO-REFRESH (Only after 7PM ET) ==========
+current_hour = datetime.now(pytz.timezone('US/Eastern')).hour
+if current_hour >= 19:  # 7PM ET or later
+    st.markdown("""
+    <meta http-equiv="refresh" content="30">
+    <style>
+    /* Make all link buttons green */
+    .stLinkButton > a {
+        background-color: #00aa00 !important;
+        border-color: #00aa00 !important;
+        color: white !important;
+    }
+    .stLinkButton > a:hover {
+        background-color: #00cc00 !important;
+        border-color: #00cc00 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    auto_status = "🔄 Auto-refresh ON (30s)"
+else:
+    st.markdown("""
+    <style>
+    /* Make all link buttons green */
+    .stLinkButton > a {
+        background-color: #00aa00 !important;
+        border-color: #00aa00 !important;
+        color: white !important;
+    }
+    .stLinkButton > a:hover {
+        background-color: #00cc00 !important;
+        border-color: #00cc00 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    auto_status = "⏸️ Auto-refresh OFF (starts 7PM ET)"
 
 # ============================================================
 # KALSHI TRADING API
@@ -343,7 +362,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v13.7")
+    st.caption("v13.8")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -924,7 +943,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"🔄 Auto-refresh 30s | Last update: {now.strftime('%I:%M:%S %p ET')} | v13.7")
+st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v13.8")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
