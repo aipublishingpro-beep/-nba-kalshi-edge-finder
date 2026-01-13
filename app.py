@@ -479,6 +479,127 @@ with st.expander("🔬 12-FACTOR DEEP DIVE - See why each TOP PICK has edge"):
 
 st.divider()
 
+# ========== ⚡ EDGE SCANNER (10-POINT SYSTEM) ==========
+st.subheader("⚡ EDGE SCANNER — NO/YES Totals (0-10 Score)")
+st.caption("Cushion + Fatigue + Pace = One number decision")
+
+es1, es2 = st.columns([3, 1])
+edge_threshold = es1.number_input("Threshold", 200.0, 280.0, 235.5, 0.5, key="edge_thresh")
+edge_side = es2.selectbox("Side", ["NO", "YES"], key="edge_side")
+
+if games:
+    edge_results = []
+    for gk, g in games.items():
+        away_team = g['away_team']
+        home_team = g['home_team']
+        
+        mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
+        proj = round((g['total'] / mins) * 48) if mins > 0 else 0
+        
+        # Calculate cushion
+        if edge_side == "NO":
+            cushion = edge_threshold - proj
+        else:
+            cushion = proj - edge_threshold
+        
+        # === FATIGUE SCORE (max +4, min -2) ===
+        away_b2b = away_team in yesterday_teams
+        home_b2b = home_team in yesterday_teams
+        
+        fatigue_score = 0
+        fatigue_notes = []
+        
+        if away_b2b:
+            fatigue_score += 2
+            fatigue_notes.append(f"{away_team} B2B +2")
+        if home_b2b and away_b2b:
+            fatigue_score += 1
+            fatigue_notes.append("Both tired +1")
+        if home_team == "Denver":
+            fatigue_score += 1
+            fatigue_notes.append("Denver altitude +1")
+        # Blowout risk penalty for NO (if fresh home vs tired away, totals can inflate)
+        if away_b2b and not home_b2b and edge_side == "NO":
+            fatigue_score -= 2
+            fatigue_notes.append("Blowout risk -2")
+        
+        # === PACE SCORE (max +2, min -1) ===
+        pace_score = 0
+        pace_note = ""
+        if mins >= 6:
+            pace = g['total'] / mins
+            if pace < 4.5:
+                pace_score = 2 if edge_side == "NO" else -1
+                pace_note = f"SLOW {pace:.2f} {'🟢+2' if edge_side == 'NO' else '🔴-1'}"
+            elif pace < 4.8:
+                pace_score = 1 if edge_side == "NO" else 0
+                pace_note = f"AVG {pace:.2f} {'🟡+1' if edge_side == 'NO' else '⚪0'}"
+            elif pace < 5.2:
+                pace_score = 0 if edge_side == "NO" else 1
+                pace_note = f"FAST {pace:.2f} {'⚪0' if edge_side == 'NO' else '🟡+1'}"
+            else:
+                pace_score = -1 if edge_side == "NO" else 2
+                pace_note = f"SHOOTOUT {pace:.2f} {'🔴-1' if edge_side == 'NO' else '🟢+2'}"
+        else:
+            pace_note = "Waiting for data..."
+        
+        # === CUSHION SCORE (max +3) ===
+        cushion_score = 0
+        if cushion >= 20:
+            cushion_score = 3
+        elif cushion >= 10:
+            cushion_score = 2
+        elif cushion >= 5:
+            cushion_score = 1
+        
+        # === TOTAL EDGE SCORE ===
+        total_score = max(0, min(10, fatigue_score + pace_score + cushion_score))
+        
+        edge_results.append({
+            'game': gk,
+            'proj': proj,
+            'cushion': cushion,
+            'fatigue_score': fatigue_score,
+            'fatigue_notes': fatigue_notes,
+            'pace_score': pace_score,
+            'pace_note': pace_note,
+            'cushion_score': cushion_score,
+            'total_score': total_score,
+            'mins': mins
+        })
+    
+    # Sort by total score descending
+    edge_results.sort(key=lambda x: x['total_score'], reverse=True)
+    
+    for er in edge_results:
+        if er['total_score'] >= 8:
+            grade = "🟢 STRONG"
+            color = "#00ff00"
+        elif er['total_score'] >= 6:
+            grade = "🟢 GOOD"
+            color = "#00ff00"
+        elif er['total_score'] >= 4:
+            grade = "🟡 LEAN"
+            color = "#ffff00"
+        else:
+            grade = "🔴 SKIP"
+            color = "#ff0000"
+        
+        st.markdown(f"""
+        <div style='background:#1a1a2e;padding:12px;border-radius:8px;border-left:4px solid {color};margin-bottom:8px'>
+            <span style='color:{color};font-size:1.4em;font-weight:bold'>{er['total_score']}/10 {grade} {edge_side}</span>
+            <span style='color:#aaa;margin-left:15px'>{er['game'].replace('@', ' @ ')}</span>
+            <br><span style='color:#888;font-size:0.9em'>
+            Proj: {er['proj']} | Cushion: {er['cushion']:+.0f} (+{er['cushion_score']}) | 
+            Fatigue: +{er['fatigue_score']} | Pace: {er['pace_note']}
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+else:
+    st.info("No games today")
+
+st.divider()
+
 # ========== ACTIVE POSITIONS ==========
 st.subheader("📈 ACTIVE POSITIONS")
 
