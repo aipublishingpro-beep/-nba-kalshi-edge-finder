@@ -98,7 +98,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v11.9")
+    st.caption("v12.0")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -342,7 +342,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v11.9")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.0")
 
 if yesterday_teams:
     st.info(f"📅 **B2B Teams Today:** {', '.join(sorted(yesterday_teams))}")
@@ -360,7 +360,6 @@ if game_list:
         away_b2b = away_t in yesterday_teams
         home_b2b = home_t in yesterday_teams
         
-        # ONLY show if away is tired AND home is fresh
         if away_b2b and not home_b2b:
             away_r = 0
             home_r = 1
@@ -378,7 +377,6 @@ if game_list:
                 'spread': res['expected_spread']
             })
     
-    # Sort by win probability
     top_picks.sort(key=lambda x: x['home_win_prob'], reverse=True)
     
     if top_picks:
@@ -400,7 +398,6 @@ st.divider()
 # ========== 12-FACTOR DEEP DIVE (COLLAPSED) ==========
 with st.expander("🔬 12-FACTOR DEEP DIVE - See why each TOP PICK has edge"):
     if game_list:
-        # Only show BLOWOUT RISK games (away B2B, home fresh)
         blowout_games = []
         for game_key in game_list:
             parts = game_key.split("@")
@@ -410,7 +407,6 @@ with st.expander("🔬 12-FACTOR DEEP DIVE - See why each TOP PICK has edge"):
             away_b2b = away_team in yesterday_teams
             home_b2b = home_team in yesterday_teams
             
-            # ONLY blowout risk: away tired, home fresh
             if away_b2b and not home_b2b:
                 blowout_games.append(game_key)
         
@@ -437,7 +433,6 @@ with st.expander("🔬 12-FACTOR DEEP DIVE - See why each TOP PICK has edge"):
                 st.markdown(f"### {away_team} @ {home_team} → 🟢 BUY {home_team} ML")
                 st.success(f"🔥 BLOWOUT RISK: {away_team} is B2B (tired) @ {home_team} (fresh)")
                 
-                # Calculate individual factors
                 rest_diff = home_rest - away_rest
                 rest_score = max(-6, min(6, rest_diff * 2))
                 def_score = (away.get('def_rank', 15) - home.get('def_rank', 15)) * 0.15
@@ -479,6 +474,43 @@ with st.expander("🔬 12-FACTOR DEEP DIVE - See why each TOP PICK has edge"):
 
 st.divider()
 
+# ========== ADD NEW POSITION ==========
+st.subheader("➕ ADD NEW POSITION")
+
+with st.form("add_position_form"):
+    p1, p2 = st.columns(2)
+    
+    game_options = ["Select a game..."] + [gk.replace("@", " @ ") for gk in game_list]
+    selected_game = p1.selectbox("🏀 Game", game_options)
+    
+    side = p2.selectbox("📊 Side", ["NO (Under)", "YES (Over)"])
+    
+    p3, p4, p5 = st.columns(3)
+    
+    threshold = p3.number_input("🎯 Threshold", min_value=180.0, max_value=280.0, value=235.5, step=0.5)
+    
+    price_paid = p4.number_input("💵 Price Paid (¢)", min_value=1, max_value=99, value=50, step=1)
+    
+    contracts = p5.number_input("📄 Contracts", min_value=1, max_value=1000, value=10, step=1)
+    
+    submitted = st.form_submit_button("✅ ADD POSITION", use_container_width=True)
+    
+    if submitted and selected_game != "Select a game...":
+        game_key = selected_game.replace(" @ ", "@")
+        side_clean = "NO" if "NO" in side else "YES"
+        
+        st.session_state.positions.append({
+            'game': game_key,
+            'side': side_clean,
+            'threshold': threshold,
+            'price': price_paid,
+            'contracts': contracts,
+            'cost': round(price_paid * contracts / 100, 2)
+        })
+        st.rerun()
+
+st.divider()
+
 # ========== ACTIVE POSITIONS ==========
 st.subheader("📈 ACTIVE POSITIONS")
 
@@ -486,6 +518,11 @@ if st.session_state.positions:
     for idx, pos in enumerate(st.session_state.positions):
         game_key = pos['game']
         g = games.get(game_key)
+        
+        price = pos.get('price', 50)
+        contracts = pos.get('contracts', 1)
+        cost = pos.get('cost', round(price * contracts / 100, 2))
+        
         if g:
             total = g['total']
             mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
@@ -493,37 +530,86 @@ if st.session_state.positions:
             projected = round((total / mins) * 48) if mins > 0 else None
             cushion = (pos['threshold'] - projected) if pos['side'] == "NO" and projected else ((projected - pos['threshold']) if projected else 0)
             
+            potential_win = round((100 - price) * contracts / 100, 2)
+            potential_loss = cost
+            
             if is_final:
                 won = (total < pos['threshold']) if pos['side'] == "NO" else (total > pos['threshold'])
-                status = "✅ WON!" if won else "❌ LOST"
-                color = "#00ff00" if won else "#ff0000"
-            elif projected:
-                if cushion > 10:
-                    status, color = f"🟢 +{cushion:.0f}", "#00ff00"
-                elif cushion > 3:
-                    status, color = f"🟡 +{cushion:.0f}", "#ffff00"
-                elif cushion > -3:
-                    status, color = f"🟠 {cushion:+.0f}", "#ff8800"
+                if won:
+                    status_label = "✅ WON!"
+                    status_color = "#00ff00"
+                    pnl_display = f"+${potential_win:.2f}"
+                    pnl_color = "#00ff00"
                 else:
-                    status, color = f"🔴 {cushion:+.0f}", "#ff0000"
+                    status_label = "❌ LOST"
+                    status_color = "#ff0000"
+                    pnl_display = f"-${potential_loss:.2f}"
+                    pnl_color = "#ff0000"
+            elif projected:
+                if cushion >= 15:
+                    status_label = "🟢 VERY SAFE"
+                    status_color = "#00ff00"
+                elif cushion >= 8:
+                    status_label = "🟢 LOOKING GOOD"
+                    status_color = "#00ff00"
+                elif cushion >= 3:
+                    status_label = "🟡 ON TRACK"
+                    status_color = "#ffff00"
+                elif cushion >= -3:
+                    status_label = "🟠 TIGHT"
+                    status_color = "#ff8800"
+                else:
+                    status_label = "🔴 DANGER"
+                    status_color = "#ff0000"
+                pnl_display = f"Win: +${potential_win:.2f}"
+                pnl_color = "#888888"
             else:
-                status, color = "⏳", "#888888"
+                status_label = "⏳ WAITING"
+                status_color = "#888888"
+                pnl_display = f"Win: +${potential_win:.2f}"
+                pnl_color = "#888888"
             
             game_status = "FINAL" if is_final else f"Q{g['period']} {g['clock']}"
-            c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 2, 1])
-            c1.markdown(f"**{game_key.replace('@', ' @ ')}**<br><small>{game_status}</small>", unsafe_allow_html=True)
-            c2.markdown(f"**{pos['side']} {pos['threshold']}**")
-            c3.markdown(f"Proj: **{projected if projected else '—'}**")
-            c4.markdown(f"<span style='color:{color};font-size:1.2em'><b>{status}</b></span>", unsafe_allow_html=True)
-            if c5.button("❌", key=f"del_{idx}"):
+            
+            st.markdown(f"""
+            <div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'>
+                <div style='display:flex;justify-content:space-between;align-items:center'>
+                    <div>
+                        <span style='color:#fff;font-size:1.2em;font-weight:bold'>{game_key.replace('@', ' @ ')}</span>
+                        <span style='color:#888;margin-left:10px'>{game_status}</span>
+                    </div>
+                    <span style='color:{status_color};font-size:1.3em;font-weight:bold'>{status_label}</span>
+                </div>
+                <div style='margin-top:10px;display:flex;gap:30px'>
+                    <span style='color:#aaa'>📊 <b style="color:#fff">{pos['side']} {pos['threshold']}</b></span>
+                    <span style='color:#aaa'>💵 <b style="color:#fff">{contracts}x @ {price}¢</b> (${cost:.2f})</span>
+                    <span style='color:#aaa'>📈 Proj: <b style="color:#fff">{projected if projected else '—'}</b></span>
+                    <span style='color:#aaa'>🎯 Cushion: <b style="color:{status_color}">{cushion:+.0f}</b></span>
+                    <span style='color:{pnl_color}'>{pnl_display}</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            if st.button("🗑️ Remove", key=f"del_{idx}"):
+                st.session_state.positions.pop(idx)
+                st.rerun()
+        else:
+            st.markdown(f"""
+            <div style='background:#1a1a2e;padding:15px;border-radius:10px;border:1px solid #444;margin-bottom:10px'>
+                <span style='color:#888'>{game_key.replace('@', ' @ ')} — {pos['side']} {pos['threshold']} — {contracts}x @ {price}¢</span>
+                <span style='color:#666;margin-left:15px'>⏳ Game not started</span>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("🗑️ Remove", key=f"del_{idx}"):
                 st.session_state.positions.pop(idx)
                 st.rerun()
     
-    if st.button("🗑️ Clear All Positions"):
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🗑️ Clear All Positions", use_container_width=True):
         st.session_state.positions = []
         st.rerun()
 else:
-    st.info("No positions tracked")
+    st.info("No positions tracked — use the form above to add your first position")
 
 st.divider()
 
@@ -544,7 +630,6 @@ for gk, g in games.items():
         cush_data.append({"game": gk, "proj": proj})
 
 if cush_data:
-    # Only show games that have at least one threshold with +10 or more cushion
     good_games = []
     for cd in cush_data:
         has_edge = False
@@ -554,7 +639,6 @@ if cush_data:
                 has_edge = True
                 break
         if has_edge:
-            # Calculate 10-point edge score for this game
             gk = cd['game']
             g = games.get(gk, {})
             away_team = g.get('away_team', '')
@@ -563,7 +647,6 @@ if cush_data:
             away_b2b = away_team in yesterday_teams
             home_b2b = home_team in yesterday_teams
             
-            # Fatigue score
             fatigue_score = 0
             if away_b2b:
                 fatigue_score += 2
@@ -574,7 +657,6 @@ if cush_data:
             if away_b2b and not home_b2b and cush_side == "NO":
                 fatigue_score -= 2
             
-            # Pace score
             mins = get_minutes_played(g.get('period', 0), g.get('clock', ''), g.get('status_type', ''))
             pace_score = 0
             pace_val = 0
@@ -594,7 +676,6 @@ if cush_data:
                     pace_score = -1 if cush_side == "NO" else 2
                     pace_label = "🔴 SHOT"
             
-            # Use middle threshold (235.5) for cushion score
             mid_cushion = (235.5 - cd['proj']) if cush_side == "NO" else (cd['proj'] - 235.5)
             cushion_score = 3 if mid_cushion >= 20 else (2 if mid_cushion >= 10 else (1 if mid_cushion >= 5 else 0))
             
@@ -627,13 +708,11 @@ if cush_data:
                 else:
                     rcols[i+2].markdown(f"<span style='color:#666'>—</span>", unsafe_allow_html=True)
             
-            # Show pace
             if cd['pace_label']:
                 rcols[-2].markdown(f"<span style='font-size:0.85em'>{cd['pace_label']}<br>{cd['pace_val']:.1f}/m</span>", unsafe_allow_html=True)
             else:
                 rcols[-2].markdown("—")
             
-            # Show edge score
             score = cd['edge_score']
             if score >= 8:
                 rcols[-1].markdown(f"<span style='color:#00ff00;font-weight:bold'>**{score}/10** 🟢</span>", unsafe_allow_html=True)
