@@ -286,7 +286,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v12.7")
+    st.caption("v12.8")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -630,16 +630,21 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     # 7. HOME/AWAY SPLITS (0-1)
     home_hw = home.get('home_win_pct', 0.5)
     away_aw = away.get('away_win_pct', 0.5)
+    
+    # Always show home record for home team
+    reasons_home.append(f"🏠 {int(home_hw*100)}% home")
+    
     if home_hw > 0.65:
         score_home += 0.8
-        reasons_home.append(f"🏠 {int(home_hw*100)}% home")
     elif home_hw > 0.55:
         score_home += 0.5
+    
     if away_aw < 0.35:
         score_home += 0.5
         reasons_home.append(f"📉 Opp {int(away_aw*100)}% road")
     elif away_aw < 0.45:
         score_home += 0.3
+        reasons_home.append(f"📉 Opp {int(away_aw*100)}% road")
     
     # 8. DIVISION RIVALRY (0-1) - Tighter games, home edge
     if home.get('division') == away.get('division') and home.get('division'):
@@ -706,7 +711,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.7")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.8")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
