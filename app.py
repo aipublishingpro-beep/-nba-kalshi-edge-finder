@@ -5,28 +5,8 @@ import pytz
 
 st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
 
-# ========== INITIALIZE SESSION STATE ==========
 if "positions" not in st.session_state:
     st.session_state.positions = []
-
-# ========== SIDEBAR ==========
-with st.sidebar:
-    st.header("📖 LEGEND")
-    st.markdown("""
-    **Edge Score:**  
-    🟢 8+ STRONG | 🟢 6-7 GOOD  
-    🟡 4-5 LEAN | 🔴 0-3 SKIP
-    
-    **Cushion (Size):**  
-    🟢 +20 BIG | 🟡 +10-19 MED  
-    🟠 +5-9 SMALL | 🔴 <5 SKIP
-    
-    **Pace:**  
-    🟢 <4.5 SLOW | 🟡 4.5-4.8 AVG  
-    🟠 4.8-5.2 FAST | 🔴 >5.2 SHOOTOUT
-    """)
-    st.divider()
-st.caption("v10.34")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -118,17 +98,14 @@ def get_minutes_played(period, clock, status_type):
     except:
         return (period - 1) * 12 if period <= 4 else 48 + (period - 5) * 5
 
-# Fetch data
 games = fetch_espn_scores()
 game_list = sorted(list(games.keys()))
 yesterday_teams = fetch_yesterday_teams()
 now = datetime.now(pytz.timezone('US/Eastern'))
 
-# ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')}")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v10.35")
 
-# ========== ACTIVE POSITIONS (TOP - always visible) ==========
 st.subheader("📈 ACTIVE POSITIONS")
 
 if st.session_state.positions:
@@ -136,9 +113,6 @@ if st.session_state.positions:
         game_key = pos['game']
         side = pos['side']
         threshold = pos['threshold']
-        price = pos['price']
-        contracts = pos['contracts']
-        
         g = games.get(game_key)
         
         if g:
@@ -166,7 +140,7 @@ if st.session_state.positions:
                 else:
                     status, color = f"🔴 {cushion:+.0f}", "#ff0000"
             else:
-                status, color = "⏳ WAITING", "#888888"
+                status, color = "⏳", "#888888"
             
             game_status = "FINAL" if is_final else f"Q{g['period']} {g['clock']}"
             
@@ -177,13 +151,13 @@ if st.session_state.positions:
             c4.markdown(f"<span style='color:{color};font-size:1.2em'><b>{status}</b></span>", unsafe_allow_html=True)
             if c5.button("❌", key=f"del_{idx}"):
                 st.session_state.positions.pop(idx)
-                st.rerun()
+                st.experimental_rerun()
         else:
             c1, c2 = st.columns([5, 1])
             c1.warning(f"Game not found: {game_key}")
             if c2.button("❌", key=f"del_m_{idx}"):
                 st.session_state.positions.pop(idx)
-                st.rerun()
+                st.experimental_rerun()
     
     total_cost = sum(p['price'] * p['contracts'] for p in st.session_state.positions) / 100
     total_pot = sum((100 - p['price']) * p['contracts'] for p in st.session_state.positions) / 100
@@ -191,31 +165,23 @@ if st.session_state.positions:
     sc1.markdown(f"**💰 Risk: ${total_cost:.2f} | Potential: ${total_pot:.2f}**")
     if sc2.button("🗑️ Clear All"):
         st.session_state.positions = []
-        st.rerun()
+        st.experimental_rerun()
 else:
-    st.info("No positions yet. Add one below ⬇️")
+    st.info("No positions yet. Add below ⬇️")
 
 st.divider()
 
-# ========== ADD POSITION ==========
 st.subheader("➕ ADD POSITION")
 
 if game_list:
     ac1, ac2, ac3, ac4, ac5 = st.columns([3, 1, 1, 1, 1])
-    with ac1:
-        add_game = st.selectbox("Game", game_list, format_func=lambda x: x.replace("@", " @ "), key="add_game")
-    with ac2:
-        add_side = st.selectbox("Side", ["NO", "YES"], key="add_side")
-    with ac3:
-        add_threshold = st.number_input("Line", 200.0, 280.0, 235.5, 0.5, key="add_threshold")
-    with ac4:
-        add_price = st.number_input("Price ¢", 1, 99, 85, key="add_price")
-    with ac5:
-        add_contracts = st.number_input("Contracts", 1, 1000, 100, key="add_contracts")
+    add_game = ac1.selectbox("Game", game_list, format_func=lambda x: x.replace("@", " @ "), key="add_game")
+    add_side = ac2.selectbox("Side", ["NO", "YES"], key="add_side")
+    add_threshold = ac3.number_input("Line", 200.0, 280.0, 235.5, 0.5, key="add_threshold")
+    add_price = ac4.number_input("Price ¢", 1, 99, 85, key="add_price")
+    add_contracts = ac5.number_input("Contracts", 1, 1000, 100, key="add_contracts")
     
-    add_btn = st.button("➕ ADD TO TRACKER", type="primary", use_container_width=True)
-    
-    if add_btn:
+    if st.button("➕ ADD TO TRACKER", type="primary", use_container_width=True):
         st.session_state.positions.append({
             "game": add_game,
             "side": add_side,
@@ -229,14 +195,11 @@ else:
 
 st.divider()
 
-# ========== CUSHION SCANNER ==========
 st.subheader("🎯 CUSHION SCANNER")
 
 cs1, cs2 = st.columns([1, 1])
-with cs1:
-    cush_min = st.selectbox("Min minutes", [6, 9, 12, 18, 24], index=1, format_func=lambda x: f"{x} min", key="cush_min")
-with cs2:
-    cush_side = st.selectbox("Side", ["NO", "YES"], key="cush_side")
+cush_min = cs1.selectbox("Min minutes", [6, 9, 12, 18, 24], index=1, format_func=lambda x: f"{x} min", key="cush_min")
+cush_side = cs2.selectbox("Side", ["NO", "YES"], key="cush_side")
 
 thresholds = [225.5, 230.5, 235.5, 240.5, 245.5]
 cush_data = []
@@ -275,7 +238,6 @@ else:
 
 st.divider()
 
-# ========== PACE SCANNER ==========
 st.subheader("🔥 PACE SCANNER")
 
 pace_data = []
@@ -310,29 +272,6 @@ else:
 
 st.divider()
 
-# ========== FATIGUE SCANNER ==========
-st.subheader("😴 FATIGUE SCANNER")
-
-for gk, g in games.items():
-    away, home = g['away_team'], g['home_team']
-    away_b2b = away in yesterday_teams
-    home_b2b = home in yesterday_teams
-    
-    if away_b2b or home_b2b:
-        st.markdown(f"### 🏀 {away} @ {home}")
-        if away_b2b:
-            st.error(f"🔴 {away} on BACK-TO-BACK")
-        if home_b2b:
-            st.error(f"🔴 {home} on BACK-TO-BACK")
-        if away_b2b and home_b2b:
-            st.success("🟢 BOTH TIRED — Strong Under spot")
-        elif away_b2b and not home_b2b:
-            st.warning(f"🔥 BLOWOUT RISK — {away} tired @ fresh {home}")
-        st.markdown("---")
-
-st.divider()
-
-# ========== SCOREBOARD ==========
 st.subheader("📺 ALL GAMES")
 if games:
     cols = st.columns(4)
@@ -344,6 +283,3 @@ if games:
             st.caption(f"{status} | {g['total']} pts")
 else:
     st.info("No games today")
-
-st.divider()
-    st.caption("v10.34")
