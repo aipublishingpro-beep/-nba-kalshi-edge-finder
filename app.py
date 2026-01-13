@@ -12,13 +12,45 @@ if "positions" not in st.session_state:
 with st.sidebar:
     st.header("📖 LEGEND")
     
-    st.subheader("⚡ 12-Factor Edge")
+    st.subheader("⚡ 10-Point Edge Score")
     st.markdown("""
-    **Edge > +10%** → HIGH confidence  
-    **Edge +5 to +10%** → MEDIUM confidence  
-    **Edge < +5%** → LOW / NO EDGE
+    **FATIGUE (max +4)**  
+    • Away B2B = +2  
+    • Both tired = +1  
+    • Denver altitude = +1  
+    • Blowout risk = -2
+    
+    **PACE (max +2)**  
+    • SLOW <4.5 = +2  
+    • AVG 4.5-4.8 = +1  
+    • FAST 4.8-5.2 = 0  
+    • SHOOTOUT >5.2 = -1
+    
+    **CUSHION (max +3)**  
+    • +20 pts = +3  
+    • +10-19 = +2  
+    • +5-9 = +1
+    
+    **3PT% (±0.5)**  
+    • Both <35.5% = +0.5  
+    • Both >37.5% = -0.5
+    
+    **FT RATE (±0.5)**  
+    • Both <0.24 = +0.5  
+    • Both >0.27 = -0.5
     """)
     
+    st.markdown("""
+    **SCORE ACTION:**  
+    🟢 **8-10** = STRONG — Size up  
+    🟢 **6-7** = GOOD — Standard  
+    🟡 **4-5** = LEAN — Small  
+    🔴 **0-3** = SKIP
+    """)
+    
+    st.divider()
+    
+    st.subheader("🎨 Pick Colors")
     st.markdown("""
     🟢 **Green** → BUY home team ML  
     🔴 **Red** → BUY away team ML  
@@ -31,49 +63,7 @@ with st.sidebar:
     st.markdown("""
     🟢 **BIG** → +20 pts or more  
     🟡 **MEDIUM** → +10 to +19  
-    🟠 **SMALL** → +5 to +9  
-    🔴 **SKIP** → Under +5
-    """)
-    
-    st.divider()
-    
-    st.subheader("Fatigue Scanner")
-    st.markdown("""
-    **Score 3+** → FATIGUED 🔴  
-    *(Back-to-back + Road = prime target)*
-    
-    **Score 2** → TIRED 🟡  
-    *(Back-to-back only or Road only)*
-    
-    **Score 0-1** → Fresh  
-    *(No fatigue edge)*
-    """)
-    
-    st.markdown("""
-    **Factors:**  
-    • Back-to-back (played yesterday) = +2  
-    • Road game = +1  
-    • Home court = +2 (for home team ML)
-    """)
-    
-    st.divider()
-    
-    st.subheader("Matchup Types")
-    st.markdown("""
-    🏠 **HOME COURT**  
-    *Home team +3 pts baseline*
-    
-    🟢 **BOTH TIRED**  
-    *Both teams fatigued = pace drags, STRONG Under*
-    
-    🔥 **BLOWOUT RISK**  
-    *Fatigued @ Fresh Home = BUY ML on home*
-    
-    🏔️ **ALTITUDE**  
-    *Denver home = visitors fatigue at 5,280 ft*
-    
-    🏆 **DIVISION RIVALS**  
-    *Same division = tighter game, home edge*
+    🔴 **SKIP** → Under +10
     """)
     
     st.divider()
@@ -87,18 +77,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    
-    st.subheader("Position Status")
-    st.markdown("""
-    🟢 VERY SAFE → +15 cushion  
-    🟢 LOOKING GOOD → +8 to +15  
-    🟡 ON TRACK → +3 to +8  
-    🟠 TIGHT → -3 to +3  
-    🔴 DANGER → Under -3
-    """)
-    
-    st.divider()
-    st.caption("v11.9")
+    st.caption("v12.0")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
