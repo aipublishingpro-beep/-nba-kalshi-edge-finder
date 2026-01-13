@@ -1005,10 +1005,6 @@ if game_list:
     
     if not strong_buys and not buys:
         st.info("⚪ No actionable ML plays today (no games scoring 6.5+)")
-    
-    # Summary stats
-    st.markdown("---")
-    st.caption(f"📊 {len(strong_buys)} Strong Buys | {len(buys)} Buys | {len(game_list) - len(strong_buys) - len(buys)} skipped (below 6.5)")
 
 else:
     st.info("No games scheduled today")
@@ -1109,11 +1105,6 @@ if game_list:
     
     if not strong_no and not strong_yes and not reg_no and not reg_yes:
         st.info("⚪ No actionable totals plays today (no games scoring 6.5+)")
-    
-    # Summary
-    st.markdown("---")
-    total_actionable = len(strong_no) + len(strong_yes) + len(reg_no) + len(reg_yes)
-    st.caption(f"📊 {len(strong_no)+len(strong_yes)} Strong | {len(reg_no)+len(reg_yes)} Regular | {len(game_list) - total_actionable} skipped (below 6.5)")
 
 else:
     st.info("No games scheduled today")
