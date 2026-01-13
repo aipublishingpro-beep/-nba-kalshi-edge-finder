@@ -18,8 +18,37 @@ except ImportError:
 st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
 
 # ========== v13.9 ELITE TRADE-ONLY MODE ==========
-# Philosophy: This is a TRADE AUTHORIZATION SYSTEM, not a dashboard.
-# If a game is NOT tradable today, it must NOT appear anywhere in the UI.
+# Gates filter the BIG SNAPSHOT sections, all other tools remain available
+
+# ========== EDGE TRACKING (for half-life) ==========
+if 'edge_first_seen' not in st.session_state:
+    st.session_state.edge_first_seen = {}
+
+def get_edge_age_minutes(game_key, current_score, threshold=6.5):
+    now = time.time()
+    if current_score >= threshold:
+        if game_key not in st.session_state.edge_first_seen:
+            st.session_state.edge_first_seen[game_key] = now
+        age_mins = (now - st.session_state.edge_first_seen[game_key]) / 60
+    else:
+        if game_key in st.session_state.edge_first_seen:
+            del st.session_state.edge_first_seen[game_key]
+        age_mins = 0
+    
+    if age_mins <= 3:
+        label = "🟢 FRESH"
+        decay = 0
+    elif age_mins <= 6:
+        label = "🟡 AGING"
+        decay = 0.5
+    elif age_mins <= 10:
+        label = "🟠 STALE"
+        decay = 1.5
+    else:
+        label = "🔴 EXPIRED"
+        decay = 99
+    
+    return age_mins, label, decay
 
 # ========== AUTO-REFRESH (Only after 7PM ET) ==========
 current_hour = datetime.now(pytz.timezone('US/Eastern')).hour
@@ -54,37 +83,6 @@ else:
     </style>
     """, unsafe_allow_html=True)
     auto_status = "⏸️ Auto-refresh OFF (starts 7PM ET)"
-
-# ========== EDGE TRACKING (for half-life) ==========
-if 'edge_first_seen' not in st.session_state:
-    st.session_state.edge_first_seen = {}
-
-def get_edge_age_minutes(game_key, current_score, threshold=6.5):
-    """Track how long an edge has existed. Returns age in minutes and label."""
-    now = time.time()
-    if current_score >= threshold:
-        if game_key not in st.session_state.edge_first_seen:
-            st.session_state.edge_first_seen[game_key] = now
-        age_mins = (now - st.session_state.edge_first_seen[game_key]) / 60
-    else:
-        if game_key in st.session_state.edge_first_seen:
-            del st.session_state.edge_first_seen[game_key]
-        age_mins = 0
-    
-    if age_mins <= 3:
-        label = "🟢 FRESH"
-        decay = 0
-    elif age_mins <= 6:
-        label = "🟡 AGING"
-        decay = 0.5
-    elif age_mins <= 10:
-        label = "🟠 STALE"
-        decay = 1.5
-    else:
-        label = "🔴 EXPIRED"
-        decay = 99  # Force non-tradable
-    
-    return age_mins, label, decay
 
 # ============================================================
 # KALSHI TRADING API
@@ -197,6 +195,203 @@ def build_kalshi_ticker(away_team, home_team, threshold):
 
 if "positions" not in st.session_state:
     st.session_state.positions = []
+
+# ========== SIDEBAR LEGEND (FULL - RESTORED) ==========
+with st.sidebar:
+    st.header("📖 LEGEND")
+    
+    st.subheader("🎯 ML Signal Tiers")
+    st.markdown("""
+    🟢 **STRUCTURAL EDGE** → 8.0+ score  
+    🔵 **CONSIDER** → 6.5 - 7.9 score  
+    🟡 **LEAN** → 5.5 - 6.4 score  
+    ⚪ **TOSS-UP** → 4.5 - 5.4 score  
+    🔴 **SKIP** → Below 4.5
+    """)
+    
+    st.divider()
+    
+    st.subheader("🚫 v13.9 NO-TRADE GATES")
+    st.markdown("""
+    **Single-Factor (>45%)**  
+    Edge depends too heavily on one factor
+    
+    **Crowd Alignment**  
+    All systems ≥8 = synchronization risk
+    
+    **Stale Edge (>6 min)**  
+    Market has likely adjusted
+    """)
+    
+    st.divider()
+    
+    st.subheader("⏱️ Edge Half-Life")
+    st.markdown("""
+    🟢 FRESH → 0-3 min  
+    🟡 AGING → 3-6 min (-0.5)  
+    🟠 STALE → 6-10 min (-1.5)  
+    🔴 EXPIRED → 10+ min (gated)
+    """)
+    
+    st.divider()
+    
+    st.subheader("📊 10-Factor ML System")
+    st.markdown("""
+    1. Rest Advantage  
+    2. Net Rating Edge  
+    3. Defense Ranking  
+    4. Home Court  
+    5. Injury Impact  
+    6. Travel Fatigue  
+    7. Home/Away Splits  
+    8. Division Rivalry  
+    9. Altitude (Denver)  
+    10. Team Quality
+    """)
+    
+    st.divider()
+    
+    st.subheader("📊 10-Factor Totals System")
+    st.markdown("""
+    1. 🐢 Pace (slow/fast)  
+    2. 🛡️ Defense Rank  
+    3. 🛏️ Rest/Fatigue  
+    4. 🎯 3PT Shooting %  
+    5. 🏥 Star Injuries  
+    6. 💥 Blowout Risk  
+    7. 🏔️ Altitude  
+    8. 🎁 FT Rate  
+    9. 🏀 Rebound Control  
+    10. 🏠 Home Scoring
+    """)
+    
+    st.divider()
+    
+    st.subheader("🎯 Totals Signal Tiers")
+    st.markdown("""
+    🟢 **STRONG NO/YES** → 8.0+ score  
+    🔵 **NO/YES** → 6.5 - 7.9 score  
+    🟡 **LEAN NO/YES** → 5.5 - 6.4  
+    ⚪ **TOSS-UP** → 4.5 - 5.4  
+    🔴 **SKIP** → Below 4.5
+    """)
+    
+    st.divider()
+    
+    st.subheader("⚡ 12-Factor Edge")
+    st.markdown("""
+    **Edge > +10%** → HIGH confidence  
+    **Edge +5 to +10%** → MEDIUM confidence  
+    **Edge < +5%** → LOW / NO EDGE
+    """)
+    
+    st.markdown("""
+    🟢 **Green** → BUY home team ML  
+    🔴 **Red** → BUY away team ML  
+    ⚪ **NO EDGE** → Skip this game
+    """)
+    
+    st.divider()
+    
+    st.subheader("Size Tiers (Cushion)")
+    st.markdown("""
+    🟢 **BIG** → +20 pts or more  
+    🟡 **MEDIUM** → +10 to +19  
+    🟠 **SMALL** → +5 to +9  
+    🔴 **SKIP** → Under +5
+    """)
+    
+    st.divider()
+    
+    st.subheader("Fatigue Scanner")
+    st.markdown("""
+    **Score 3+** → FATIGUED 🔴  
+    *(Back-to-back + Road = prime target)*
+    
+    **Score 2** → TIRED 🟡  
+    *(Back-to-back only or Road only)*
+    
+    **Score 0-1** → Fresh  
+    *(No fatigue edge)*
+    """)
+    
+    st.markdown("""
+    **Factors:**  
+    • Back-to-back (played yesterday) = +2  
+    • Road game = +1  
+    • Home court = +2 (for home team ML)
+    """)
+    
+    st.divider()
+    
+    st.subheader("Matchup Types")
+    st.markdown("""
+    🏠 **HOME COURT**  
+    *Home team +3 pts baseline*
+    
+    🟢 **BOTH TIRED**  
+    *Both teams fatigued = pace drags, STRONG Under*
+    
+    🔥 **BLOWOUT RISK**  
+    *Fatigued @ Fresh Home = BUY ML on home*
+    
+    🏔️ **ALTITUDE**  
+    *Denver home = visitors fatigue at 5,280 ft*
+    
+    🏆 **DIVISION RIVALS**  
+    *Same division = tighter game, home edge*
+    """)
+    
+    st.divider()
+    
+    st.subheader("Pace Benchmarks")
+    st.markdown("""
+    🟢 **SLOW** → Under 4.5/min  
+    🟡 **AVG** → 4.5 - 4.8/min  
+    🟠 **FAST** → 4.8 - 5.2/min  
+    🔴 **SHOOTOUT** → Over 5.2/min
+    """)
+    
+    st.divider()
+    
+    st.subheader("Position Status")
+    st.markdown("""
+    🟢 VERY SAFE → +15 cushion  
+    🟢 LOOKING GOOD → +8 to +15  
+    🟡 ON TRACK → +3 to +8  
+    🟠 WARNING → -3 to +3  
+    🔴 AT RISK → Under -3
+    """)
+    
+    st.divider()
+    
+    st.subheader("🚀 ONE-CLICK TRADING")
+    
+    if not CRYPTO_AVAILABLE:
+        st.warning("Add `cryptography` to requirements.txt")
+    else:
+        st.session_state.trading_enabled = st.toggle("Enable Trading", value=st.session_state.trading_enabled)
+        
+        if st.session_state.trading_enabled:
+            if st.session_state.kalshi_api_key:
+                st.success("✅ API Key loaded")
+            else:
+                st.session_state.kalshi_api_key = st.text_input("API Key", type="password")
+            
+            if st.session_state.kalshi_private_key:
+                st.success("✅ Private Key loaded")
+            else:
+                st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", height=100, type="default")
+            
+            st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, max_value=500, value=st.session_state.default_contracts)
+            
+            if st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
+                st.success("✅ Ready to trade!")
+            else:
+                st.info("Enter API credentials above")
+    
+    st.divider()
+    st.caption("v13.9 ELITE")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -397,32 +592,71 @@ def get_minutes_played(period, clock, status_type):
     except:
         return (period - 1) * 12 if period <= 4 else 48 + (period - 5) * 5
 
+def calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, away_inj, kalshi_price):
+    home = TEAM_STATS.get(home_team, {"pace": 100, "def_rank": 15, "net_rating": 0, "ft_rate": 0.25, "reb_rate": 50, "three_pct": 36, "home_win_pct": 0.5, "away_win_pct": 0.5, "division": ""})
+    away = TEAM_STATS.get(away_team, {"pace": 100, "def_rank": 15, "net_rating": 0, "ft_rate": 0.25, "reb_rate": 50, "three_pct": 36, "home_win_pct": 0.5, "away_win_pct": 0.5, "division": ""})
+    home_loc = TEAM_LOCATIONS.get(home_team, (0, 0))
+    away_loc = TEAM_LOCATIONS.get(away_team, (0, 0))
+    travel_miles = calc_distance(away_loc, home_loc)
+    
+    rest_diff = home_rest - away_rest
+    rest_score = max(-6, min(6, rest_diff * 2))
+    def_score = (away['def_rank'] - home['def_rank']) * 0.15
+    injury_score = (away_inj - home_inj) * 1.5
+    pace_diff = home['pace'] - away['pace']
+    pace_score = pace_diff * 0.1 if home['net_rating'] > away['net_rating'] else -pace_diff * 0.1
+    net_score = (home['net_rating'] - away['net_rating']) * 0.8
+    travel_score = 2.5 if travel_miles > 1500 else (1.5 if travel_miles > 1000 else (0.75 if travel_miles > 500 else 0))
+    split_score = (home['home_win_pct'] - 0.5) * 10 + (0.5 - away['away_win_pct']) * 10
+    h2h_score = 1.5 if home.get('division') == away.get('division') and home.get('division') else 0
+    altitude_score = 2.0 if home_team == "Denver" else 0
+    ft_score = (home.get('ft_rate', 0.25) - away.get('ft_rate', 0.25)) * 20
+    reb_score = (home.get('reb_rate', 50) - away.get('reb_rate', 50)) * 0.3
+    three_score = (home.get('three_pct', 36) - away.get('three_pct', 36)) * 0.5
+    home_court = 3.0
+    
+    weighted_spread = home_court + rest_score + def_score + injury_score + pace_score + net_score + travel_score + split_score + h2h_score + altitude_score + ft_score + reb_score + three_score
+    home_win_prob = max(5, min(95, 50 + weighted_spread * 2.5))
+    edge = home_win_prob - kalshi_price
+    
+    return {
+        'home_win_prob': round(home_win_prob, 1),
+        'kalshi_price': kalshi_price,
+        'edge': round(edge, 1),
+        'expected_spread': round(weighted_spread, 1)
+    }
+
 # ============================================================
-# v13.9 GATE SYSTEMS
+# v13.9 GATE FUNCTIONS
 # ============================================================
 
 def calc_ml_score_with_factors(home_team, away_team, yesterday_teams, injuries):
-    """Calculate 10-factor ML score with factor breakdown for gate checking."""
+    """Calculate ML score with factor breakdown for gate checking."""
     home = TEAM_STATS.get(home_team, {})
     away = TEAM_STATS.get(away_team, {})
     home_loc = TEAM_LOCATIONS.get(home_team, (0, 0))
     away_loc = TEAM_LOCATIONS.get(away_team, (0, 0))
     
-    factors = {
-        'fatigue': 0, 'pace': 0, 'blowout': 0, 'travel': 0, 'net_rating': 0,
-        'defense': 0, 'home_court': 0, 'injury': 0, 'splits': 0, 'quality': 0
-    }
-    reasons = []
+    factors = {'fatigue': 0, 'pace': 0, 'blowout': 0, 'travel': 0, 'net_rating': 0}
+    score_home = 0
+    score_away = 0
+    reasons_home = []
+    reasons_away = []
     
-    # 1. REST/FATIGUE
+    # 1. REST ADVANTAGE
     home_b2b = home_team in yesterday_teams
     away_b2b = away_team in yesterday_teams
     if away_b2b and not home_b2b:
+        score_home += 1.0
         factors['fatigue'] = 1.0
-        reasons.append("🛏️ Opp B2B")
+        reasons_home.append("🛏️ Opp B2B")
     elif home_b2b and not away_b2b:
+        score_away += 1.0
         factors['fatigue'] = -1.0
+        reasons_away.append("🛏️ Opp B2B")
     else:
+        score_home += 0.5
+        score_away += 0.5
         factors['fatigue'] = 0.3
     
     # 2. NET RATING
@@ -430,301 +664,174 @@ def calc_ml_score_with_factors(home_team, away_team, yesterday_teams, injuries):
     away_net = away.get('net_rating', 0)
     net_diff = home_net - away_net
     if net_diff > 5:
+        score_home += 1.0
         factors['net_rating'] = 1.0
-        reasons.append(f"📊 Net +{home_net:.1f}")
+        reasons_home.append(f"📊 Net +{home_net:.1f}")
     elif net_diff > 2:
+        score_home += 0.7
         factors['net_rating'] = 0.7
+        reasons_home.append(f"📊 Net +{home_net:.1f}")
     elif net_diff > 0:
-        factors['net_rating'] = 0.3
+        score_home += 0.5
+        factors['net_rating'] = 0.5
     elif net_diff > -2:
-        factors['net_rating'] = -0.3
+        score_away += 0.5
+        factors['net_rating'] = -0.5
     elif net_diff > -5:
+        score_away += 0.7
         factors['net_rating'] = -0.7
+        reasons_away.append(f"📊 Net +{away_net:.1f}")
     else:
+        score_away += 1.0
         factors['net_rating'] = -1.0
+        reasons_away.append(f"📊 Net +{away_net:.1f}")
     
-    # 3. DEFENSE
+    # 3. DEFENSE RANK
     home_def = home.get('def_rank', 15)
+    away_def = away.get('def_rank', 15)
     if home_def <= 5:
-        factors['defense'] = 1.0
-        reasons.append(f"🛡️ #{home_def} DEF")
+        score_home += 1.0
+        reasons_home.append(f"🛡️ #{home_def} DEF")
     elif home_def <= 10:
-        factors['defense'] = 0.7
+        score_home += 0.7
+        reasons_home.append(f"🛡️ #{home_def} DEF")
     elif home_def <= 15:
-        factors['defense'] = 0.4
-    else:
-        factors['defense'] = 0.1
+        score_home += 0.4
+    if away_def <= 5:
+        score_away += 1.0
+        reasons_away.append(f"🛡️ #{away_def} DEF")
+    elif away_def <= 10:
+        score_away += 0.7
+        reasons_away.append(f"🛡️ #{away_def} DEF")
+    elif away_def <= 15:
+        score_away += 0.4
     
     # 4. HOME COURT
-    factors['home_court'] = 1.0
-    reasons.append(f"🏠 {int(home.get('home_win_pct', 0.5)*100)}% home")
+    score_home += 1.0
+    reasons_home.append(f"🏠 {int(home.get('home_win_pct', 0.5)*100)}% home")
     
-    # 5. INJURY
+    # 5. INJURY IMPACT
     home_inj, home_stars = get_injury_score(home_team, injuries)
     away_inj, away_stars = get_injury_score(away_team, injuries)
     inj_diff = away_inj - home_inj
     if inj_diff > 3:
-        factors['injury'] = 1.0
+        score_home += 1.0
         if away_stars:
-            reasons.append(f"🏥 {away_stars[0][:10]} OUT")
+            reasons_home.append(f"🏥 {away_stars[0][:10]} OUT")
     elif inj_diff > 1:
-        factors['injury'] = 0.6
+        score_home += 0.6
+        if away_stars:
+            reasons_home.append(f"🏥 {away_stars[0][:10]} OUT")
     elif inj_diff < -3:
-        factors['injury'] = -1.0
+        score_away += 1.0
+        if home_stars:
+            reasons_away.append(f"🏥 {home_stars[0][:10]} OUT")
     elif inj_diff < -1:
-        factors['injury'] = -0.6
+        score_away += 0.6
+        if home_stars:
+            reasons_away.append(f"🏥 {home_stars[0][:10]} OUT")
     else:
-        factors['injury'] = 0.2
+        score_home += 0.3
+        score_away += 0.3
     
-    # 6. TRAVEL
+    # 6. TRAVEL FATIGUE
     travel_miles = calc_distance(away_loc, home_loc)
     if travel_miles > 2000:
+        score_home += 1.0
         factors['travel'] = 1.0
-        reasons.append(f"✈️ {int(travel_miles)}mi")
+        reasons_home.append(f"✈️ {int(travel_miles)}mi")
     elif travel_miles > 1500:
+        score_home += 0.7
         factors['travel'] = 0.7
+        reasons_home.append(f"✈️ {int(travel_miles)}mi")
     elif travel_miles > 1000:
+        score_home += 0.5
         factors['travel'] = 0.5
     elif travel_miles > 500:
+        score_home += 0.3
         factors['travel'] = 0.3
-    else:
-        factors['travel'] = 0.1
     
-    # 7. SPLITS
+    # 7. HOME/AWAY SPLITS
     home_hw = home.get('home_win_pct', 0.5)
     away_aw = away.get('away_win_pct', 0.5)
-    if home_hw > 0.65 and away_aw < 0.35:
-        factors['splits'] = 1.0
+    if home_hw > 0.65:
+        score_home += 0.8
     elif home_hw > 0.55:
-        factors['splits'] = 0.5
-    else:
-        factors['splits'] = 0.2
+        score_home += 0.5
+    if away_aw < 0.35:
+        score_home += 0.5
+        reasons_home.append(f"📉 Opp {int(away_aw*100)}% road")
+    elif away_aw < 0.45:
+        score_home += 0.3
     
-    # 8. PACE (beneficial for stronger team)
-    pace_diff = home.get('pace', 100) - away.get('pace', 100)
-    if home_net > away_net and pace_diff > 0:
-        factors['pace'] = 0.5
-    else:
-        factors['pace'] = 0.2
+    # 8. DIVISION RIVALRY
+    if home.get('division') == away.get('division') and home.get('division'):
+        score_home += 0.5
+        reasons_home.append("⚔️ Division")
     
-    # 9. BLOWOUT POTENTIAL
-    if net_diff > 8:
-        factors['blowout'] = 0.8
-        reasons.append("💥 Mismatch")
-    else:
-        factors['blowout'] = 0.2
-    
-    # 10. QUALITY
-    if home_net > 5:
-        factors['quality'] = 0.5
-    else:
-        factors['quality'] = 0.2
-    
-    # Calculate total and normalize
-    positive_sum = sum(max(0, v) for v in factors.values())
-    negative_sum = abs(sum(min(0, v) for v in factors.values()))
-    total = positive_sum + negative_sum
-    
-    if total > 0:
-        home_score = round((positive_sum / total) * 10, 1)
-    else:
-        home_score = 5.0
-    
-    # Calculate max factor share for single-factor gate
-    if positive_sum > 0:
-        max_factor_share = max(max(0, v) for v in factors.values()) / positive_sum
-    else:
-        max_factor_share = 0
-    
-    # Determine dominant factor
-    dominant_factor = max(factors.keys(), key=lambda k: factors[k])
-    
-    return {
-        'pick': home_team,
-        'score': home_score,
-        'edge': round((home_score - 5) * 4, 0),
-        'reasons': reasons[:4],
-        'factors': factors,
-        'max_factor_share': max_factor_share,
-        'dominant_factor': dominant_factor,
-        'home_stars': home_stars,
-        'away_stars': away_stars
-    }
-
-def calc_totals_score_with_factors(home_team, away_team, yesterday_teams, injuries):
-    """Calculate totals score with factor breakdown."""
-    home = TEAM_STATS.get(home_team, {})
-    away = TEAM_STATS.get(away_team, {})
-    
-    factors = {
-        'pace': 0, 'defense': 0, 'fatigue': 0, 'three_pct': 0,
-        'injury': 0, 'blowout': 0, 'altitude': 0, 'ft_rate': 0,
-        'rebounds': 0, 'home_scoring': 0
-    }
-    reasons_under = []
-    reasons_over = []
-    
-    # 1. PACE
-    avg_pace = (home.get('pace', 100) + away.get('pace', 100)) / 2
-    if avg_pace < 98.5:
-        factors['pace'] = 1.5
-        reasons_under.append(f"🐢 Slow {avg_pace:.1f}")
-    elif avg_pace < 99.5:
-        factors['pace'] = 0.8
-    elif avg_pace > 101:
-        factors['pace'] = -1.5
-        reasons_over.append(f"🔥 Fast {avg_pace:.1f}")
-    elif avg_pace > 100:
-        factors['pace'] = -0.8
-    
-    # 2. DEFENSE
-    avg_def = (home.get('def_rank', 15) + away.get('def_rank', 15)) / 2
-    if avg_def <= 8:
-        factors['defense'] = 1.5
-        reasons_under.append(f"🛡️ DEF #{int(avg_def)}")
-    elif avg_def <= 12:
-        factors['defense'] = 0.8
-    elif avg_def >= 22:
-        factors['defense'] = -1.5
-        reasons_over.append(f"💥 DEF #{int(avg_def)}")
-    elif avg_def >= 18:
-        factors['defense'] = -0.8
-    
-    # 3. FATIGUE
-    home_b2b = home_team in yesterday_teams
-    away_b2b = away_team in yesterday_teams
-    if home_b2b and away_b2b:
-        factors['fatigue'] = 1.5
-        reasons_under.append("🛏️ Both B2B")
-    elif home_b2b or away_b2b:
-        factors['fatigue'] = 0.6
-        tired = home_team[:3] if home_b2b else away_team[:3]
-        reasons_under.append(f"🛏️ {tired} B2B")
-    
-    # 4. 3PT%
-    avg_3pt = (home.get('three_pct', 36) + away.get('three_pct', 36)) / 2
-    if avg_3pt < 35.5:
-        factors['three_pct'] = 0.8
-        reasons_under.append(f"🎯 Low 3PT {avg_3pt:.1f}%")
-    elif avg_3pt > 37.5:
-        factors['three_pct'] = -0.8
-        reasons_over.append(f"🎯 High 3PT {avg_3pt:.1f}%")
-    
-    # 5. INJURIES
-    home_inj, home_stars = get_injury_score(home_team, injuries)
-    away_inj, away_stars = get_injury_score(away_team, injuries)
-    if home_stars or away_stars:
-        factors['injury'] = 0.8
-        out_names = (home_stars + away_stars)[:2]
-        reasons_under.append(f"🏥 {', '.join([n[:8] for n in out_names])} OUT")
-    
-    # 6. BLOWOUT
-    net_diff = abs(home.get('net_rating', 0) - away.get('net_rating', 0))
-    if net_diff > 10:
-        factors['blowout'] = -0.6
-        reasons_over.append("💥 Blowout risk")
-    elif net_diff < 3:
-        factors['blowout'] = 0.4
-        reasons_under.append("⚔️ Close game")
-    
-    # 7. ALTITUDE
+    # 9. ALTITUDE
     if home_team == "Denver":
-        factors['altitude'] = 0.6
-        reasons_under.append("🏔️ Denver altitude")
+        score_home += 1.0
+        reasons_home.append("🏔️ Altitude")
     
-    # 8. FT RATE
-    avg_ft = (home.get('ft_rate', 0.25) + away.get('ft_rate', 0.25)) / 2
-    if avg_ft > 0.27:
-        factors['ft_rate'] = 0.4
-        reasons_under.append("🎁 High FT rate")
-    elif avg_ft < 0.23:
-        factors['ft_rate'] = -0.4
-        reasons_over.append("🏃 Low FT rate")
+    # 10. QUALITY FACTOR
+    if home_net > 5:
+        score_home += 0.5
+    if away_net > 5:
+        score_away += 0.5
     
-    # 9. REBOUNDS
-    avg_reb = (home.get('reb_rate', 50) + away.get('reb_rate', 50)) / 2
-    if avg_reb > 51.5:
-        factors['rebounds'] = 0.4
-        reasons_under.append("🏀 Control boards")
+    # Blowout factor
+    if net_diff > 8 and away_b2b and not home_b2b:
+        factors['blowout'] = 1.0
     
-    # 10. HOME SCORING
-    if home.get('home_win_pct', 0.5) > 0.65 and home.get('net_rating', 0) > 5:
-        factors['home_scoring'] = -0.4
-        reasons_over.append("🏠 Home scoring")
+    # Pace factor
+    pace_diff = home.get('pace', 100) - away.get('pace', 100)
+    factors['pace'] = abs(pace_diff) * 0.1
     
-    # Calculate scores
-    under_sum = sum(max(0, v) for v in factors.values())
-    over_sum = abs(sum(min(0, v) for v in factors.values()))
-    total = under_sum + over_sum
-    
+    # Normalize
+    total = score_home + score_away
     if total > 0:
-        under_score = round((under_sum / total) * 10, 1)
-        over_score = round((over_sum / total) * 10, 1)
+        home_final = round((score_home / total) * 10, 1)
+        away_final = round((score_away / total) * 10, 1)
     else:
-        under_score = 5.0
-        over_score = 5.0
+        home_final = 5.0
+        away_final = 5.0
     
-    # Max factor share
-    all_abs = [abs(v) for v in factors.values()]
-    max_abs = max(all_abs) if all_abs else 0
-    max_factor_share = max_abs / total if total > 0 else 0
+    # Calculate max factor share
+    factor_vals = [abs(v) for v in factors.values()]
+    total_factors = sum(factor_vals)
+    max_factor_share = max(factor_vals) / total_factors if total_factors > 0 else 0
     dominant_factor = max(factors.keys(), key=lambda k: abs(factors[k]))
     
-    if under_score >= over_score:
+    if home_final >= away_final:
         return {
-            'pick': "NO",
-            'score': under_score,
-            'reasons': reasons_under[:4],
-            'factors': factors,
+            'pick': home_team,
+            'score': home_final,
+            'edge': round((home_final - 5) * 4, 0),
+            'reasons': reasons_home[:4],
+            'home_stars': home_stars,
+            'away_stars': away_stars,
             'max_factor_share': max_factor_share,
             'dominant_factor': dominant_factor
         }
     else:
         return {
-            'pick': "YES",
-            'score': over_score,
-            'reasons': reasons_over[:4],
-            'factors': factors,
+            'pick': away_team,
+            'score': away_final,
+            'edge': round((away_final - 5) * 4, 0),
+            'reasons': reasons_away[:4],
+            'home_stars': home_stars,
+            'away_stars': away_stars,
             'max_factor_share': max_factor_share,
             'dominant_factor': dominant_factor
         }
 
-def calc_fill_score():
-    """Estimate fill quality (simplified without live order book data)."""
-    # Without real market data, estimate based on typical NBA market conditions
-    # Real implementation would track bid-ask spread, depth stability, etc.
-    base_score = 7.0  # NBA markets generally liquid
-    return base_score
+def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
+    """Original ML score function (for compatibility)."""
+    result = calc_ml_score_with_factors(home_team, away_team, yesterday_teams, injuries)
+    return result['pick'], result['score'], result['edge'], result['reasons'], result.get('home_stars', []), result.get('away_stars', [])
 
-def check_no_trade_gate(ml_result, totals_result, cushion_result=None):
-    """
-    Check all NO_TRADE_GATE conditions.
-    Returns (gate_triggered, reason)
-    """
-    # 1. SINGLE-FACTOR DEPENDENCE (>45% from one factor)
-    if ml_result and ml_result.get('max_factor_share', 0) > 0.45:
-        return True, f"Single-factor dependence: {ml_result['dominant_factor']} ({ml_result['max_factor_share']:.0%})"
-    
-    if totals_result and totals_result.get('max_factor_share', 0) > 0.45:
-        return True, f"Single-factor dependence: {totals_result['dominant_factor']} ({totals_result['max_factor_share']:.0%})"
-    
-    # 2. CROWD ALIGNMENT RISK (all subsystems >= 8)
-    ml_score = ml_result.get('score', 0) if ml_result else 0
-    totals_score = totals_result.get('score', 0) if totals_result else 0
-    cushion_score = cushion_result.get('score', 0) if cushion_result else 0
-    
-    if ml_score >= 8 and totals_score >= 8 and cushion_score >= 8:
-        return True, "Crowd alignment: All systems showing high agreement (synchronization risk)"
-    
-    # 3. FILL QUALITY (simplified)
-    fill_score = calc_fill_score()
-    if fill_score < 6:
-        return True, f"Poor fill quality: {fill_score}/10"
-    
-    return False, None
-
-def get_signal_tier_v139(score):
-    """v13.9 language: STRUCTURAL EDGE / CONSIDER instead of STRONG BUY / BUY"""
+def get_signal_tier(score):
     if score >= 8.0:
         return "🟢 STRUCTURAL EDGE", "#00ff00"
     elif score >= 6.5:
@@ -732,21 +839,204 @@ def get_signal_tier_v139(score):
     elif score >= 5.5:
         return "🟡 LEAN", "#ffff00"
     elif score >= 4.5:
-        return "⚪ NEUTRAL", "#888888"
+        return "⚪ TOSS-UP", "#888888"
     else:
-        return "🔴 NO TRADE", "#ff0000"
+        return "🔴 SKIP", "#ff0000"
 
-def get_totals_signal_tier_v139(score, pick):
+def calc_totals_score_with_factors(home_team, away_team, yesterday_teams, injuries):
+    """Calculate totals score with factor breakdown."""
+    home = TEAM_STATS.get(home_team, {})
+    away = TEAM_STATS.get(away_team, {})
+    
+    factors = {'pace': 0, 'defense': 0, 'fatigue': 0, 'blowout': 0, 'travel': 0}
+    score_under = 0
+    score_over = 0
+    reasons_under = []
+    reasons_over = []
+    
+    # 1. PACE
+    home_pace = home.get('pace', 100)
+    away_pace = away.get('pace', 100)
+    avg_pace = (home_pace + away_pace) / 2
+    if avg_pace < 98.5:
+        score_under += 1.5
+        factors['pace'] = 1.5
+        reasons_under.append(f"🐢 Slow {avg_pace:.1f}")
+    elif avg_pace < 99.5:
+        score_under += 1.0
+        factors['pace'] = 1.0
+        reasons_under.append(f"🐢 Pace {avg_pace:.1f}")
+    elif avg_pace > 101:
+        score_over += 1.5
+        factors['pace'] = -1.5
+        reasons_over.append(f"🔥 Fast {avg_pace:.1f}")
+    elif avg_pace > 100:
+        score_over += 1.0
+        factors['pace'] = -1.0
+        reasons_over.append(f"🔥 Pace {avg_pace:.1f}")
+    
+    # 2. DEFENSE
+    home_def = home.get('def_rank', 15)
+    away_def = away.get('def_rank', 15)
+    avg_def = (home_def + away_def) / 2
+    if avg_def <= 8:
+        score_under += 1.5
+        factors['defense'] = 1.5
+        reasons_under.append(f"🛡️ DEF #{int(avg_def)}")
+    elif avg_def <= 12:
+        score_under += 1.0
+        factors['defense'] = 1.0
+        reasons_under.append(f"🛡️ DEF #{int(avg_def)}")
+    elif avg_def >= 22:
+        score_over += 1.5
+        factors['defense'] = -1.5
+        reasons_over.append(f"💥 DEF #{int(avg_def)}")
+    elif avg_def >= 18:
+        score_over += 1.0
+        factors['defense'] = -1.0
+        reasons_over.append(f"💥 DEF #{int(avg_def)}")
+    
+    # 3. REST/FATIGUE
+    home_b2b = home_team in yesterday_teams
+    away_b2b = away_team in yesterday_teams
+    if home_b2b and away_b2b:
+        score_under += 1.5
+        factors['fatigue'] = 1.5
+        reasons_under.append("🛏️ Both B2B")
+    elif home_b2b or away_b2b:
+        score_under += 0.75
+        factors['fatigue'] = 0.75
+        tired_team = home_team if home_b2b else away_team
+        reasons_under.append(f"🛏️ {tired_team[:3]} B2B")
+    
+    # 4. 3PT SHOOTING
+    home_3pt = home.get('three_pct', 36)
+    away_3pt = away.get('three_pct', 36)
+    avg_3pt = (home_3pt + away_3pt) / 2
+    if avg_3pt < 35.5:
+        score_under += 1.0
+        reasons_under.append(f"🎯 Low 3PT {avg_3pt:.1f}%")
+    elif avg_3pt > 37.5:
+        score_over += 1.0
+        reasons_over.append(f"🎯 High 3PT {avg_3pt:.1f}%")
+    
+    # 5. INJURY IMPACT
+    home_inj, home_stars = get_injury_score(home_team, injuries)
+    away_inj, away_stars = get_injury_score(away_team, injuries)
+    if home_stars or away_stars:
+        score_under += 1.0
+        out_names = (home_stars + away_stars)[:2]
+        reasons_under.append(f"🏥 {', '.join([n[:8] for n in out_names])} OUT")
+    
+    # 6. NET RATING - Blowout
+    home_net = home.get('net_rating', 0)
+    away_net = away.get('net_rating', 0)
+    net_diff = abs(home_net - away_net)
+    if net_diff > 10:
+        score_over += 0.75
+        factors['blowout'] = -0.75
+        reasons_over.append("💥 Blowout risk")
+    elif net_diff < 3:
+        score_under += 0.5
+        factors['blowout'] = 0.5
+        reasons_under.append("⚔️ Close game")
+    
+    # 7. ALTITUDE
+    if home_team == "Denver":
+        score_under += 0.75
+        reasons_under.append("🏔️ Denver altitude")
+    
+    # 8. FT RATE
+    home_ft = home.get('ft_rate', 0.25)
+    away_ft = away.get('ft_rate', 0.25)
+    avg_ft = (home_ft + away_ft) / 2
+    if avg_ft > 0.27:
+        score_under += 0.5
+        reasons_under.append("🎁 High FT rate")
+    elif avg_ft < 0.23:
+        score_over += 0.5
+        reasons_over.append("🏃 Low FT rate")
+    
+    # 9. REBOUND RATE
+    home_reb = home.get('reb_rate', 50)
+    away_reb = away.get('reb_rate', 50)
+    avg_reb = (home_reb + away_reb) / 2
+    if avg_reb > 51.5:
+        score_under += 0.5
+        reasons_under.append("🏀 Control boards")
+    
+    # 10. HOME COURT SCORING
+    if home.get('home_win_pct', 0.5) > 0.65 and home_net > 5:
+        score_over += 0.5
+        reasons_over.append("🏠 Home scoring")
+    
+    # Normalize
+    total = score_under + score_over
+    if total > 0:
+        under_final = round((score_under / total) * 10, 1)
+        over_final = round((score_over / total) * 10, 1)
+    else:
+        under_final = 5.0
+        over_final = 5.0
+    
+    # Max factor share
+    factor_vals = [abs(v) for v in factors.values()]
+    total_factors = sum(factor_vals)
+    max_factor_share = max(factor_vals) / total_factors if total_factors > 0 else 0
+    dominant_factor = max(factors.keys(), key=lambda k: abs(factors[k]))
+    
+    if under_final >= over_final:
+        return {
+            'pick': "NO",
+            'score': under_final,
+            'reasons': reasons_under[:4],
+            'max_factor_share': max_factor_share,
+            'dominant_factor': dominant_factor
+        }
+    else:
+        return {
+            'pick': "YES",
+            'score': over_final,
+            'reasons': reasons_over[:4],
+            'max_factor_share': max_factor_share,
+            'dominant_factor': dominant_factor
+        }
+
+def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
+    """Original totals score (for compatibility)."""
+    result = calc_totals_score_with_factors(home_team, away_team, yesterday_teams, injuries)
+    return result['pick'], result['score'], result['reasons']
+
+def get_totals_signal_tier(score, pick):
     if score >= 8.0:
-        return f"🟢 STRUCTURAL {pick}", "#00ff00"
+        return f"🟢 STRONG {pick}", "#00ff00"
     elif score >= 6.5:
-        return f"🔵 CONSIDER {pick}", "#00aaff"
+        return f"🔵 {pick}", "#00aaff"
     elif score >= 5.5:
         return f"🟡 LEAN {pick}", "#ffff00"
     elif score >= 4.5:
-        return "⚪ NEUTRAL", "#888888"
+        return "⚪ TOSS-UP", "#888888"
     else:
-        return "🔴 NO TRADE", "#ff0000"
+        return "🔴 SKIP", "#ff0000"
+
+def check_no_trade_gate(ml_result, totals_result, cushion_score=0):
+    """Check NO_TRADE_GATE conditions."""
+    reasons = []
+    
+    # 1. Single-factor dependence (>45%)
+    if ml_result and ml_result.get('max_factor_share', 0) > 0.45:
+        reasons.append(f"⚠️ Single-factor: {ml_result['dominant_factor']} ({ml_result['max_factor_share']:.0%})")
+    
+    if totals_result and totals_result.get('max_factor_share', 0) > 0.45:
+        reasons.append(f"⚠️ Single-factor: {totals_result['dominant_factor']} ({totals_result['max_factor_share']:.0%})")
+    
+    # 2. Crowd alignment (all >= 8)
+    ml_score = ml_result.get('score', 0) if ml_result else 0
+    totals_score = totals_result.get('score', 0) if totals_result else 0
+    if ml_score >= 8 and totals_score >= 8 and cushion_score >= 8:
+        reasons.append("⚠️ Crowd alignment: All systems high agreement")
+    
+    return len(reasons) > 0, reasons
 
 # ========== FETCH DATA ==========
 games = fetch_espn_scores()
@@ -755,325 +1045,471 @@ yesterday_teams = fetch_yesterday_teams()
 injuries = fetch_espn_injuries()
 now = datetime.now(pytz.timezone('US/Eastern'))
 
-# ============================================================
-# v13.9 CORE: COMPUTE ALL GATES BEFORE RENDERING
-# ============================================================
+# ========== HEADER ==========
+st.title("🎯 NBA EDGE FINDER")
+st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v13.9 ELITE")
 
-def compute_trade_eligible_games(game_list, yesterday_teams, injuries):
-    """
-    GLOBAL EXECUTION FLOW:
-    1. Load today's games
-    2. Compute all scores and gates
-    3. Filter to TRADE-ELIGIBLE only
-    4. Return filtered list
-    """
-    trade_eligible = []
-    filtered_out = []
-    
+# ========== 🎯 BIG SNAPSHOT - ML PICKS (with v13.9 gates) ==========
+st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
+
+if game_list:
+    all_picks = []
     for game_key in game_list:
         parts = game_key.split("@")
         away_team = parts[0]
         home_team = parts[1]
         
-        # Compute ML score with factors
         ml_result = calc_ml_score_with_factors(home_team, away_team, yesterday_teams, injuries)
-        
-        # Compute totals score with factors
         totals_result = calc_totals_score_with_factors(home_team, away_team, yesterday_teams, injuries)
         
-        # Check edge age and decay
-        edge_age, age_label, decay = get_edge_age_minutes(game_key, ml_result['score'])
-        ml_result['score'] = max(0, ml_result['score'] - decay)
-        ml_result['edge_age'] = edge_age
-        ml_result['age_label'] = age_label
+        # Edge age tracking
+        edge_age, age_label, decay = get_edge_age_minutes(f"ml_{game_key}", ml_result['score'])
+        adjusted_score = max(0, ml_result['score'] - decay)
         
-        totals_age, totals_age_label, totals_decay = get_edge_age_minutes(f"{game_key}_totals", totals_result['score'])
-        totals_result['score'] = max(0, totals_result['score'] - totals_decay)
-        totals_result['edge_age'] = totals_age
-        totals_result['age_label'] = totals_age_label
+        # Gate check
+        gate_triggered, gate_reasons = check_no_trade_gate(ml_result, totals_result)
         
-        # Check NO_TRADE_GATE
-        gate_triggered, gate_reason = check_no_trade_gate(ml_result, totals_result)
+        signal, color = get_signal_tier(adjusted_score)
         
-        # Trade eligibility: score >= 6.5 AND gate not triggered AND not STALE/EXPIRED
-        ml_eligible = (
-            ml_result['score'] >= 6.5 and 
-            not gate_triggered and 
-            age_label not in ["🟠 STALE", "🔴 EXPIRED"]
-        )
-        
-        totals_eligible = (
-            totals_result['score'] >= 6.5 and 
-            not gate_triggered and 
-            totals_age_label not in ["🟠 STALE", "🔴 EXPIRED"]
-        )
-        
-        if ml_eligible or totals_eligible:
-            trade_eligible.append({
-                'game_key': game_key,
-                'home': home_team,
-                'away': away_team,
-                'ml': ml_result if ml_eligible else None,
-                'totals': totals_result if totals_eligible else None,
-                'gate_triggered': gate_triggered,
-                'gate_reason': gate_reason
-            })
-        else:
-            filtered_out.append({
-                'game_key': game_key,
-                'reason': gate_reason if gate_triggered else f"Score below threshold (ML: {ml_result['score']}, Totals: {totals_result['score']})"
-            })
+        all_picks.append({
+            'game': game_key,
+            'home': home_team,
+            'away': away_team,
+            'pick': ml_result['pick'],
+            'score': adjusted_score,
+            'raw_score': ml_result['score'],
+            'edge': ml_result['edge'],
+            'signal': signal,
+            'color': color,
+            'reasons': ml_result['reasons'],
+            'home_out': ml_result.get('home_stars', []),
+            'away_out': ml_result.get('away_stars', []),
+            'age_label': age_label,
+            'gate_triggered': gate_triggered,
+            'gate_reasons': gate_reasons,
+            'max_factor_share': ml_result.get('max_factor_share', 0)
+        })
     
-    return trade_eligible, filtered_out
+    all_picks.sort(key=lambda x: x['score'], reverse=True)
+    
+    # Group by tier (using adjusted scores)
+    strong_buys = [p for p in all_picks if p['score'] >= 8.0 and not p['gate_triggered'] and p['age_label'] not in ["🟠 STALE", "🔴 EXPIRED"]]
+    buys = [p for p in all_picks if 6.5 <= p['score'] < 8.0 and not p['gate_triggered'] and p['age_label'] not in ["🟠 STALE", "🔴 EXPIRED"]]
+    leans = [p for p in all_picks if 5.5 <= p['score'] < 6.5]
+    tossups = [p for p in all_picks if 4.5 <= p['score'] < 5.5]
+    skips = [p for p in all_picks if p['score'] < 4.5 or p['gate_triggered'] or p['age_label'] in ["🟠 STALE", "🔴 EXPIRED"]]
+    
+    # STRUCTURAL EDGE
+    if strong_buys:
+        st.markdown("### 🟢 STRUCTURAL EDGE")
+        for p in strong_buys:
+            reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
+            is_home_pick = p['pick'] == p['home']
+            opponent = p['away'] if is_home_pick else p['home']
+            home_away_tag = "🏠" if is_home_pick else "✈️"
+            factor_spread = f"{(1-p['max_factor_share'])*100:.0f}% diversified"
+            
+            col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
+            col1.markdown(f"**<span style='color:#00ff00'>{p['pick']}</span>** {home_away_tag} vs {opponent}", unsafe_allow_html=True)
+            col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span><br><span style='color:#666;font-size:0.8em'>{p['age_label']} | {factor_spread}</span>", unsafe_allow_html=True)
+            
+            kalshi_url = build_kalshi_ml_url(p['away'], p['home'])
+            col4.link_button(f"🚀 EXECUTE", kalshi_url)
+    
+    # CONSIDER
+    if buys:
+        st.markdown("### 🔵 CONSIDER")
+        for p in buys:
+            reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
+            is_home_pick = p['pick'] == p['home']
+            opponent = p['away'] if is_home_pick else p['home']
+            home_away_tag = "🏠" if is_home_pick else "✈️"
+            
+            col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
+            col1.markdown(f"**<span style='color:#00aaff'>{p['pick']}</span>** {home_away_tag} vs {opponent}", unsafe_allow_html=True)
+            col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span><br><span style='color:#666;font-size:0.8em'>{p['age_label']}</span>", unsafe_allow_html=True)
+            
+            kalshi_url = build_kalshi_ml_url(p['away'], p['home'])
+            col4.link_button(f"🔗 VIEW", kalshi_url)
+    
+    # LEAN
+    if leans:
+        st.markdown("### 🟡 LEAN")
+        for p in leans:
+            reasons_str = " • ".join(p['reasons'][:3]) if p['reasons'] else ""
+            is_home_pick = p['pick'] == p['home']
+            opponent = p['away'] if is_home_pick else p['home']
+            home_away_tag = "🏠" if is_home_pick else "✈️"
+            gate_warning = " ⚠️ GATED" if p['gate_triggered'] else ""
+            
+            col1, col2, col3 = st.columns([3, 2, 5])
+            col1.markdown(f"**<span style='color:#ffff00'>{p['pick']}</span>** {home_away_tag} vs {opponent}{gate_warning}", unsafe_allow_html=True)
+            col2.markdown(f"<span style='color:{p['color']}'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#888;font-size:0.85em'>{reasons_str}</span>", unsafe_allow_html=True)
+    
+    # TOSS-UP
+    if tossups:
+        st.markdown("### ⚪ TOSS-UP")
+        for p in tossups:
+            st.markdown(f"<span style='color:#888'>{p['away']}</span> ✈️ @ <span style='color:#888'>{p['home']}</span> 🏠 — <span style='color:{p['color']}'>{p['score']}/10</span> — No clear edge", unsafe_allow_html=True)
+    
+    # SKIP (including gated)
+    if skips:
+        st.markdown("### 🔴 SKIP / GATED")
+        for p in skips:
+            gate_info = f" | {p['gate_reasons'][0]}" if p['gate_triggered'] and p['gate_reasons'] else ""
+            age_info = f" | {p['age_label']}" if p['age_label'] in ["🟠 STALE", "🔴 EXPIRED"] else ""
+            st.markdown(f"~~{p['away']} @ {p['home']}~~ — <span style='color:{p['color']}'>{p['score']}/10</span>{gate_info}{age_info}", unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.caption(f"📊 {len(strong_buys)} Structural | {len(buys)} Consider | {len(leans)} Leans | {len(tossups)} Toss-ups | {len(skips)} Skip/Gated")
 
-# Compute eligibility
-trade_eligible, filtered_out = compute_trade_eligible_games(game_list, yesterday_teams, injuries)
-
-# ========== SIDEBAR ==========
-with st.sidebar:
-    st.header("📖 v13.9 ELITE MODE")
-    
-    st.markdown("""
-    **Philosophy:**  
-    This is a **TRADE AUTHORIZATION SYSTEM**.
-    
-    If a game is NOT tradable, it does NOT appear.
-    """)
-    
-    st.divider()
-    
-    st.subheader("🚫 NO-TRADE GATES")
-    st.markdown("""
-    **Single-Factor (>45%)**  
-    Edge depends too heavily on one factor
-    
-    **Crowd Alignment**  
-    All systems agree = synchronization risk
-    
-    **Stale Edge (>6 min)**  
-    Market has likely adjusted
-    
-    **Fill Quality (<6)**  
-    Poor execution conditions
-    """)
-    
-    st.divider()
-    
-    st.subheader("✅ TRADE SIGNALS")
-    st.markdown("""
-    🟢 **STRUCTURAL EDGE** → 8.0+  
-    🔵 **CONSIDER** → 6.5 - 7.9  
-    🟡 **LEAN** → 5.5 - 6.4  
-    ⚪ **NEUTRAL** → Below 5.5  
-    🔴 **NO TRADE** → Gated
-    """)
-    
-    st.divider()
-    
-    st.subheader("⏱️ Edge Half-Life")
-    st.markdown("""
-    🟢 FRESH → 0-3 min (no decay)  
-    🟡 AGING → 3-6 min (-0.5)  
-    🟠 STALE → 6-10 min (-1.5)  
-    🔴 EXPIRED → 10+ min (excluded)
-    """)
-    
-    st.divider()
-    
-    st.subheader(f"📊 Filter Stats")
-    st.markdown(f"""
-    **Eligible:** {len(trade_eligible)} games  
-    **Filtered:** {len(filtered_out)} games
-    """)
-    
-    if filtered_out:
-        with st.expander("View filtered games"):
-            for f in filtered_out:
-                st.caption(f"❌ {f['game_key']}: {f['reason'][:50]}...")
-    
-    st.divider()
-    
-    st.subheader("🚀 ONE-CLICK TRADING")
-    if not CRYPTO_AVAILABLE:
-        st.warning("Add `cryptography` to requirements.txt")
-    else:
-        st.session_state.trading_enabled = st.toggle("Enable Trading", value=st.session_state.trading_enabled)
-        if st.session_state.trading_enabled:
-            if st.session_state.kalshi_api_key:
-                st.success("✅ API Key loaded")
-            else:
-                st.session_state.kalshi_api_key = st.text_input("API Key", type="password")
-            if st.session_state.kalshi_private_key:
-                st.success("✅ Private Key loaded")
-            else:
-                st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", height=100)
-            st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, max_value=500, value=st.session_state.default_contracts)
-            if st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
-                st.success("✅ Ready to trade!")
-    
-    st.divider()
-    st.caption("v13.9 ELITE TRADE-ONLY")
-
-# ========== HEADER ==========
-st.title("🎯 NBA EDGE FINDER")
-st.caption(f"v13.9 ELITE TRADE-ONLY | {auto_status} | {now.strftime('%I:%M:%S %p ET')}")
-
-# ============================================================
-# v13.9 EMPTY STATE RULE
-# ============================================================
-if not trade_eligible:
-    st.markdown("""
-    <div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:40px;border-radius:15px;border:2px solid #444;text-align:center;margin:40px 0'>
-        <span style='font-size:3em'>🛡️</span>
-        <h2 style='color:#888;margin:20px 0'>No tradeable edges today.</h2>
-        <p style='color:#666;font-size:1.2em'>Capital preserved.</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.caption(f"📊 {len(filtered_out)} games analyzed. None passed all gates.")
-    
-    # Still show position tracker if positions exist
-    if st.session_state.positions:
-        st.divider()
-        st.subheader("📈 ACTIVE POSITIONS")
-        for idx, pos in enumerate(st.session_state.positions):
-            game_key = pos['game']
-            g = games.get(game_key)
-            if g:
-                total = g['total']
-                mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
-                is_final = g['status_type'] == "STATUS_FINAL"
-                projected = round((total / mins) * 48) if mins > 0 else None
-                cushion = (pos['threshold'] - projected) if pos['side'] == "NO" and projected else ((projected - pos['threshold']) if projected else 0)
-                price = pos.get('price', 50)
-                contracts = pos.get('contracts', 1)
-                cost = pos.get('cost', round(price * contracts / 100, 2))
-                potential_win = round((100 - price) * contracts / 100, 2)
-                
-                if is_final:
-                    won = (total < pos['threshold']) if pos['side'] == "NO" else (total > pos['threshold'])
-                    status_label = "✅ WON!" if won else "❌ LOST"
-                    status_color = "#00ff00" if won else "#ff0000"
-                else:
-                    if cushion >= 15:
-                        status_label, status_color = "🟢 VERY SAFE", "#00ff00"
-                    elif cushion >= 8:
-                        status_label, status_color = "🟢 LOOKING GOOD", "#00ff00"
-                    elif cushion >= 3:
-                        status_label, status_color = "🟡 ON TRACK", "#ffff00"
-                    elif cushion >= -3:
-                        status_label, status_color = "🟠 WARNING", "#ff8800"
-                    else:
-                        status_label, status_color = "🔴 AT RISK", "#ff0000"
-                
-                game_status = "FINAL" if is_final else f"Q{g['period']} {g['clock']}"
-                st.markdown(f"""
-                <div style='background:#1a1a2e;padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'>
-                    <b>{game_key.replace('@', ' @ ')}</b> — {game_status} — 
-                    <span style='color:{status_color}'>{status_label}</span> — 
-                    {pos['side']} {pos['threshold']} — Proj: {projected if projected else '—'} — Cushion: {cushion:+.0f}
-                </div>
-                """, unsafe_allow_html=True)
-    
-    st.stop()
-
-# ============================================================
-# RENDER TRADE-ELIGIBLE GAMES ONLY
-# ============================================================
-
-st.subheader("🎯 TRADE-ELIGIBLE ML PICKS")
-
-ml_trades = [t for t in trade_eligible if t['ml'] is not None]
-ml_trades.sort(key=lambda x: x['ml']['score'], reverse=True)
-
-if ml_trades:
-    for t in ml_trades:
-        ml = t['ml']
-        signal, color = get_signal_tier_v139(ml['score'])
-        reasons_str = " • ".join(ml['reasons']) if ml['reasons'] else "Multiple factors"
-        is_home_pick = ml['pick'] == t['home']
-        opponent = t['away'] if is_home_pick else t['home']
-        home_away_tag = "🏠" if is_home_pick else "✈️"
-        
-        st.markdown(f"""
-        <div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {color};margin-bottom:10px'>
-            <div style='display:flex;justify-content:space-between;align-items:center'>
-                <span style='color:{color};font-size:1.4em;font-weight:bold'>{ml['pick']} {home_away_tag}</span>
-                <span style='color:{color}'>{signal} | {ml['score']}/10 | +{ml['edge']:.0f}%</span>
-            </div>
-            <div style='color:#aaa;margin-top:8px'>vs {opponent} | {reasons_str}</div>
-            <div style='color:#666;font-size:0.85em;margin-top:5px'>{ml['age_label']} | Factor spread: {(1-ml['max_factor_share'])*100:.0f}% diversified</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        kalshi_url = build_kalshi_ml_url(t['away'], t['home'])
-        st.link_button(f"🚀 EXECUTE {ml['pick'].upper()}", kalshi_url)
-        st.markdown("")
 else:
-    st.info("No ML trades authorized")
+    st.info("No games scheduled today")
 
 st.divider()
 
-st.subheader("🎯 TRADE-ELIGIBLE TOTALS")
+# ========== 🎯 TOTALS BIG SNAPSHOT ==========
+st.subheader("🎯 TOTALS BIG SNAPSHOT - TODAY'S OVER/UNDER PICKS")
 
-totals_trades = [t for t in trade_eligible if t['totals'] is not None]
-totals_trades.sort(key=lambda x: x['totals']['score'], reverse=True)
+if game_list:
+    all_totals = []
+    for game_key in game_list:
+        parts = game_key.split("@")
+        away_team = parts[0]
+        home_team = parts[1]
+        
+        totals_result = calc_totals_score_with_factors(home_team, away_team, yesterday_teams, injuries)
+        ml_result = calc_ml_score_with_factors(home_team, away_team, yesterday_teams, injuries)
+        
+        # Edge age
+        edge_age, age_label, decay = get_edge_age_minutes(f"totals_{game_key}", totals_result['score'])
+        adjusted_score = max(0, totals_result['score'] - decay)
+        
+        # Gate check
+        gate_triggered, gate_reasons = check_no_trade_gate(ml_result, totals_result)
+        
+        signal, color = get_totals_signal_tier(adjusted_score, totals_result['pick'])
+        
+        all_totals.append({
+            'game': game_key,
+            'home': home_team,
+            'away': away_team,
+            'pick': totals_result['pick'],
+            'score': adjusted_score,
+            'raw_score': totals_result['score'],
+            'signal': signal,
+            'color': color,
+            'reasons': totals_result['reasons'],
+            'age_label': age_label,
+            'gate_triggered': gate_triggered,
+            'gate_reasons': gate_reasons,
+            'max_factor_share': totals_result.get('max_factor_share', 0)
+        })
+    
+    all_totals.sort(key=lambda x: x['score'], reverse=True)
+    
+    # Group
+    strong_no = [p for p in all_totals if p['score'] >= 8.0 and p['pick'] == "NO" and not p['gate_triggered'] and p['age_label'] not in ["🟠 STALE", "🔴 EXPIRED"]]
+    strong_yes = [p for p in all_totals if p['score'] >= 8.0 and p['pick'] == "YES" and not p['gate_triggered'] and p['age_label'] not in ["🟠 STALE", "🔴 EXPIRED"]]
+    reg_no = [p for p in all_totals if 6.5 <= p['score'] < 8.0 and p['pick'] == "NO" and not p['gate_triggered']]
+    reg_yes = [p for p in all_totals if 6.5 <= p['score'] < 8.0 and p['pick'] == "YES" and not p['gate_triggered']]
+    lean_no = [p for p in all_totals if 5.5 <= p['score'] < 6.5 and p['pick'] == "NO"]
+    lean_yes = [p for p in all_totals if 5.5 <= p['score'] < 6.5 and p['pick'] == "YES"]
+    tossups_t = [p for p in all_totals if 4.5 <= p['score'] < 5.5]
+    skips_t = [p for p in all_totals if p['score'] < 4.5 or p['gate_triggered'] or p['age_label'] in ["🟠 STALE", "🔴 EXPIRED"]]
+    
+    # STRONG NO
+    if strong_no:
+        st.markdown("### 🟢 STRONG NO (Under)")
+        for p in strong_no:
+            reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
+            factor_spread = f"{(1-p['max_factor_share'])*100:.0f}% diversified"
+            
+            col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
+            col1.markdown(f"**{p['away']}** @ **{p['home']}**")
+            col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span><br><span style='color:#666;font-size:0.8em'>{p['age_label']} | {factor_spread}</span>", unsafe_allow_html=True)
+            
+            kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
+            col4.link_button(f"🚀 EXECUTE NO", kalshi_url)
+    
+    # STRONG YES
+    if strong_yes:
+        st.markdown("### 🟢 STRONG YES (Over)")
+        for p in strong_yes:
+            reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
+            
+            col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
+            col1.markdown(f"**{p['away']}** @ **{p['home']}**")
+            col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
+            
+            kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
+            col4.link_button(f"🚀 EXECUTE YES", kalshi_url)
+    
+    # NO
+    if reg_no:
+        st.markdown("### 🔵 NO (Under)")
+        for p in reg_no:
+            reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
+            
+            col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
+            col1.markdown(f"**{p['away']}** @ **{p['home']}**")
+            col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
+            
+            kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
+            col4.link_button(f"🔗 VIEW NO", kalshi_url)
+    
+    # YES
+    if reg_yes:
+        st.markdown("### 🔵 YES (Over)")
+        for p in reg_yes:
+            reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
+            
+            col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
+            col1.markdown(f"**{p['away']}** @ **{p['home']}**")
+            col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
+            
+            kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
+            col4.link_button(f"🔗 VIEW YES", kalshi_url)
+    
+    # LEAN NO
+    if lean_no:
+        st.markdown("### 🟡 LEAN NO (Under)")
+        for p in lean_no:
+            reasons_str = " • ".join(p['reasons'][:3]) if p['reasons'] else ""
+            col1, col2, col3 = st.columns([3, 2, 5])
+            col1.markdown(f"{p['away']} @ {p['home']}")
+            col2.markdown(f"<span style='color:{p['color']}'>{p['score']}/10</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#888;font-size:0.85em'>{reasons_str}</span>", unsafe_allow_html=True)
+    
+    # LEAN YES
+    if lean_yes:
+        st.markdown("### 🟡 LEAN YES (Over)")
+        for p in lean_yes:
+            reasons_str = " • ".join(p['reasons'][:3]) if p['reasons'] else ""
+            col1, col2, col3 = st.columns([3, 2, 5])
+            col1.markdown(f"{p['away']} @ {p['home']}")
+            col2.markdown(f"<span style='color:{p['color']}'>{p['score']}/10</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#888;font-size:0.85em'>{reasons_str}</span>", unsafe_allow_html=True)
+    
+    # TOSS-UP
+    if tossups_t:
+        st.markdown("### ⚪ TOSS-UP")
+        for p in tossups_t:
+            st.markdown(f"{p['away']} @ {p['home']} — <span style='color:{p['color']}'>{p['score']}/10</span> — No clear edge", unsafe_allow_html=True)
+    
+    # SKIP
+    if skips_t:
+        st.markdown("### 🔴 SKIP / GATED")
+        for p in skips_t:
+            gate_info = f" | {p['gate_reasons'][0]}" if p['gate_triggered'] and p['gate_reasons'] else ""
+            st.markdown(f"~~{p['away']} @ {p['home']}~~ — <span style='color:{p['color']}'>{p['score']}/10</span>{gate_info}", unsafe_allow_html=True)
+    
+    st.markdown("---")
+    total_no = len(strong_no) + len(reg_no) + len(lean_no)
+    total_yes = len(strong_yes) + len(reg_yes) + len(lean_yes)
+    st.caption(f"📊 {len(strong_no)+len(strong_yes)} Strong | {len(reg_no)+len(reg_yes)} Regular | {len(lean_no)+len(lean_yes)} Leans | NO: {total_no} | YES: {total_yes}")
 
-if totals_trades:
-    for t in totals_trades:
-        tot = t['totals']
-        signal, color = get_totals_signal_tier_v139(tot['score'], tot['pick'])
-        reasons_str = " • ".join(tot['reasons']) if tot['reasons'] else "Multiple factors"
-        
-        st.markdown(f"""
-        <div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {color};margin-bottom:10px'>
-            <div style='display:flex;justify-content:space-between;align-items:center'>
-                <span style='color:{color};font-size:1.4em;font-weight:bold'>{tot['pick']} ({t['away']} @ {t['home']})</span>
-                <span style='color:{color}'>{signal} | {tot['score']}/10</span>
-            </div>
-            <div style='color:#aaa;margin-top:8px'>{reasons_str}</div>
-            <div style='color:#666;font-size:0.85em;margin-top:5px'>{tot['age_label']} | Factor spread: {(1-tot['max_factor_share'])*100:.0f}% diversified</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        kalshi_url = build_kalshi_totals_url(t['away'], t['home'])
-        st.link_button(f"🚀 EXECUTE {tot['pick']}", kalshi_url)
-        st.markdown("")
 else:
-    st.info("No totals trades authorized")
+    st.info("No games scheduled today")
 
 st.divider()
 
-# ========== B2B INFO ==========
 if yesterday_teams:
     st.info(f"📅 **B2B Teams Today:** {', '.join(sorted(yesterday_teams))}")
 
+# ========== 🔥 TOP PICKS - BLOWOUT RISK ==========
+st.subheader("🔥 TOP PICKS - BLOWOUT RISK (Tired Away @ Fresh Home)")
+
+if game_list:
+    top_picks = []
+    for game_key in game_list:
+        parts = game_key.split("@")
+        away_t = parts[0]
+        home_t = parts[1]
+        
+        away_b2b = away_t in yesterday_teams
+        home_b2b = home_t in yesterday_teams
+        
+        if away_b2b and not home_b2b:
+            away_r = 0
+            home_r = 1
+            
+            home_i, _ = get_injury_score(home_t, injuries)
+            away_i, _ = get_injury_score(away_t, injuries)
+            
+            res = calc_12_factor_edge(home_t, away_t, home_r, away_r, home_i, away_i, 50)
+            
+            top_picks.append({
+                'game': game_key,
+                'home_team': home_t,
+                'away_team': away_t,
+                'home_win_prob': res['home_win_prob'],
+                'spread': res['expected_spread']
+            })
+    
+    top_picks.sort(key=lambda x: x['home_win_prob'], reverse=True)
+    
+    if top_picks:
+        for pick in top_picks:
+            st.markdown(f"""
+            <div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid #00ff00;margin-bottom:10px'>
+                <span style='color:#00ff00;font-size:1.8em;font-weight:bold'>🎯 BUY {pick['home_team']} ML</span>
+                <span style='color:#00ff00;font-size:1.1em;margin-left:15px'>HIGH CONFIDENCE</span>
+                <br><span style='color:#aaa;font-size:0.9em'>{pick['game'].replace('@', ' @ ')} | {pick['home_team']} {pick['home_win_prob']:.0f}% to win (home, fresh) | 🔴 {pick['away_team']} B2B (tired)</span>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("⚪ No BLOWOUT RISK games today — no tired away team @ fresh home matchups")
+else:
+    st.info("No games today")
+
 st.divider()
 
-# ========== ADD POSITION (for authorized trades only) ==========
-st.subheader("➕ ADD POSITION")
+# ========== 12-FACTOR DEEP DIVE (COLLAPSED) ==========
+with st.expander("🔬 12-FACTOR DEEP DIVE - See why each TOP PICK has edge"):
+    if game_list:
+        blowout_games = []
+        for game_key in game_list:
+            parts = game_key.split("@")
+            away_team = parts[0]
+            home_team = parts[1]
+            
+            away_b2b = away_team in yesterday_teams
+            home_b2b = home_team in yesterday_teams
+            
+            if away_b2b and not home_b2b:
+                blowout_games.append(game_key)
+        
+        if blowout_games:
+            for game_key in blowout_games:
+                parts = game_key.split("@")
+                away_team = parts[0]
+                home_team = parts[1]
+                
+                away_rest = 0
+                home_rest = 1
+                
+                home_inj, home_stars = get_injury_score(home_team, injuries)
+                away_inj, away_stars = get_injury_score(away_team, injuries)
+                
+                home = TEAM_STATS.get(home_team, {})
+                away = TEAM_STATS.get(away_team, {})
+                home_loc = TEAM_LOCATIONS.get(home_team, (0, 0))
+                away_loc = TEAM_LOCATIONS.get(away_team, (0, 0))
+                travel_miles = calc_distance(away_loc, home_loc)
+                
+                result = calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, away_inj, 50)
+                
+                st.markdown(f"### {away_team} @ {home_team} → 🟢 BUY {home_team} ML")
+                st.success(f"🔥 BLOWOUT RISK: {away_team} is B2B (tired) @ {home_team} (fresh)")
+                
+                rest_diff = home_rest - away_rest
+                rest_score = max(-6, min(6, rest_diff * 2))
+                def_score = (away.get('def_rank', 15) - home.get('def_rank', 15)) * 0.15
+                injury_score = (away_inj - home_inj) * 1.5
+                pace_diff = home.get('pace', 100) - away.get('pace', 100)
+                pace_score = pace_diff * 0.1 if home.get('net_rating', 0) > away.get('net_rating', 0) else -pace_diff * 0.1
+                net_score = (home.get('net_rating', 0) - away.get('net_rating', 0)) * 0.8
+                travel_score = 2.5 if travel_miles > 1500 else (1.5 if travel_miles > 1000 else (0.75 if travel_miles > 500 else 0))
+                split_score = (home.get('home_win_pct', 0.5) - 0.5) * 10 + (0.5 - away.get('away_win_pct', 0.5)) * 10
+                h2h_score = 1.5 if home.get('division') == away.get('division') and home.get('division') else 0
+                altitude_score = 2.0 if home_team == "Denver" else 0
+                ft_score = (home.get('ft_rate', 0.25) - away.get('ft_rate', 0.25)) * 20
+                reb_score = (home.get('reb_rate', 50) - away.get('reb_rate', 50)) * 0.3
+                three_score = (home.get('three_pct', 36) - away.get('three_pct', 36)) * 0.5
+                
+                fcol1, fcol2, fcol3 = st.columns(3)
+                with fcol1:
+                    st.markdown(f"🛏️ Rest: **{rest_score:+.1f}**")
+                    st.markdown(f"🛡️ Defense: **{def_score:+.1f}**")
+                    st.markdown(f"🏥 Injuries: **{injury_score:+.1f}**")
+                    st.markdown(f"⚡ Pace: **{pace_score:+.1f}**")
+                with fcol2:
+                    st.markdown(f"📊 Net Rating: **{net_score:+.1f}**")
+                    st.markdown(f"✈️ Travel: **{travel_score:+.1f}**")
+                    st.markdown(f"🏠 Splits: **{split_score:+.1f}**")
+                    st.markdown(f"⚔️ Division: **{h2h_score:+.1f}**")
+                with fcol3:
+                    st.markdown(f"🏔️ Altitude: **{altitude_score:+.1f}**")
+                    st.markdown(f"🎯 FT Rate: **{ft_score:+.1f}**")
+                    st.markdown(f"🏀 Reb: **{reb_score:+.1f}**")
+                    st.markdown(f"🎯 3PT: **{three_score:+.1f}**")
+                
+                st.markdown(f"**🏠 Home Court +3.0 → TOTAL: {result['expected_spread']:+.1f} → {result['home_win_prob']:.0f}% {home_team}**")
+                st.markdown("---")
+        else:
+            st.info("⚪ No BLOWOUT RISK games today to analyze")
+    else:
+        st.warning("No games available")
 
-if trade_eligible:
-    eligible_games = ["Select a game..."] + [t['game_key'].replace("@", " @ ") for t in trade_eligible]
-    selected_game = st.selectbox("🏀 Game (trade-eligible only)", eligible_games, key="game_select")
-    threshold_select = st.number_input("🎯 Threshold", min_value=180.0, max_value=280.0, value=225.5, step=3.0)
+st.divider()
+
+# ========== ADD NEW POSITION ==========
+st.subheader("➕ ADD NEW POSITION")
+
+game_options = ["Select a game..."] + [gk.replace("@", " @ ") for gk in game_list]
+selected_game = st.selectbox("🏀 Game", game_options, key="game_select")
+threshold_select = st.number_input("🎯 Threshold (check Kalshi for available)", min_value=180.0, max_value=280.0, value=225.5, step=3.0, key="threshold_select")
+
+if selected_game != "Select a game...":
+    parts = selected_game.replace(" @ ", "@").split("@")
+    away_t = parts[0]
+    home_t = parts[1]
+    kalshi_url = build_kalshi_totals_url(away_t, home_t)
+    st.link_button(f"🔗 View {selected_game} on Kalshi", kalshi_url, use_container_width=True)
+
+with st.form("add_position_form"):
+    p1, p2, p3 = st.columns(3)
+    
+    side = p1.selectbox("📊 Side", ["NO (Under)", "YES (Over)"], key="side_form")
+    price_paid = p2.number_input("💵 Price (¢)", min_value=1, max_value=99, value=50, step=1, key="price_form")
+    contracts = p3.number_input("📄 Contracts", min_value=1, max_value=1000, value=st.session_state.default_contracts, step=1)
+    
+    if st.session_state.trading_enabled and st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
+        buy_col, add_col = st.columns(2)
+        buy_now = buy_col.form_submit_button("🚀 BUY ON KALSHI NOW", use_container_width=True, type="primary")
+        add_manual = add_col.form_submit_button("✅ ADD POSITION (manual)", use_container_width=True)
+    else:
+        buy_now = False
+        add_manual = st.form_submit_button("✅ ADD POSITION (after you buy)", use_container_width=True)
     
     if selected_game != "Select a game...":
-        parts = selected_game.replace(" @ ", "@").split("@")
-        kalshi_url = build_kalshi_totals_url(parts[0], parts[1])
-        st.link_button(f"🔗 View on Kalshi", kalshi_url, use_container_width=True)
-    
-    with st.form("add_position_form"):
-        p1, p2, p3 = st.columns(3)
-        side = p1.selectbox("📊 Side", ["NO (Under)", "YES (Over)"])
-        price_paid = p2.number_input("💵 Price (¢)", min_value=1, max_value=99, value=50, step=1)
-        contracts = p3.number_input("📄 Contracts", min_value=1, max_value=1000, value=st.session_state.default_contracts)
+        game_key = selected_game.replace(" @ ", "@")
+        side_clean = "NO" if "NO" in side else "YES"
+        parts = game_key.split("@")
         
-        add_btn = st.form_submit_button("✅ ADD POSITION", use_container_width=True)
+        if buy_now:
+            ticker = build_kalshi_ticker(parts[0], parts[1], threshold_select)
+            success, msg = place_kalshi_order(
+                ticker=ticker,
+                side=side_clean,
+                price_cents=price_paid,
+                count=contracts,
+                api_key=st.session_state.kalshi_api_key,
+                private_key_pem=st.session_state.kalshi_private_key
+            )
+            if success:
+                st.success(msg)
+                st.session_state.positions.append({
+                    'game': game_key,
+                    'side': side_clean,
+                    'threshold': threshold_select,
+                    'price': price_paid,
+                    'contracts': contracts,
+                    'cost': round(price_paid * contracts / 100, 2)
+                })
+                st.rerun()
+            else:
+                st.error(msg)
         
-        if add_btn and selected_game != "Select a game...":
-            game_key = selected_game.replace(" @ ", "@")
-            side_clean = "NO" if "NO" in side else "YES"
+        if add_manual:
             st.session_state.positions.append({
                 'game': game_key,
                 'side': side_clean,
@@ -1083,8 +1519,6 @@ if trade_eligible:
                 'cost': round(price_paid * contracts / 100, 2)
             })
             st.rerun()
-else:
-    st.info("No trade-eligible games — position entry disabled")
 
 st.divider()
 
@@ -1095,6 +1529,7 @@ if st.session_state.positions:
     for idx, pos in enumerate(st.session_state.positions):
         game_key = pos['game']
         g = games.get(game_key)
+        
         price = pos.get('price', 50)
         contracts = pos.get('contracts', 1)
         cost = pos.get('cost', round(price * contracts / 100, 2))
@@ -1105,32 +1540,45 @@ if st.session_state.positions:
             is_final = g['status_type'] == "STATUS_FINAL"
             projected = round((total / mins) * 48) if mins > 0 else None
             cushion = (pos['threshold'] - projected) if pos['side'] == "NO" and projected else ((projected - pos['threshold']) if projected else 0)
+            
             potential_win = round((100 - price) * contracts / 100, 2)
             potential_loss = cost
             
             if is_final:
                 won = (total < pos['threshold']) if pos['side'] == "NO" else (total > pos['threshold'])
-                status_label = "✅ WON!" if won else "❌ LOST"
-                status_color = "#00ff00" if won else "#ff0000"
-                pnl = f"+${potential_win:.2f}" if won else f"-${potential_loss:.2f}"
-                pnl_color = "#00ff00" if won else "#ff0000"
+                if won:
+                    status_label = "✅ WON!"
+                    status_color = "#00ff00"
+                    pnl_display = f"+${potential_win:.2f}"
+                    pnl_color = "#00ff00"
+                else:
+                    status_label = "❌ LOST"
+                    status_color = "#ff0000"
+                    pnl_display = f"-${potential_loss:.2f}"
+                    pnl_color = "#ff0000"
             elif projected:
                 if cushion >= 15:
-                    status_label, status_color = "🟢 VERY SAFE", "#00ff00"
+                    status_label = "🟢 VERY SAFE"
+                    status_color = "#00ff00"
                 elif cushion >= 8:
-                    status_label, status_color = "🟢 LOOKING GOOD", "#00ff00"
+                    status_label = "🟢 LOOKING GOOD"
+                    status_color = "#00ff00"
                 elif cushion >= 3:
-                    status_label, status_color = "🟡 ON TRACK", "#ffff00"
+                    status_label = "🟡 ON TRACK"
+                    status_color = "#ffff00"
                 elif cushion >= -3:
-                    status_label, status_color = "🟠 WARNING", "#ff8800"
+                    status_label = "🟠 WARNING"
+                    status_color = "#ff8800"
                 else:
-                    status_label, status_color = "🔴 AT RISK", "#ff0000"
-                pnl = f"Win: +${potential_win:.2f}"
-                pnl_color = "#888"
+                    status_label = "🔴 AT RISK"
+                    status_color = "#ff0000"
+                pnl_display = f"Win: +${potential_win:.2f}"
+                pnl_color = "#888888"
             else:
-                status_label, status_color = "⏳ WAITING", "#888"
-                pnl = f"Win: +${potential_win:.2f}"
-                pnl_color = "#888"
+                status_label = "⏳ WAITING"
+                status_color = "#888888"
+                pnl_display = f"Win: +${potential_win:.2f}"
+                pnl_color = "#888888"
             
             game_status = "FINAL" if is_final else f"Q{g['period']} {g['clock']}"
             
@@ -1143,12 +1591,12 @@ if st.session_state.positions:
                     </div>
                     <span style='color:{status_color};font-size:1.3em;font-weight:bold'>{status_label}</span>
                 </div>
-                <div style='margin-top:10px;display:flex;gap:30px;flex-wrap:wrap'>
+                <div style='margin-top:10px;display:flex;gap:30px'>
                     <span style='color:#aaa'>📊 <b style="color:#fff">{pos['side']} {pos['threshold']}</b></span>
-                    <span style='color:#aaa'>💵 <b style="color:#fff">{contracts}x @ {price}¢</b></span>
+                    <span style='color:#aaa'>💵 <b style="color:#fff">{contracts}x @ {price}¢</b> (${cost:.2f})</span>
                     <span style='color:#aaa'>📈 Proj: <b style="color:#fff">{projected if projected else '—'}</b></span>
                     <span style='color:#aaa'>🎯 Cushion: <b style="color:{status_color}">{cushion:+.0f}</b></span>
-                    <span style='color:{pnl_color}'>{pnl}</span>
+                    <span style='color:{pnl_color}'>{pnl_display}</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -1163,33 +1611,180 @@ if st.session_state.positions:
         else:
             st.markdown(f"""
             <div style='background:#1a1a2e;padding:15px;border-radius:10px;border:1px solid #444;margin-bottom:10px'>
-                <span style='color:#888'>{game_key.replace('@', ' @ ')} — {pos['side']} {pos['threshold']} — ⏳ Game not started</span>
+                <span style='color:#888'>{game_key.replace('@', ' @ ')} — {pos['side']} {pos['threshold']} — {contracts}x @ {price}¢</span>
+                <span style='color:#666;margin-left:15px'>⏳ Game not started</span>
             </div>
             """, unsafe_allow_html=True)
             if st.button("🗑️ Remove", key=f"del_{idx}"):
                 st.session_state.positions.pop(idx)
                 st.rerun()
     
+    st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🗑️ Clear All Positions", use_container_width=True):
         st.session_state.positions = []
         st.rerun()
 else:
-    st.info("No positions tracked")
+    st.info("No positions tracked — use the form above to add your first position")
 
 st.divider()
 
-# ========== ALL GAMES (collapsed) ==========
-with st.expander("📺 ALL GAMES (raw scores)"):
-    if games:
-        cols = st.columns(4)
-        for i, (k, g) in enumerate(games.items()):
-            with cols[i % 4]:
-                st.write(f"**{g['away_team']}** {g['away_score']}")
-                st.write(f"**{g['home_team']}** {g['home_score']}")
-                status = "FINAL" if g['status_type'] == "STATUS_FINAL" else f"Q{g['period']} {g['clock']}"
-                st.caption(f"{status} | {g['total']} pts")
+# ========== CUSHION SCANNER ==========
+st.subheader("🎯 CUSHION SCANNER")
+
+cs1, cs2 = st.columns([1, 1])
+cush_min = cs1.selectbox("Min minutes", [6, 9, 12, 18, 24], index=1, key="cush_min")
+cush_side = cs2.selectbox("Side", ["NO", "YES"], key="cush_side")
+
+thresholds = [225.5, 230.5, 235.5, 240.5, 245.5]
+cush_data = []
+
+for gk, g in games.items():
+    mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
+    if mins >= cush_min:
+        proj = round((g['total'] / mins) * 48) if mins > 0 else 0
+        cush_data.append({"game": gk, "proj": proj})
+
+if cush_data:
+    good_games = []
+    for cd in cush_data:
+        has_edge = False
+        for t in thresholds:
+            c = (t - cd['proj']) if cush_side == "NO" else (cd['proj'] - t)
+            if c >= 10:
+                has_edge = True
+                break
+        if has_edge:
+            gk = cd['game']
+            g = games.get(gk, {})
+            away_team = g.get('away_team', '')
+            home_team = g.get('home_team', '')
+            
+            away_b2b = away_team in yesterday_teams
+            home_b2b = home_team in yesterday_teams
+            
+            fatigue_score = 0
+            if away_b2b:
+                fatigue_score += 2
+            if home_b2b and away_b2b:
+                fatigue_score += 1
+            if home_team == "Denver":
+                fatigue_score += 1
+            if away_b2b and not home_b2b and cush_side == "NO":
+                fatigue_score -= 2
+            
+            mins = get_minutes_played(g.get('period', 0), g.get('clock', ''), g.get('status_type', ''))
+            pace_score = 0
+            pace_val = 0
+            pace_label = ""
+            if mins >= 6:
+                pace_val = g.get('total', 0) / mins
+                if pace_val < 4.5:
+                    pace_score = 2 if cush_side == "NO" else -1
+                    pace_label = "🟢 SLOW"
+                elif pace_val < 4.8:
+                    pace_score = 1 if cush_side == "NO" else 0
+                    pace_label = "🟡 AVG"
+                elif pace_val < 5.2:
+                    pace_score = 0 if cush_side == "NO" else 1
+                    pace_label = "🟠 FAST"
+                else:
+                    pace_score = -1 if cush_side == "NO" else 2
+                    pace_label = "🔴 SHOT"
+            
+            mid_cushion = (235.5 - cd['proj']) if cush_side == "NO" else (cd['proj'] - 235.5)
+            cushion_score = 3 if mid_cushion >= 20 else (2 if mid_cushion >= 10 else (1 if mid_cushion >= 5 else 0))
+            
+            total_score = max(0, min(10, fatigue_score + pace_score + cushion_score))
+            cd['edge_score'] = total_score
+            cd['pace_val'] = pace_val
+            cd['pace_label'] = pace_label
+            cd['mins'] = mins
+            good_games.append(cd)
+    
+    if good_games:
+        hcols = st.columns([2, 1] + [1]*len(thresholds) + [1, 1])
+        hcols[0].markdown("**Game**")
+        hcols[1].markdown("**Proj**")
+        for i, t in enumerate(thresholds):
+            hcols[i+2].markdown(f"**{t}**")
+        hcols[-2].markdown("**Pace**")
+        hcols[-1].markdown("**Score**")
+        
+        for cd in good_games:
+            rcols = st.columns([2, 1] + [1]*len(thresholds) + [1, 1])
+            rcols[0].write(cd['game'].replace("@", " @ "))
+            rcols[1].write(f"{cd['proj']}")
+            for i, t in enumerate(thresholds):
+                c = (t - cd['proj']) if cush_side == "NO" else (cd['proj'] - t)
+                if c >= 20:
+                    rcols[i+2].markdown(f"<span style='color:#00ff00'>**+{c:.0f}** 🟢</span>", unsafe_allow_html=True)
+                elif c >= 10:
+                    rcols[i+2].markdown(f"<span style='color:#ffff00'>**+{c:.0f}** 🟡</span>", unsafe_allow_html=True)
+                else:
+                    rcols[i+2].markdown(f"<span style='color:#666'>—</span>", unsafe_allow_html=True)
+            
+            if cd['pace_label']:
+                rcols[-2].markdown(f"<span style='font-size:0.85em'>{cd['pace_label']}<br>{cd['pace_val']:.1f}/m</span>", unsafe_allow_html=True)
+            else:
+                rcols[-2].markdown("—")
+            
+            score = cd['edge_score']
+            if score >= 8:
+                rcols[-1].markdown(f"<span style='color:#00ff00;font-weight:bold'>**{score}/10** 🟢</span>", unsafe_allow_html=True)
+            elif score >= 6:
+                rcols[-1].markdown(f"<span style='color:#ffff00;font-weight:bold'>**{score}/10** 🟡</span>", unsafe_allow_html=True)
+            else:
+                rcols[-1].markdown(f"<span style='color:#ff0000'>{score}/10 🔴</span>", unsafe_allow_html=True)
     else:
-        st.info("No games today")
+        st.info("⚪ No games with +10 or more cushion right now")
+else:
+    st.info(f"No games with {cush_min}+ minutes played yet")
 
 st.divider()
-st.caption("⚠️ For entertainment only. Not financial advice. System designed to deny trades more often than allow them.")
+
+# ========== PACE SCANNER ==========
+st.subheader("🔥 PACE SCANNER")
+
+pace_data = []
+for gk, g in games.items():
+    mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
+    if mins >= 6:
+        pace = round(g['total'] / mins, 2)
+        proj = round(pace * 48)
+        pace_data.append({"game": gk, "pace": pace, "proj": proj, "total": g['total'], "mins": mins,
+                         "period": g['period'], "clock": g['clock'], "final": g['status_type'] == "STATUS_FINAL"})
+
+pace_data.sort(key=lambda x: x['pace'])
+
+if pace_data:
+    for p in pace_data:
+        if p['pace'] < 4.5:
+            lbl, clr = "🟢 SLOW", "#00ff00"
+        elif p['pace'] < 4.8:
+            lbl, clr = "🟡 AVG", "#ffff00"
+        elif p['pace'] < 5.2:
+            lbl, clr = "🟠 FAST", "#ff8800"
+        else:
+            lbl, clr = "🔴 SHOOTOUT", "#ff0000"
+        status = "FINAL" if p['final'] else f"Q{p['period']} {p['clock']}"
+        st.markdown(f"**{p['game'].replace('@', ' @ ')}** — {p['total']} pts in {p['mins']:.0f} min — **{p['pace']}/min** <span style='color:{clr}'>**{lbl}**</span> — Proj: **{p['proj']}** — {status}", unsafe_allow_html=True)
+else:
+    st.info("No games with 6+ minutes played yet")
+
+st.divider()
+
+# ========== ALL GAMES ==========
+st.subheader("📺 ALL GAMES")
+if games:
+    cols = st.columns(4)
+    for i, (k, g) in enumerate(games.items()):
+        with cols[i % 4]:
+            st.write(f"**{g['away_team']}** {g['away_score']}")
+            st.write(f"**{g['home_team']}** {g['home_score']}")
+            status = "FINAL" if g['status_type'] == "STATUS_FINAL" else f"Q{g['period']} {g['clock']}"
+            st.caption(f"{status} | {g['total']} pts")
+else:
+    st.info("No games today")
+
+st.divider()
+st.caption("⚠️ For entertainment only. Not financial advice. v13.9 ELITE TRADE-ONLY")
