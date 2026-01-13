@@ -19,6 +19,18 @@ st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide"
 # ========== AUTO-REFRESH EVERY 30 SECONDS ==========
 st.markdown("""
 <meta http-equiv="refresh" content="30">
+<style>
+/* Make all link buttons green */
+.stLinkButton > a {
+    background-color: #00aa00 !important;
+    border-color: #00aa00 !important;
+    color: white !important;
+}
+.stLinkButton > a:hover {
+    background-color: #00cc00 !important;
+    border-color: #00cc00 !important;
+}
+</style>
 """, unsafe_allow_html=True)
 
 # ============================================================
@@ -331,7 +343,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v13.6")
+    st.caption("v13.7")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -912,7 +924,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"🔄 Auto-refresh 30s | Last update: {now.strftime('%I:%M:%S %p ET')} | v13.6")
+st.caption(f"🔄 Auto-refresh 30s | Last update: {now.strftime('%I:%M:%S %p ET')} | v13.7")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
