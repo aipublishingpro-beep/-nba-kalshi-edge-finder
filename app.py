@@ -327,6 +327,112 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 st.title("🎯 NBA EDGE FINDER")
 st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')}")
 
+# ========== POSITION TRACKER (TOP) ==========
+if st.session_state.positions:
+    st.subheader("📈 ACTIVE POSITIONS")
+    
+    for idx, pos in enumerate(st.session_state.positions):
+        game_key = pos['game']
+        side = pos['side']
+        threshold = pos['threshold']
+        price = pos['price']
+        contracts = pos['contracts']
+        
+        # Find game data
+        g = None
+        parts = game_key.split("@")
+        if len(parts) == 2:
+            for key, game_data in games.items():
+                if game_data['away_team'] == parts[0] and game_data['home_team'] == parts[1]:
+                    g = game_data
+                    break
+        
+        if g:
+            total = g['total']
+            mins_played = get_minutes_played(g['period'], g['clock'], g['status_type'])
+            is_final = g['status_type'] == "STATUS_FINAL"
+            
+            if mins_played > 0:
+                projected = round((total / mins_played) * 48)
+            else:
+                projected = None
+            
+            # Calculate status
+            if side == "NO":
+                cushion = (threshold - projected) if projected else 0
+                if is_final:
+                    won = total < threshold
+                    status_text = "✅ WON!" if won else "❌ LOST"
+                    status_color = "#00ff00" if won else "#ff0000"
+                elif projected:
+                    if cushion > 10:
+                        status_text = f"🟢 +{cushion:.0f}"
+                        status_color = "#00ff00"
+                    elif cushion > 3:
+                        status_text = f"🟡 +{cushion:.0f}"
+                        status_color = "#ffff00"
+                    elif cushion > -3:
+                        status_text = f"🟠 {cushion:+.0f}"
+                        status_color = "#ff8800"
+                    else:
+                        status_text = f"🔴 {cushion:+.0f}"
+                        status_color = "#ff0000"
+                else:
+                    status_text = "⏳"
+                    status_color = "#888888"
+            else:
+                cushion = (projected - threshold) if projected else 0
+                if is_final:
+                    won = total > threshold
+                    status_text = "✅ WON!" if won else "❌ LOST"
+                    status_color = "#00ff00" if won else "#ff0000"
+                elif projected:
+                    if cushion > 10:
+                        status_text = f"🟢 +{cushion:.0f}"
+                        status_color = "#00ff00"
+                    elif cushion > 3:
+                        status_text = f"🟡 +{cushion:.0f}"
+                        status_color = "#ffff00"
+                    elif cushion > -3:
+                        status_text = f"🟠 {cushion:+.0f}"
+                        status_color = "#ff8800"
+                    else:
+                        status_text = f"🔴 {cushion:+.0f}"
+                        status_color = "#ff0000"
+                else:
+                    status_text = "⏳"
+                    status_color = "#888888"
+            
+            cost = price * contracts / 100
+            potential = (100 - price) * contracts / 100
+            game_status = "FINAL" if is_final else f"Q{g['period']} {g['clock']}"
+            
+            col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
+            col1.markdown(f"**{game_key.replace('@', ' @ ')}**<br><small>{game_status} | {total} pts</small>", unsafe_allow_html=True)
+            col2.markdown(f"**{side} {threshold}**")
+            col3.markdown(f"Proj: **{projected if projected else '—'}**")
+            col4.markdown(f"<span style='color:{status_color};font-size:1.2em'><b>{status_text}</b></span>", unsafe_allow_html=True)
+            if col5.button("❌", key=f"del_{idx}"):
+                st.session_state.positions.pop(idx)
+                st.rerun()
+        else:
+            col1, col2 = st.columns([5, 1])
+            col1.warning(f"Game not found: {game_key}")
+            if col2.button("❌", key=f"del_miss_{idx}"):
+                st.session_state.positions.pop(idx)
+                st.rerun()
+    
+    # Summary row
+    total_cost = sum(p['price'] * p['contracts'] for p in st.session_state.positions) / 100
+    total_potential = sum((100 - p['price']) * p['contracts'] for p in st.session_state.positions) / 100
+    sum_col1, sum_col2 = st.columns([4, 1])
+    sum_col1.markdown(f"**💰 Risk: ${total_cost:.2f} | Potential: ${total_potential:.2f}**")
+    if sum_col2.button("🗑️ Clear All"):
+        st.session_state.positions = []
+        st.rerun()
+    
+    st.divider()
+
 # ========== CUSHION SCANNER ==========
 st.subheader("🎯 CUSHION SCANNER")
 st.caption("Step 1: Find the fat edges — pick lowest green threshold")
