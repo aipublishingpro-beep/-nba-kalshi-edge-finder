@@ -1052,32 +1052,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.5")
-
-# ========== KALSHI API TEST ==========
-with st.expander("🧪 KALSHI API TEST (click to check)"):
-    if game_list:
-        test_game = game_list[0]
-        parts = test_game.split("@")
-        away_t, home_t = parts[0], parts[1]
-        
-        st.write(f"Testing: **{away_t} @ {home_t}**")
-        
-        market_line, all_thresholds, debug_info = fetch_kalshi_market_line(away_t, home_t)
-        
-        st.write("**Debug Info:**")
-        st.json(debug_info)
-        
-        if market_line:
-            st.success(f"✅ Kalshi API works! Market line: **{market_line}**")
-            if all_thresholds:
-                st.write("All thresholds found:")
-                for t in sorted(all_thresholds, key=lambda x: x['threshold']):
-                    st.write(f"  {t['threshold']}: YES @ {t['yes_price']}¢")
-        else:
-            st.error("❌ Could not fetch Kalshi data")
-    else:
-        st.info("No games to test")
+st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.6")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
@@ -1173,6 +1148,12 @@ if game_list:
         
         # Calculate projected total and recommended threshold
         projected = calc_projected_total(home_team, away_team, yesterday_teams)
+        
+        # Fetch REAL Kalshi market line
+        kalshi_line, _, _ = fetch_kalshi_market_line(away_team, home_team)
+        if not kalshi_line:
+            kalshi_line = 232  # Fallback if API fails
+        
         rec_threshold = calc_recommended_threshold(projected, pick, score)
         
         # Only include STRONG and regular tiers
@@ -1187,6 +1168,7 @@ if game_list:
                 'color': color,
                 'reasons': reasons,
                 'projected': projected,
+                'kalshi_line': kalshi_line,
                 'rec_threshold': rec_threshold
             })
     
@@ -1203,12 +1185,10 @@ if game_list:
     if strong_no:
         st.markdown("### 🟢 STRONG NO (Under)")
         for p in strong_no:
-            reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
-            
             col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
             col1.markdown(f"**{p['away']}** @ **{p['home']}**")
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"<span style='color:#aaa'>Proj: <b style='color:#fff'>{p['projected']}</b></span> → <span style='color:#00ff00;font-weight:bold'>BUY NO @ {p['rec_threshold']}+</span>", unsafe_allow_html=True)
+            col3.markdown(f"Proj: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00ff00;font-weight:bold'>BUY NO @ {p['rec_threshold']}+</span>", unsafe_allow_html=True)
             
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🚀 BUY NO", kalshi_url)
@@ -1217,12 +1197,10 @@ if game_list:
     if strong_yes:
         st.markdown("### 🟢 STRONG YES (Over)")
         for p in strong_yes:
-            reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
-            
             col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
             col1.markdown(f"**{p['away']}** @ **{p['home']}**")
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"<span style='color:#aaa'>Proj: <b style='color:#fff'>{p['projected']}</b></span> → <span style='color:#00ff00;font-weight:bold'>BUY YES @ {p['rec_threshold']}-</span>", unsafe_allow_html=True)
+            col3.markdown(f"Proj: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00ff00;font-weight:bold'>BUY YES @ {p['rec_threshold']}-</span>", unsafe_allow_html=True)
             
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🚀 BUY YES", kalshi_url)
@@ -1231,12 +1209,10 @@ if game_list:
     if reg_no:
         st.markdown("### 🔵 NO (Under)")
         for p in reg_no:
-            reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
-            
             col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
             col1.markdown(f"**{p['away']}** @ **{p['home']}**")
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"<span style='color:#aaa'>Proj: <b style='color:#fff'>{p['projected']}</b></span> → <span style='color:#00aaff;font-weight:bold'>BUY NO @ {p['rec_threshold']}+</span>", unsafe_allow_html=True)
+            col3.markdown(f"Proj: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00aaff;font-weight:bold'>BUY NO @ {p['rec_threshold']}+</span>", unsafe_allow_html=True)
             
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🔗 BUY NO", kalshi_url)
@@ -1245,12 +1221,10 @@ if game_list:
     if reg_yes:
         st.markdown("### 🔵 YES (Over)")
         for p in reg_yes:
-            reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
-            
             col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
             col1.markdown(f"**{p['away']}** @ **{p['home']}**")
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"<span style='color:#aaa'>Proj: <b style='color:#fff'>{p['projected']}</b></span> → <span style='color:#00aaff;font-weight:bold'>BUY YES @ {p['rec_threshold']}-</span>", unsafe_allow_html=True)
+            col3.markdown(f"Proj: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00aaff;font-weight:bold'>BUY YES @ {p['rec_threshold']}-</span>", unsafe_allow_html=True)
             
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🔗 BUY YES", kalshi_url)
@@ -1590,9 +1564,6 @@ if 'cushion_entries' not in st.session_state:
 cs1, cs2 = st.columns([1, 1])
 cush_window = cs1.selectbox("Stability Window", [6, 9, 12, 18, 24], index=1, key="cush_window", help="Minutes of data needed for stable cushion")
 
-# Market reference (approximate)
-MARKET_TOTAL = 232  # League average expected total
-
 thresholds = [225.5, 230.5, 235.5, 240.5, 245.5]
 tradable_games = []
 
@@ -1616,14 +1587,21 @@ for gk, g in games.items():
     if not is_stable:
         continue  # Volatile, skip
     
-    # SECTION 2: One-Sided Permission
-    proj_vs_market = proj - MARKET_TOTAL
+    # SECTION 2: One-Sided Permission - Use REAL Kalshi market line
+    away_team = g.get('away_team', '')
+    home_team = g.get('home_team', '')
+    
+    kalshi_line, _, _ = fetch_kalshi_market_line(away_team, home_team)
+    if not kalshi_line:
+        kalshi_line = 232  # Fallback
+    
+    proj_vs_market = proj - kalshi_line
     
     if abs(proj_vs_market) <= DEAD_ZONE:
         continue  # In dead zone, non-tradable
     
     # Determine allowed side
-    allowed_side = "NO" if proj < MARKET_TOTAL else "YES"
+    allowed_side = "NO" if proj < kalshi_line else "YES"
     
     # Calculate best cushion for allowed side
     best_threshold = None
@@ -1671,10 +1649,6 @@ for gk, g in games.items():
         size_rec = "0.5x"
         size_color = "#ffff00"
     
-    # Get game context
-    away_team = g.get('away_team', '')
-    home_team = g.get('home_team', '')
-    
     # Pace label
     if pace_val < 4.5:
         pace_label = "🟢 SLOW"
@@ -1690,6 +1664,7 @@ for gk, g in games.items():
         'away': away_team,
         'home': home_team,
         'proj': proj,
+        'kalshi_line': kalshi_line,
         'side': allowed_side,
         'threshold': best_threshold,
         'cushion': best_cushion,
@@ -1723,10 +1698,10 @@ if tradable_games:
             </div>
             <div style='margin-top:10px;display:flex;gap:25px;flex-wrap:wrap'>
                 <span style='color:#aaa'>📊 Proj: <b style="color:#fff">{tg['proj']}</b></span>
+                <span style='color:#aaa'>📈 Kalshi: <b style="color:#fff">{tg['kalshi_line']}</b></span>
                 <span style='color:#aaa'>🎯 Cushion: <b style="color:{cushion_color}">+{tg['cushion']:.0f}</b></span>
                 <span style='color:#aaa'>💰 Size: <b style="color:{tg['size_color']}">{tg['size_rec']}</b></span>
                 <span style='color:#aaa'>{tg['pace_label']} <b style="color:#fff">{tg['pace_val']:.1f}/m</b></span>
-                <span style='color:#aaa'>🏷️ ~{tg['est_price']}¢</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
