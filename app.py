@@ -415,7 +415,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v14.5")
+    st.caption("v14.7")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -865,8 +865,8 @@ def calc_projected_total(home_team, away_team, yesterday_teams):
     
     return round(projected)
 
-def calc_recommended_threshold(projected, pick, score):
-    """Calculate recommended threshold based on projected total and 10-factor score"""
+def calc_recommended_threshold(kalshi_line, pick, score):
+    """Calculate recommended threshold based on Kalshi market line and 10-factor score"""
     # Higher score = more confidence = less cushion needed
     if score >= 10:
         cushion = 6
@@ -880,9 +880,9 @@ def calc_recommended_threshold(projected, pick, score):
         cushion = 14
     
     if pick == "NO":
-        threshold = projected + cushion
+        threshold = kalshi_line + cushion
     else:
-        threshold = projected - cushion
+        threshold = kalshi_line - cushion
     
     # Round to nearest .5
     threshold = round(threshold * 2) / 2
@@ -1052,7 +1052,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.6")
+st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.7")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
@@ -1154,7 +1154,7 @@ if game_list:
         if not kalshi_line:
             kalshi_line = 232  # Fallback if API fails
         
-        rec_threshold = calc_recommended_threshold(projected, pick, score)
+        rec_threshold = calc_recommended_threshold(kalshi_line, pick, score)
         
         # Only include STRONG and regular tiers
         if signal is not None:
