@@ -16,44 +16,6 @@ except ImportError:
 
 st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
 
-# ========== PASSWORD PROTECTION ==========
-def check_password():
-    """Returns True if password is correct"""
-    
-    def password_entered():
-        """Check if password is correct"""
-        try:
-            correct_password = st.secrets.get("APP_PASSWORD", "edge2025")
-        except:
-            correct_password = "edge2025"
-        
-        if st.session_state.get("password_input") == correct_password:
-            st.session_state["authenticated"] = True
-            del st.session_state["password_input"]
-        else:
-            st.session_state["authenticated"] = False
-    
-    if st.session_state.get("authenticated"):
-        return True
-    
-    st.markdown("""
-    <div style='text-align:center;padding:50px'>
-        <h1>🎯 NBA Edge Finder</h1>
-        <p style='color:#888'>Private Access Only</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.text_input("Enter Password", type="password", key="password_input", on_change=password_entered)
-        if "authenticated" in st.session_state and not st.session_state["authenticated"]:
-            st.error("❌ Incorrect password")
-    
-    return False
-
-if not check_password():
-    st.stop()
-
 # ========== AUTO-REFRESH (Only after 7PM ET) ==========
 current_hour = datetime.now(pytz.timezone('US/Eastern')).hour
 if current_hour >= 19:  # 7PM ET or later
@@ -397,7 +359,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v14.2")
+    st.caption("v14.3")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -1026,7 +988,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.2")
+st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.3")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
