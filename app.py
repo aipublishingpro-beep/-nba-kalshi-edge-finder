@@ -12,12 +12,17 @@ if "positions" not in st.session_state:
 with st.sidebar:
     st.header("📖 LEGEND")
     
-    st.subheader("⚡ 12-Factor Score")
+    st.subheader("⚡ 12-Factor Edge")
     st.markdown("""
-    🟢 **7-10** → STRONG — Size up  
-    🟢 **5-6** → GOOD — Standard  
-    🟡 **3-4** → LEAN — Small size  
-    🔴 **0-2** → SKIP — No edge
+    **Edge > +10%** → HIGH confidence  
+    **Edge +5 to +10%** → MEDIUM confidence  
+    **Edge < +5%** → LOW / NO EDGE
+    """)
+    
+    st.markdown("""
+    **BUY YES** → Model favors home  
+    **BUY NO** → Model favors away  
+    **NO EDGE** → Skip this game
     """)
     
     st.divider()
@@ -35,7 +40,7 @@ with st.sidebar:
     st.subheader("Fatigue Scanner")
     st.markdown("""
     **Score 3+** → FATIGUED 🔴  
-    *(Back-to-back + Road = prime NO target)*
+    *(Back-to-back + Road = prime target)*
     
     **Score 2** → TIRED 🟡  
     *(Back-to-back only or Road only)*
@@ -56,25 +61,19 @@ with st.sidebar:
     st.subheader("Matchup Types")
     st.markdown("""
     🏠 **HOME COURT**  
-    *Home team +2 pts — 55-60% historical win rate*
+    *Home team +3 pts baseline*
     
     🟢 **BOTH TIRED**  
-    *Both teams fatigued = pace drags, sloppy game, STRONG Under*
+    *Both teams fatigued = pace drags, STRONG Under*
     
     🔥 **BLOWOUT RISK**  
-    *Fatigued @ Fresh Home = Skip NO, consider ML on fresh home team*
+    *Fatigued @ Fresh Home = BUY ML on home*
     
     🏔️ **ALTITUDE**  
-    *Denver home = visitors fatigue at 5,280 ft, lean Under*
-    
-    ⚡ **RESTED**  
-    *3+ days rest = team comes out hot, Over risk*
+    *Denver home = visitors fatigue at 5,280 ft*
     
     🏆 **DIVISION RIVALS**  
-    *Same division = physical game, lean Under*
-    
-    ⚪ **NEUTRAL**  
-    *Fresh vs Fresh = no fatigue edge*
+    *Same division = tighter game, home edge*
     """)
     
     st.divider()
@@ -82,42 +81,24 @@ with st.sidebar:
     st.subheader("Pace Benchmarks")
     st.markdown("""
     🟢 **SLOW** → Under 4.5/min  
-    *(Good NO spot)*
-    
     🟡 **AVG** → 4.5 - 4.8/min  
-    *(Neutral)*
-    
     🟠 **FAST** → 4.8 - 5.2/min  
-    *(Caution for NO)*
-    
-    🔴 **SHOOTOUT** → Over 5.2/min  
-    *(Avoid NO, consider YES)*
+    🔴 **SHOOTOUT** → Over 5.2/min
     """)
     
     st.divider()
     
-    st.subheader("Pace Edge (NO bets)")
-    st.markdown("""
-    **+1.0+** → Comfortable 🟢  
-    **+0.5 to +1.0** → Okay 🟡  
-    **0 to +0.5** → Tight 🟠  
-    **Negative** → Underwater 🔴
-    """)
-    
-    st.divider()
-    
-    st.subheader("Status")
+    st.subheader("Position Status")
     st.markdown("""
     🟢 VERY SAFE → +15 cushion  
     🟢 LOOKING GOOD → +8 to +15  
     🟡 ON TRACK → +3 to +8  
     🟠 TIGHT → -3 to +3  
-    🔴 DANGER → -10 to -3  
-    🔴 LIKELY LOSS → Under -10
+    🔴 DANGER → Under -3
     """)
     
     st.divider()
-    st.caption("v11.1")
+    st.caption("v11.3")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -181,36 +162,22 @@ TEAM_LOCATIONS = {
 }
 
 STAR_PLAYERS = {
-    "Atlanta": ["Trae Young"],
-    "Boston": ["Jayson Tatum", "Jaylen Brown"],
-    "Brooklyn": ["Mikal Bridges"],
-    "Charlotte": ["LaMelo Ball"],
-    "Chicago": ["Zach LaVine", "DeMar DeRozan"],
+    "Atlanta": ["Trae Young"], "Boston": ["Jayson Tatum", "Jaylen Brown"], "Brooklyn": ["Mikal Bridges"],
+    "Charlotte": ["LaMelo Ball"], "Chicago": ["Zach LaVine", "DeMar DeRozan"],
     "Cleveland": ["Donovan Mitchell", "Darius Garland", "Evan Mobley"],
-    "Dallas": ["Luka Doncic", "Kyrie Irving"],
-    "Denver": ["Nikola Jokic", "Jamal Murray"],
-    "Detroit": ["Cade Cunningham"],
-    "Golden State": ["Stephen Curry", "Draymond Green"],
-    "Houston": ["Jalen Green", "Alperen Sengun"],
-    "Indiana": ["Tyrese Haliburton", "Pascal Siakam"],
-    "LA Clippers": ["Kawhi Leonard", "Paul George"],
-    "LA Lakers": ["LeBron James", "Anthony Davis"],
-    "Memphis": ["Ja Morant", "Desmond Bane"],
-    "Miami": ["Jimmy Butler", "Bam Adebayo"],
+    "Dallas": ["Luka Doncic", "Kyrie Irving"], "Denver": ["Nikola Jokic", "Jamal Murray"],
+    "Detroit": ["Cade Cunningham"], "Golden State": ["Stephen Curry", "Draymond Green"],
+    "Houston": ["Jalen Green", "Alperen Sengun"], "Indiana": ["Tyrese Haliburton", "Pascal Siakam"],
+    "LA Clippers": ["Kawhi Leonard", "Paul George"], "LA Lakers": ["LeBron James", "Anthony Davis"],
+    "Memphis": ["Ja Morant", "Desmond Bane"], "Miami": ["Jimmy Butler", "Bam Adebayo"],
     "Milwaukee": ["Giannis Antetokounmpo", "Damian Lillard"],
     "Minnesota": ["Anthony Edwards", "Karl-Anthony Towns", "Rudy Gobert"],
-    "New Orleans": ["Zion Williamson", "Brandon Ingram"],
-    "New York": ["Jalen Brunson", "Julius Randle"],
+    "New Orleans": ["Zion Williamson", "Brandon Ingram"], "New York": ["Jalen Brunson", "Julius Randle"],
     "Oklahoma City": ["Shai Gilgeous-Alexander", "Chet Holmgren", "Jalen Williams"],
-    "Orlando": ["Paolo Banchero", "Franz Wagner"],
-    "Philadelphia": ["Joel Embiid", "Tyrese Maxey"],
-    "Phoenix": ["Kevin Durant", "Devin Booker", "Bradley Beal"],
-    "Portland": ["Anfernee Simons"],
-    "Sacramento": ["De'Aaron Fox", "Domantas Sabonis"],
-    "San Antonio": ["Victor Wembanyama"],
-    "Toronto": ["Scottie Barnes"],
-    "Utah": ["Lauri Markkanen"],
-    "Washington": ["Jordan Poole"]
+    "Orlando": ["Paolo Banchero", "Franz Wagner"], "Philadelphia": ["Joel Embiid", "Tyrese Maxey"],
+    "Phoenix": ["Kevin Durant", "Devin Booker", "Bradley Beal"], "Portland": ["Anfernee Simons"],
+    "Sacramento": ["De'Aaron Fox", "Domantas Sabonis"], "San Antonio": ["Victor Wembanyama"],
+    "Toronto": ["Scottie Barnes"], "Utah": ["Lauri Markkanen"], "Washington": ["Jordan Poole"]
 }
 
 def calc_distance(loc1, loc2):
@@ -332,177 +299,120 @@ def get_minutes_played(period, clock, status_type):
     except:
         return (period - 1) * 12 if period <= 4 else 48 + (period - 5) * 5
 
-def calc_12_factor_score(home, away, home_rest, away_rest, home_inj, away_inj, bet_side="NO"):
-    hs = TEAM_STATS.get(home, {})
-    aws = TEAM_STATS.get(away, {})
+def calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, away_inj, kalshi_price, weights):
+    """The REAL 12-factor system - calculates spread, win prob, and edge vs Kalshi"""
+    home = TEAM_STATS.get(home_team, {"pace": 100, "def_rank": 15, "net_rating": 0, "ft_rate": 0.25, "reb_rate": 50, "three_pct": 36, "home_win_pct": 0.5, "away_win_pct": 0.5, "division": ""})
+    away = TEAM_STATS.get(away_team, {"pace": 100, "def_rank": 15, "net_rating": 0, "ft_rate": 0.25, "reb_rate": 50, "three_pct": 36, "home_win_pct": 0.5, "away_win_pct": 0.5, "division": ""})
     
-    factors = {}
-    breakdown = []
+    # Calculate travel distance
+    home_loc = TEAM_LOCATIONS.get(home_team, (0, 0))
+    away_loc = TEAM_LOCATIONS.get(away_team, (0, 0))
+    travel_miles = calc_distance(away_loc, home_loc)
     
-    # 1. REST (0-1.5 pts)
-    rest_score = 0
-    if home_rest == 0:
-        rest_score += 0.75
-        breakdown.append(f"🔴 {home} B2B +0.75")
-    if away_rest == 0:
-        rest_score += 0.75
-        breakdown.append(f"🔴 {away} B2B +0.75")
-    factors["rest"] = rest_score
+    # === FACTOR 1: REST ===
+    rest_diff = home_rest - away_rest
+    rest_score = max(-6, min(6, rest_diff * 2))
     
-    # 2. DEFENSE (0-1.5 pts)
-    home_def = hs.get("def_rank", 15)
-    away_def = aws.get("def_rank", 15)
-    avg_def = (home_def + away_def) / 2
-    if avg_def <= 8:
-        def_score = 1.5
-        breakdown.append(f"🟢 Elite Def Matchup (avg #{avg_def:.0f}) +1.5")
-    elif avg_def <= 15:
-        def_score = 0.75
-        breakdown.append(f"🟡 Good Def Matchup (avg #{avg_def:.0f}) +0.75")
+    # === FACTOR 2: DEFENSE ===
+    def_score = (away['def_rank'] - home['def_rank']) * 0.15
+    
+    # === FACTOR 3: INJURIES ===
+    injury_score = (away_inj - home_inj) * 1.5
+    
+    # === FACTOR 4: PACE ===
+    pace_diff = home['pace'] - away['pace']
+    pace_score = pace_diff * 0.1 if home['net_rating'] > away['net_rating'] else -pace_diff * 0.1
+    
+    # === FACTOR 5: NET RATING ===
+    net_score = (home['net_rating'] - away['net_rating']) * 0.8
+    
+    # === FACTOR 6: TRAVEL ===
+    travel_score = 2.5 if travel_miles > 1500 else (1.5 if travel_miles > 1000 else (0.75 if travel_miles > 500 else 0))
+    
+    # === FACTOR 7: HOME/AWAY SPLITS ===
+    split_score = (home['home_win_pct'] - 0.5) * 10 + (0.5 - away['away_win_pct']) * 10
+    
+    # === FACTOR 8: DIVISION RIVALRY ===
+    h2h_score = 1.5 if home.get('division') == away.get('division') and home.get('division') else 0
+    
+    # === FACTOR 9: ALTITUDE (Denver) ===
+    altitude_score = 2.0 if home_team == "Denver" else 0
+    
+    # === FACTOR 10: FREE THROW RATE ===
+    ft_score = (home.get('ft_rate', 0.25) - away.get('ft_rate', 0.25)) * 20
+    
+    # === FACTOR 11: REBOUNDING ===
+    reb_score = (home.get('reb_rate', 50) - away.get('reb_rate', 50)) * 0.3
+    
+    # === FACTOR 12: 3PT SHOOTING ===
+    three_score = (home.get('three_pct', 36) - away.get('three_pct', 36)) * 0.5
+    
+    # === HOME COURT BASELINE ===
+    home_court = 3.0
+    
+    # === WEIGHTED TOTAL ===
+    weighted_spread = (
+        home_court +
+        rest_score * weights['rest'] +
+        def_score * weights['defense'] +
+        injury_score * weights['injury'] +
+        pace_score * weights['pace'] +
+        net_score * weights['net_rating'] +
+        travel_score * weights['travel'] +
+        split_score * weights['splits'] +
+        h2h_score * weights['h2h'] +
+        altitude_score * weights['altitude'] +
+        ft_score * weights['ft'] +
+        reb_score * weights['reb'] +
+        three_score * weights['three']
+    )
+    
+    # Convert spread to win probability
+    home_win_prob = max(5, min(95, 50 + weighted_spread * 2.5))
+    
+    # Calculate edge vs Kalshi price
+    edge = home_win_prob - kalshi_price
+    
+    # Expected value calculation
+    if edge > 0:
+        ev = (home_win_prob / 100) * (100 - kalshi_price) - ((100 - home_win_prob) / 100) * kalshi_price
     else:
-        def_score = 0
-        breakdown.append(f"⚪ Weak Def Matchup (avg #{avg_def:.0f}) +0")
-    factors["defense"] = def_score
+        ev = ((100 - home_win_prob) / 100) * kalshi_price - (home_win_prob / 100) * (100 - kalshi_price)
     
-    # 3. INJURIES (0-2 pts)
-    inj_total = home_inj + away_inj
-    if inj_total >= 6:
-        inj_score = 2.0
-        breakdown.append(f"🔴 Heavy Injuries (impact {inj_total:.1f}) +2.0")
-    elif inj_total >= 3:
-        inj_score = 1.0
-        breakdown.append(f"🟡 Moderate Injuries (impact {inj_total:.1f}) +1.0")
-    else:
-        inj_score = 0
-        breakdown.append(f"⚪ Light Injuries (impact {inj_total:.1f}) +0")
-    factors["injury"] = inj_score
-    
-    # 4. PACE (0-1 pt)
-    home_pace = hs.get("pace", 100)
-    away_pace = aws.get("pace", 100)
-    avg_pace = (home_pace + away_pace) / 2
-    if avg_pace < 98.5:
-        pace_score = 1.0
-        breakdown.append(f"🟢 Slow Pace ({avg_pace:.1f}) +1.0")
-    elif avg_pace < 100:
-        pace_score = 0.5
-        breakdown.append(f"🟡 Avg Pace ({avg_pace:.1f}) +0.5")
-    else:
-        pace_score = 0
-        breakdown.append(f"⚪ Fast Pace ({avg_pace:.1f}) +0")
-    factors["pace"] = pace_score
-    
-    # 5. NET RATING (0-1 pt) - close matchup = lower scoring
-    home_net = hs.get("net_rating", 0)
-    away_net = aws.get("net_rating", 0)
-    net_diff = abs(home_net - away_net)
-    if net_diff < 3:
-        net_score = 1.0
-        breakdown.append(f"🟢 Close Matchup (diff {net_diff:.1f}) +1.0")
-    elif net_diff < 6:
-        net_score = 0.5
-        breakdown.append(f"🟡 Moderate Gap (diff {net_diff:.1f}) +0.5")
-    else:
-        net_score = 0
-        breakdown.append(f"⚪ Mismatch (diff {net_diff:.1f}) +0")
-    factors["net_rating"] = net_score
-    
-    # 6. TRAVEL (0-0.75 pts)
-    home_loc = TEAM_LOCATIONS.get(home, (0, 0))
-    away_loc = TEAM_LOCATIONS.get(away, (0, 0))
-    travel = calc_distance(away_loc, home_loc)
-    if travel > 1500:
-        travel_score = 0.75
-        breakdown.append(f"🟢 Long Travel ({travel:.0f} mi) +0.75")
-    elif travel > 800:
-        travel_score = 0.4
-        breakdown.append(f"🟡 Med Travel ({travel:.0f} mi) +0.4")
-    else:
-        travel_score = 0
-        breakdown.append(f"⚪ Short Travel ({travel:.0f} mi) +0")
-    factors["travel"] = travel_score
-    
-    # 7. HOME/AWAY SPLITS (0-0.75 pts)
-    home_pct = hs.get("home_win_pct", 0.5)
-    away_pct = aws.get("away_win_pct", 0.5)
-    split_edge = home_pct - away_pct
-    if split_edge > 0.25:
-        split_score = 0.75
-        breakdown.append(f"🟢 Strong Split Edge ({split_edge:.0%}) +0.75")
-    elif split_edge > 0.15:
-        split_score = 0.4
-        breakdown.append(f"🟡 Mod Split Edge ({split_edge:.0%}) +0.4")
-    else:
-        split_score = 0
-        breakdown.append(f"⚪ No Split Edge ({split_edge:.0%}) +0")
-    factors["splits"] = split_score
-    
-    # 8. DIVISION GAME (0-0.5 pts) - division games are tighter
-    home_div = hs.get("division", "")
-    away_div = aws.get("division", "")
-    if home_div == away_div and home_div:
-        div_score = 0.5
-        breakdown.append(f"🏆 Division Rivalry +0.5")
-    else:
-        div_score = 0
-        breakdown.append(f"⚪ Non-Division +0")
-    factors["division"] = div_score
-    
-    # 9. 3PT% (0-0.75 pts) - bad shooters = lower scoring
-    home_3pt = hs.get("three_pct", 36)
-    away_3pt = aws.get("three_pct", 36)
-    avg_3pt = (home_3pt + away_3pt) / 2
-    if avg_3pt < 35.5:
-        three_score = 0.75
-        breakdown.append(f"🟢 Poor 3PT ({avg_3pt:.1f}%) +0.75")
-    elif avg_3pt < 36.5:
-        three_score = 0.4
-        breakdown.append(f"🟡 Avg 3PT ({avg_3pt:.1f}%) +0.4")
-    else:
-        three_score = 0
-        breakdown.append(f"⚪ Good 3PT ({avg_3pt:.1f}%) +0")
-    factors["three_pct"] = three_score
-    
-    # 10. FT RATE (0-0.5 pts) - low FT = faster game, less stoppage
-    home_ft = hs.get("ft_rate", 0.25)
-    away_ft = aws.get("ft_rate", 0.25)
-    avg_ft = (home_ft + away_ft) / 2
-    if avg_ft < 0.24:
-        ft_score = 0.5
-        breakdown.append(f"🟢 Low FT Rate ({avg_ft:.2f}) +0.5")
-    else:
-        ft_score = 0
-        breakdown.append(f"⚪ Normal FT Rate ({avg_ft:.2f}) +0")
-    factors["ft_rate"] = ft_score
-    
-    # 11. REBOUNDING (0-0.5 pts) - good boards = controlled pace
-    home_reb = hs.get("reb_rate", 50)
-    away_reb = aws.get("reb_rate", 50)
-    avg_reb = (home_reb + away_reb) / 2
-    if avg_reb > 51:
-        reb_score = 0.5
-        breakdown.append(f"🟢 Strong Rebounding ({avg_reb:.1f}%) +0.5")
-    else:
-        reb_score = 0
-        breakdown.append(f"⚪ Avg Rebounding ({avg_reb:.1f}%) +0")
-    factors["rebounding"] = reb_score
-    
-    # 12. DENVER ALTITUDE (0-0.5 pts)
-    if home == "Denver":
-        alt_score = 0.5
-        breakdown.append(f"🏔️ Denver Altitude +0.5")
-    else:
-        alt_score = 0
-    factors["altitude"] = alt_score
-    
-    total = sum(factors.values())
-    
-    # Flip scoring for YES side
-    if bet_side == "YES":
-        total = 10 - total
-        breakdown = [f"(YES mode - factors reversed)"] + breakdown
-    
-    return min(total, 10), factors, breakdown
+    return {
+        'home_win_prob': round(home_win_prob, 1),
+        'kalshi_price': kalshi_price,
+        'edge': round(edge, 1),
+        'expected_spread': round(weighted_spread, 1),
+        'expected_value': round(ev, 2),
+        'recommendation': 'BUY YES' if edge > 5 else ('BUY NO' if edge < -5 else 'NO EDGE'),
+        'confidence': 'HIGH' if abs(edge) > 10 else ('MEDIUM' if abs(edge) > 5 else 'LOW'),
+        'factors': {
+            'rest': round(rest_score * weights['rest'], 2),
+            'defense': round(def_score * weights['defense'], 2),
+            'injury': round(injury_score * weights['injury'], 2),
+            'pace': round(pace_score * weights['pace'], 2),
+            'net_rating': round(net_score * weights['net_rating'], 2),
+            'travel': round(travel_score * weights['travel'], 2),
+            'splits': round(split_score * weights['splits'], 2),
+            'h2h': round(h2h_score * weights['h2h'], 2),
+            'altitude': round(altitude_score * weights['altitude'], 2),
+            'ft': round(ft_score * weights['ft'], 2),
+            'reb': round(reb_score * weights['reb'], 2),
+            'three': round(three_score * weights['three'], 2),
+            'home_court': home_court
+        },
+        'raw': {
+            'rest_diff': rest_diff,
+            'def_diff': round(away['def_rank'] - home['def_rank'], 1),
+            'injury_diff': round(away_inj - home_inj, 1),
+            'pace_diff': round(pace_diff, 1),
+            'net_diff': round(home['net_rating'] - away['net_rating'], 1),
+            'travel_miles': round(travel_miles, 0),
+            'is_division': home.get('division') == away.get('division'),
+            'is_denver': home_team == "Denver"
+        }
+    }
 
 # ========== FETCH DATA ==========
 games = fetch_espn_scores()
@@ -513,7 +423,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v11.1 | 12-Factor System")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v11.3 | 12-Factor Edge System")
 
 # ========== 1. ACTIVE POSITIONS ==========
 st.subheader("📈 ACTIVE POSITIONS")
@@ -581,7 +491,66 @@ else:
 
 st.divider()
 
-# ========== 2. CUSHION SCANNER ==========
+# ========== 2. FATIGUE SCANNER ==========
+st.subheader("😴 FATIGUE SCANNER")
+st.caption("Find BLOWOUT RISK (ML edge) and BOTH TIRED (NO edge) — check BEFORE games")
+
+if games:
+    fatigue_games = []
+    for game_key, g in games.items():
+        away = g['away_team']
+        home = g['home_team']
+        away_b2b = away in yesterday_teams
+        home_b2b = home in yesterday_teams
+        away_score = (2 if away_b2b else 0) + 1
+        home_score = 2 if home_b2b else 0
+        
+        fatigue_games.append({
+            "game": game_key, "away": away, "home": home,
+            "away_b2b": away_b2b, "home_b2b": home_b2b,
+            "away_score": away_score, "home_score": home_score,
+            "is_blowout_risk": away_score >= 3 and home_score == 0,
+            "is_both_tired": away_b2b and home_b2b,
+            "is_denver": home == "Denver"
+        })
+    
+    fatigue_games.sort(key=lambda x: (x['is_blowout_risk'], x['is_both_tired'], x['away_score']), reverse=True)
+    edge_games = [g for g in fatigue_games if g['is_blowout_risk'] or g['is_both_tired'] or g['is_denver'] or g['away_score'] >= 3]
+    
+    if edge_games:
+        for gf in edge_games:
+            st.markdown(f"### 🏀 {gf['away']} @ {gf['home']}")
+            
+            if gf['is_blowout_risk']:
+                st.success(f"🔥 **BLOWOUT RISK** — Fatigued {gf['away']} @ Fresh {gf['home']}. **BUY ML on {gf['home']}**")
+            elif gf['is_both_tired']:
+                st.info("🟢 **BOTH TIRED** — Strong Under spot, good NO!")
+            
+            if gf['is_denver']:
+                st.warning("🏔️ **ALTITUDE** — Denver home, visitors fatigue at 5,280 ft")
+            
+            away_tag = "PLAYED YESTERDAY + ROAD" if gf['away_b2b'] else "ROAD"
+            if gf['away_score'] >= 3:
+                st.error(f"🔴 **{gf['away']}** (Score {gf['away_score']}) — {away_tag}")
+            elif gf['away_score'] >= 2:
+                st.warning(f"🟡 **{gf['away']}** (Score {gf['away_score']}) — {away_tag}")
+            else:
+                st.caption(f"⚪ {gf['away']} (Score {gf['away_score']}) — {away_tag}")
+            
+            if gf['home_b2b']:
+                st.warning(f"🟡 **{gf['home']}** (Score {gf['home_score']}) — PLAYED YESTERDAY")
+            else:
+                st.caption(f"⚪ {gf['home']} (Score {gf['home_score']}) — HOME (fresh)")
+            
+            st.markdown("---")
+    else:
+        st.info("No fatigue edges today — all matchups are neutral")
+else:
+    st.info("No games today")
+
+st.divider()
+
+# ========== 3. CUSHION SCANNER ==========
 st.subheader("🎯 CUSHION SCANNER")
 
 cs1, cs2 = st.columns([1, 1])
@@ -595,8 +564,7 @@ for gk, g in games.items():
     mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
     if mins >= cush_min:
         proj = round((g['total'] / mins) * 48) if mins > 0 else 0
-        cush_data.append({"game": gk, "proj": proj, "mins": mins, "total": g['total'],
-                          "home": g['home_team'], "away": g['away_team']})
+        cush_data.append({"game": gk, "proj": proj})
 
 if cush_data:
     hcols = st.columns([2, 1] + [1]*len(thresholds))
@@ -626,80 +594,116 @@ else:
 
 st.divider()
 
-# ========== 3. 12-FACTOR ANALYSIS ==========
+# ========== 4. 12-FACTOR ANALYSIS ==========
 st.subheader("🔬 12-FACTOR ANALYSIS")
-st.caption("Confirm your cushion pick with fundamentals")
+st.caption("Calculate edge vs Kalshi price — the REAL prediction model")
+
+# Weight sliders in expander
+with st.expander("⚙️ Adjust Factor Weights", expanded=False):
+    wcol1, wcol2, wcol3 = st.columns(3)
+    with wcol1:
+        w_rest = st.slider("🛏️ Rest", 0.0, 2.0, 1.0, 0.1)
+        w_def = st.slider("🛡️ Defense", 0.0, 2.0, 1.0, 0.1)
+        w_inj = st.slider("🏥 Injuries", 0.0, 2.0, 1.0, 0.1)
+        w_pace = st.slider("⚡ Pace", 0.0, 2.0, 1.0, 0.1)
+    with wcol2:
+        w_net = st.slider("📊 Net Rating", 0.0, 2.0, 1.0, 0.1)
+        w_travel = st.slider("✈️ Travel", 0.0, 2.0, 1.0, 0.1)
+        w_splits = st.slider("🏠 Splits", 0.0, 2.0, 1.0, 0.1)
+        w_h2h = st.slider("⚔️ Division", 0.0, 2.0, 1.0, 0.1)
+    with wcol3:
+        w_altitude = st.slider("🏔️ Altitude", 0.0, 2.0, 1.0, 0.1)
+        w_ft = st.slider("🎯 FT Rate", 0.0, 2.0, 1.0, 0.1)
+        w_reb = st.slider("🏀 Rebounding", 0.0, 2.0, 1.0, 0.1)
+        w_three = st.slider("🎯 3PT%", 0.0, 2.0, 1.0, 0.1)
+
+weights = {
+    'rest': w_rest, 'defense': w_def, 'injury': w_inj, 'pace': w_pace,
+    'net_rating': w_net, 'travel': w_travel, 'splits': w_splits, 'h2h': w_h2h,
+    'altitude': w_altitude, 'ft': w_ft, 'reb': w_reb, 'three': w_three
+}
 
 if game_list:
     fc1, fc2 = st.columns([3, 1])
     analyze_game = fc1.selectbox("Select Game", game_list, format_func=lambda x: x.replace("@", " @ "), key="analyze_game")
-    factor_side = fc2.selectbox("Bet Side", ["NO", "YES"], key="factor_side")
+    kalshi_price = fc2.number_input("Kalshi Price ¢", 1, 99, 60, key="kalshi_price")
     
     if analyze_game:
         parts = analyze_game.split("@")
         away_team = parts[0]
         home_team = parts[1]
         
-        # Get rest days
         home_rest = 0 if home_team in yesterday_teams else 1
         away_rest = 0 if away_team in yesterday_teams else 1
+        home_inj, home_stars = get_injury_score(home_team, injuries)
+        away_inj, away_stars = get_injury_score(away_team, injuries)
         
-        # Get injury scores
-        home_inj, home_stars_out = get_injury_score(home_team, injuries)
-        away_inj, away_stars_out = get_injury_score(away_team, injuries)
+        result = calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, away_inj, kalshi_price, weights)
         
-        # Calculate score
-        score, factors, breakdown = calc_12_factor_score(
-            home_team, away_team, home_rest, away_rest, home_inj, away_inj, factor_side
-        )
+        # Display results
+        st.markdown(f"## 🏀 {away_team} @ {home_team}")
         
-        # Display score
-        if score >= 7:
-            score_color = "#00ff00"
-            score_label = "🟢 STRONG"
-        elif score >= 5:
-            score_color = "#ffff00"
-            score_label = "🟡 GOOD"
-        elif score >= 3:
-            score_color = "#ff8800"
-            score_label = "🟠 LEAN"
-        else:
-            score_color = "#ff0000"
-            score_label = "🔴 SKIP"
+        # Main output
+        rec_color = "#00ff00" if result['recommendation'] == 'BUY YES' else ("#ff0000" if result['recommendation'] == 'BUY NO' else "#888888")
+        conf_color = "#00ff00" if result['confidence'] == 'HIGH' else ("#ffff00" if result['confidence'] == 'MEDIUM' else "#888888")
         
-        st.markdown(f"### <span style='color:{score_color}'>{score:.1f}/10 {score_label}</span>", unsafe_allow_html=True)
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Model Win Prob", f"{result['home_win_prob']}%")
+        col2.metric("Kalshi Price", f"{result['kalshi_price']}¢")
+        col3.metric("Edge", f"{result['edge']:+.1f}%")
         
-        # Progress bar
-        st.progress(min(score/10, 1.0))
+        col4, col5, col6 = st.columns(3)
+        col4.metric("Expected Spread", f"{result['expected_spread']:+.1f}")
+        col5.metric("Expected Value", f"{result['expected_value']:+.2f}¢")
+        col6.markdown(f"<span style='color:{rec_color};font-size:1.5em'><b>{result['recommendation']}</b></span><br><span style='color:{conf_color}'>{result['confidence']} confidence</span>", unsafe_allow_html=True)
         
-        # Breakdown
-        with st.expander("📊 Factor Breakdown", expanded=True):
-            for line in breakdown:
-                st.markdown(f"• {line}")
+        # Factor breakdown
+        with st.expander("📊 FACTOR BREAKDOWN", expanded=True):
+            st.markdown("**Individual Factor Contributions:**")
+            factors = result['factors']
+            raw = result['raw']
             
-            # Injury details
-            if home_stars_out or away_stars_out:
+            bcol1, bcol2 = st.columns(2)
+            with bcol1:
+                st.markdown(f"• 🛏️ **Rest:** {factors['rest']:+.2f} (diff: {raw['rest_diff']:+d} days)")
+                st.markdown(f"• 🛡️ **Defense:** {factors['defense']:+.2f} (rank diff: {raw['def_diff']:+.0f})")
+                st.markdown(f"• 🏥 **Injuries:** {factors['injury']:+.2f} (impact diff: {raw['injury_diff']:+.1f})")
+                st.markdown(f"• ⚡ **Pace:** {factors['pace']:+.2f} (diff: {raw['pace_diff']:+.1f})")
+                st.markdown(f"• 📊 **Net Rating:** {factors['net_rating']:+.2f} (diff: {raw['net_diff']:+.1f})")
+                st.markdown(f"• ✈️ **Travel:** {factors['travel']:+.2f} ({raw['travel_miles']:.0f} mi)")
+            with bcol2:
+                st.markdown(f"• 🏠 **Splits:** {factors['splits']:+.2f}")
+                st.markdown(f"• ⚔️ **Division:** {factors['h2h']:+.2f} ({'Yes' if raw['is_division'] else 'No'})")
+                st.markdown(f"• 🏔️ **Altitude:** {factors['altitude']:+.2f} ({'Denver' if raw['is_denver'] else 'No'})")
+                st.markdown(f"• 🎯 **FT Rate:** {factors['ft']:+.2f}")
+                st.markdown(f"• 🏀 **Rebounding:** {factors['reb']:+.2f}")
+                st.markdown(f"• 🎯 **3PT%:** {factors['three']:+.2f}")
+            
+            st.markdown(f"• 🏠 **Home Court Baseline:** +{factors['home_court']:.1f}")
+            st.markdown(f"---")
+            st.markdown(f"**TOTAL WEIGHTED SPREAD: {result['expected_spread']:+.1f}**")
+            
+            if home_stars or away_stars:
                 st.markdown("---")
                 st.markdown("**⭐ Star Players OUT:**")
-                if home_stars_out:
-                    st.markdown(f"• {home_team}: {', '.join(home_stars_out)}")
-                if away_stars_out:
-                    st.markdown(f"• {away_team}: {', '.join(away_stars_out)}")
+                if home_stars:
+                    st.markdown(f"• {home_team}: {', '.join(home_stars)}")
+                if away_stars:
+                    st.markdown(f"• {away_team}: {', '.join(away_stars)}")
         
-        # Quick add button
+        # Quick add for totals
         st.markdown("---")
-        qc1, qc2, qc3 = st.columns([2, 1, 1])
-        quick_threshold = qc1.number_input("Threshold", 200.0, 280.0, 235.5, 0.5, key="quick_thresh")
-        quick_price = qc2.number_input("Price ¢", 1, 99, 75, key="quick_price")
-        quick_contracts = qc3.number_input("Contracts", 1, 1000, 100, key="quick_contracts")
+        st.markdown("**Add Total Position:**")
+        qc1, qc2, qc3, qc4 = st.columns([1, 2, 1, 1])
+        q_side = qc1.selectbox("Side", ["NO", "YES"], key="q_side")
+        q_threshold = qc2.number_input("Threshold", 200.0, 280.0, 235.5, 0.5, key="q_thresh")
+        q_price = qc3.number_input("Price ¢", 1, 99, 75, key="q_price")
+        q_contracts = qc4.number_input("Contracts", 1, 1000, 100, key="q_contracts")
         
-        if st.button(f"➕ ADD {factor_side} {quick_threshold} TO TRACKER", type="primary", use_container_width=True):
+        if st.button(f"➕ ADD {q_side} {q_threshold} TO TRACKER", type="primary", use_container_width=True):
             st.session_state.positions.append({
-                "game": analyze_game,
-                "side": factor_side,
-                "threshold": quick_threshold,
-                "price": quick_price,
-                "contracts": quick_contracts
+                "game": analyze_game, "side": q_side, "threshold": q_threshold,
+                "price": q_price, "contracts": q_contracts
             })
             st.rerun()
 else:
@@ -707,7 +711,7 @@ else:
 
 st.divider()
 
-# ========== 4. PACE SCANNER ==========
+# ========== 5. PACE SCANNER ==========
 st.subheader("🔥 PACE SCANNER")
 
 pace_data = []
@@ -742,7 +746,7 @@ else:
 
 st.divider()
 
-# ========== 5. ALL GAMES ==========
+# ========== 6. ALL GAMES ==========
 st.subheader("📺 ALL GAMES")
 if games:
     cols = st.columns(4)
@@ -757,67 +761,52 @@ else:
 
 st.divider()
 
-# ========== 6. HOW TO USE ==========
+# ========== 7. HOW TO USE ==========
 with st.expander("📚 HOW TO USE THIS TOOL"):
     st.markdown("""
-    ## Two Betting Strategies
-    
-    This tool supports two distinct edges. Use the right approach for each bet type.
+    ## Complete Workflow
     
     ---
     
     ### 🎯 MONEYLINE BETS (Pre-Game)
     
-    **When:** BEFORE tipoff
+    **Step 1: Fatigue Scanner**
+    - Look for 🔥 **BLOWOUT RISK** — Fatigued away team @ Fresh home
+    - This is your ML signal: **BUY ML on fresh home team**
     
-    **Use:** 12-Factor Analysis → Situational Factors
+    **Step 2: 12-Factor Analysis**
+    - Select the game, enter Kalshi price
+    - Model calculates **win probability** and **edge %**
+    - **BUY YES** if edge > +5% (model favors home)
+    - **BUY NO** if edge < -5% (model favors away)
+    - HIGH confidence = edge > 10%
     
-    **What to look for:**
-    - 🔥 **BLOWOUT RISK** — Fatigued road team @ fresh home = bet the home ML
-    - 🟢 **B2B teams** — Back-to-back = tired legs, fade them
-    - 🏔️ **ALTITUDE** — Teams visiting Denver struggle
-    - 🏆 **DIVISION RIVALS** — Physical games, home team edge
-    
-    **The Logic:** Fatigue is baked in before tipoff. You don't need game data — the edge exists the moment the schedule is set.
-    
-    **Action:** Find BLOWOUT RISK or heavy fatigue mismatches → buy ML pre-game at best price.
+    **The Logic:** Fatigue + 12 factors = predicted spread → win probability → compare to Kalshi price → find edge
     
     ---
     
     ### 📊 TOTAL BETS - NO/YES (Live)
     
-    **When:** 6+ MINUTES into game
+    **Step 1: Cushion Scanner** (6+ min into game)
+    - Find games with +10 or more cushion at your threshold
+    - Green = BIG (+20), Yellow = MEDIUM (+10-19), Orange = SMALL (+5-9)
     
-    **Use:** Cushion Scanner → 12-Factor Analysis → Add Position
+    **Step 2: Pace Scanner**
+    - For NO bets: Want 🟢 SLOW pace (under 4.5/min)
+    - For YES bets: Want 🔴 FAST pace (over 4.8/min)
     
-    **Step-by-step:**
-    1. **Cushion Scanner** — Find games with +10 or more cushion at your threshold
-    2. **12-Factor Analysis** — Confirm 5+ score (fundamentals support the play)
-    3. **Add Position** — Execute and track
-    
-    **What to look for:**
-    - 🟢 **+20 cushion** = BIG size (confident)
-    - 🟡 **+10-19 cushion** = MEDIUM size (standard)
-    - 🟠 **+5-9 cushion** = SMALL size (cautious)
-    - 🔴 **Under +5** = SKIP (no edge)
-    
-    **Pace confirmation:**
-    - For NO bets: Want SLOW pace (under 4.5/min)
-    - For YES bets: Want FAST pace (over 4.8/min)
-    
-    **The Logic:** 6 minutes of game data reveals the actual pace. Combined with 12-factor analysis, you get a complete picture.
-    
-    **Action:** Wait for data → confirm cushion + pace + factor score → enter position.
+    **Step 3: Add Position**
+    - Execute and track live
     
     ---
     
     ### ⚠️ KEY RULES
     
-    1. **Never bet NO on BLOWOUT RISK games** — Blowouts often push totals UP (garbage time)
-    2. **Cushion > Price** — 90¢ means nothing if projection is against you
-    3. **Wait for Q1 data** — Pregame projections are guesses; live pace is real
-    4. **Size based on cushion** — +20 = big, +10-15 = medium, <5 = skip
-    5. **Trust the system** — Don't chase, don't double down, don't martingale
+    1. **Never bet NO on BLOWOUT RISK games** — totals inflate in blowouts
+    2. **Edge > 5% = trade, Edge < 5% = skip**
+    3. **Cushion > Price** — +20 cushion beats 90¢ price
+    4. **Wait for Q1 data** on totals — pregame is guessing
+    5. **Trust the model** — don't chase, don't double down
     
     ---
     
@@ -825,36 +814,18 @@ with st.expander("📚 HOW TO USE THIS TOOL"):
     
     | # | Factor | What It Measures |
     |---|--------|------------------|
-    | 1 | Rest | Back-to-back penalty |
-    | 2 | Defense | Defensive rating matchup |
-    | 3 | Injuries | Star player impact (auto ESPN) |
-    | 4 | Pace | Team tempo matchup |
-    | 5 | Net Rating | Overall team quality gap |
-    | 6 | Travel | Miles traveled by away team |
+    | 1 | Rest | Days since last game |
+    | 2 | Defense | Defensive rating rank |
+    | 3 | Injuries | Star player impact |
+    | 4 | Pace | Team tempo |
+    | 5 | Net Rating | Overall team quality |
+    | 6 | Travel | Miles traveled |
     | 7 | Splits | Home vs away win % |
-    | 8 | Division | Rivalry game flag |
-    | 9 | 3PT% | Shooting quality |
+    | 8 | Division | Rivalry game bonus |
+    | 9 | Altitude | Denver home game |
     | 10 | FT Rate | Free throw frequency |
     | 11 | Rebounding | Board control |
-    | 12 | Altitude | Denver home game |
-    
-    ---
-    
-    ### 🔄 WORKFLOW SUMMARY
-    
-    **Before games:**
-    1. Check 12-Factor Analysis for ML plays
-    2. Look for BLOWOUT RISK matchups
-    
-    **During games (6+ min):**
-    1. Cushion Scanner → Find all-green rows
-    2. 12-Factor Analysis → Confirm score 5+
-    3. Add Position → Enter the trade
-    4. Active Positions → Monitor live
-    
-    **After games:**
-    1. Review wins/losses
-    2. Adjust strategy based on results
+    | 12 | 3PT% | Shooting quality |
     """)
 
 st.divider()
