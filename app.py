@@ -26,7 +26,7 @@ with st.sidebar:
     🟠 4.8-5.2 FAST | 🔴 >5.2 SHOOTOUT
     """)
     st.divider()
-    st.caption("v10.33")
+    st.caption("v10.34")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -213,7 +213,9 @@ if game_list:
     with ac5:
         add_contracts = st.number_input("Contracts", 1, 1000, 100, key="add_contracts")
     
-    if st.button("➕ ADD TO TRACKER", type="primary", use_container_width=True):
+    add_btn = st.button("➕ ADD TO TRACKER", type="primary", use_container_width=True)
+    
+    if add_btn:
         st.session_state.positions.append({
             "game": add_game,
             "side": add_side,
@@ -221,7 +223,7 @@ if game_list:
             "price": add_price,
             "contracts": add_contracts
         })
-        st.rerun()
+        st.experimental_rerun()
 else:
     st.warning("No games available")
 
@@ -344,4 +346,4 @@ else:
     st.info("No games today")
 
 st.divider()
-st.caption("v10.33")
+    st.caption("v10.34")
