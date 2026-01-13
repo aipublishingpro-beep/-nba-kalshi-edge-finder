@@ -104,7 +104,7 @@ yesterday_teams = fetch_yesterday_teams()
 now = datetime.now(pytz.timezone('US/Eastern'))
 
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v10.35")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v10.36")
 
 st.subheader("📈 ACTIVE POSITIONS")
 
@@ -151,13 +151,13 @@ if st.session_state.positions:
             c4.markdown(f"<span style='color:{color};font-size:1.2em'><b>{status}</b></span>", unsafe_allow_html=True)
             if c5.button("❌", key=f"del_{idx}"):
                 st.session_state.positions.pop(idx)
-                st.experimental_rerun()
+                st.rerun()
         else:
             c1, c2 = st.columns([5, 1])
             c1.warning(f"Game not found: {game_key}")
             if c2.button("❌", key=f"del_m_{idx}"):
                 st.session_state.positions.pop(idx)
-                st.experimental_rerun()
+                st.rerun()
     
     total_cost = sum(p['price'] * p['contracts'] for p in st.session_state.positions) / 100
     total_pot = sum((100 - p['price']) * p['contracts'] for p in st.session_state.positions) / 100
@@ -165,7 +165,7 @@ if st.session_state.positions:
     sc1.markdown(f"**💰 Risk: ${total_cost:.2f} | Potential: ${total_pot:.2f}**")
     if sc2.button("🗑️ Clear All"):
         st.session_state.positions = []
-        st.experimental_rerun()
+        st.rerun()
 else:
     st.info("No positions yet. Add below ⬇️")
 
@@ -189,7 +189,7 @@ if game_list:
             "price": add_price,
             "contracts": add_contracts
         })
-        st.experimental_rerun()
+        st.rerun()
 else:
     st.warning("No games available")
 
