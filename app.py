@@ -188,6 +188,57 @@ def build_kalshi_ticker(away_team, home_team, threshold):
         thresh_str += ".5"
     return f"KXNBATOTAL-{date_str}{away_code.upper()}{home_code.upper()}-T{thresh_str}"
 
+def fetch_kalshi_market_line(away_team, home_team):
+    """Fetch actual Kalshi market line (where YES ≈ 50%) for a game"""
+    try:
+        away_code = KALSHI_CODES.get(away_team, "xxx").upper()
+        home_code = KALSHI_CODES.get(home_team, "xxx").upper()
+        today = datetime.now(pytz.timezone('US/Eastern'))
+        date_str = today.strftime("%y%b%d").upper()
+        
+        # Build event ticker pattern
+        event_ticker = f"KXNBATOTAL-{date_str}{away_code}{home_code}"
+        
+        # Fetch markets for this event
+        url = f"https://api.elections.kalshi.com/trade-api/v2/markets?event_ticker={event_ticker}"
+        resp = requests.get(url, timeout=10)
+        
+        if resp.status_code != 200:
+            return None, None
+        
+        data = resp.json()
+        markets = data.get("markets", [])
+        
+        if not markets:
+            return None, None
+        
+        # Find threshold closest to 50/50
+        best_threshold = None
+        best_diff = 100
+        all_thresholds = []
+        
+        for market in markets:
+            ticker = market.get("ticker", "")
+            yes_price = market.get("yes_ask", 50) or market.get("last_price", 50) or 50
+            
+            # Extract threshold from ticker (e.g., KXNBATOTAL-25JAN13DENNOP-T231.5 -> 231.5)
+            if "-T" in ticker:
+                try:
+                    thresh = float(ticker.split("-T")[1])
+                    all_thresholds.append({"threshold": thresh, "yes_price": yes_price})
+                    
+                    # How close to 50?
+                    diff = abs(yes_price - 50)
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_threshold = thresh
+                except:
+                    pass
+        
+        return best_threshold, all_thresholds
+    except Exception as e:
+        return None, None
+
 if "positions" not in st.session_state:
     st.session_state.positions = []
 
@@ -359,7 +410,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v14.4")
+    st.caption("v14.5")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -996,7 +1047,29 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.4")
+st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.5")
+
+# ========== KALSHI API TEST ==========
+with st.expander("🧪 KALSHI API TEST (click to check)"):
+    if game_list:
+        test_game = game_list[0]
+        parts = test_game.split("@")
+        away_t, home_t = parts[0], parts[1]
+        
+        st.write(f"Testing: **{away_t} @ {home_t}**")
+        
+        market_line, all_thresholds = fetch_kalshi_market_line(away_t, home_t)
+        
+        if market_line:
+            st.success(f"✅ Kalshi API works! Market line: **{market_line}**")
+            if all_thresholds:
+                st.write("All thresholds found:")
+                for t in sorted(all_thresholds, key=lambda x: x['threshold']):
+                    st.write(f"  {t['threshold']}: YES @ {t['yes_price']}¢")
+        else:
+            st.error("❌ Could not fetch Kalshi data")
+    else:
+        st.info("No games to test")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
