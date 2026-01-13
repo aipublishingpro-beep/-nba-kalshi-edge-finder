@@ -286,7 +286,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v12.4")
+    st.caption("v12.5")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -522,7 +522,7 @@ def calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, aw
     }
 
 def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
-    """Calculate 10-factor ML score. Returns (pick, score, edge)"""
+    """Calculate 10-factor ML score. Returns (pick, score, edge, reasons, home_stars, away_stars)"""
     home = TEAM_STATS.get(home_team, {})
     away = TEAM_STATS.get(away_team, {})
     home_loc = TEAM_LOCATIONS.get(home_team, (0, 0))
@@ -530,14 +530,18 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     
     score_home = 0
     score_away = 0
+    reasons_home = []
+    reasons_away = []
     
     # 1. REST ADVANTAGE (0-1)
     home_b2b = home_team in yesterday_teams
     away_b2b = away_team in yesterday_teams
     if away_b2b and not home_b2b:
         score_home += 1.0
+        reasons_home.append("🛏️ Opp B2B")
     elif home_b2b and not away_b2b:
         score_away += 1.0
+        reasons_away.append("🛏️ Opp B2B")
     elif not home_b2b and not away_b2b:
         score_home += 0.5
         score_away += 0.5
@@ -548,35 +552,44 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     net_diff = home_net - away_net
     if net_diff > 5:
         score_home += 1.0
+        reasons_home.append(f"📊 Net +{home_net:.1f}")
     elif net_diff > 2:
         score_home += 0.7
+        reasons_home.append(f"📊 Net +{home_net:.1f}")
     elif net_diff > 0:
         score_home += 0.5
     elif net_diff > -2:
         score_away += 0.5
     elif net_diff > -5:
         score_away += 0.7
+        reasons_away.append(f"📊 Net +{away_net:.1f}")
     else:
         score_away += 1.0
+        reasons_away.append(f"📊 Net +{away_net:.1f}")
     
     # 3. DEFENSE RANK (0-1)
     home_def = home.get('def_rank', 15)
     away_def = away.get('def_rank', 15)
     if home_def <= 5:
         score_home += 1.0
+        reasons_home.append(f"🛡️ #{home_def} DEF")
     elif home_def <= 10:
         score_home += 0.7
+        reasons_home.append(f"🛡️ #{home_def} DEF")
     elif home_def <= 15:
         score_home += 0.4
     if away_def <= 5:
         score_away += 1.0
+        reasons_away.append(f"🛡️ #{away_def} DEF")
     elif away_def <= 10:
         score_away += 0.7
+        reasons_away.append(f"🛡️ #{away_def} DEF")
     elif away_def <= 15:
         score_away += 0.4
     
     # 4. HOME COURT (0-1) - Always to home
     score_home += 1.0
+    reasons_home.append("🏠 Home")
     
     # 5. INJURY IMPACT (0-1)
     home_inj, home_stars = get_injury_score(home_team, injuries)
@@ -584,12 +597,20 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     inj_diff = away_inj - home_inj
     if inj_diff > 3:
         score_home += 1.0
+        if away_stars:
+            reasons_home.append(f"🏥 {away_stars[0][:10]} OUT")
     elif inj_diff > 1:
         score_home += 0.6
+        if away_stars:
+            reasons_home.append(f"🏥 {away_stars[0][:10]} OUT")
     elif inj_diff < -3:
         score_away += 1.0
+        if home_stars:
+            reasons_away.append(f"🏥 {home_stars[0][:10]} OUT")
     elif inj_diff < -1:
         score_away += 0.6
+        if home_stars:
+            reasons_away.append(f"🏥 {home_stars[0][:10]} OUT")
     else:
         score_home += 0.3
         score_away += 0.3
@@ -598,8 +619,10 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     travel_miles = calc_distance(away_loc, home_loc)
     if travel_miles > 2000:
         score_home += 1.0
+        reasons_home.append(f"✈️ {int(travel_miles)}mi")
     elif travel_miles > 1500:
         score_home += 0.7
+        reasons_home.append(f"✈️ {int(travel_miles)}mi")
     elif travel_miles > 1000:
         score_home += 0.5
     elif travel_miles > 500:
@@ -610,26 +633,34 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     away_aw = away.get('away_win_pct', 0.5)
     if home_hw > 0.65:
         score_home += 0.8
+        reasons_home.append(f"🏠 {int(home_hw*100)}% home")
     elif home_hw > 0.55:
         score_home += 0.5
     if away_aw < 0.35:
         score_home += 0.5
+        reasons_home.append(f"📉 Opp {int(away_aw*100)}% road")
     elif away_aw < 0.45:
         score_home += 0.3
     
     # 8. DIVISION RIVALRY (0-1) - Tighter games, home edge
     if home.get('division') == away.get('division') and home.get('division'):
         score_home += 0.5
+        reasons_home.append("⚔️ Division")
     
     # 9. ALTITUDE - Denver (0-1)
     if home_team == "Denver":
         score_home += 1.0
+        reasons_home.append("🏔️ Altitude")
     
     # 10. QUALITY FACTOR (0-1) - Better teams more reliable
     if home_net > 5:
         score_home += 0.5
+        if f"📊 Net +{home_net:.1f}" not in reasons_home:
+            reasons_home.append("⭐ Elite")
     if away_net > 5:
         score_away += 0.5
+        if f"📊 Net +{away_net:.1f}" not in reasons_away:
+            reasons_away.append("⭐ Elite")
     
     # Normalize to 10-point scale
     total = score_home + score_away
@@ -644,13 +675,15 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     if home_final >= away_final:
         pick = home_team
         score = home_final
-        edge = round((home_final - 5) * 4, 0)  # Convert to edge %
+        edge = round((home_final - 5) * 4, 0)
+        reasons = reasons_home[:4]  # Top 4 reasons
     else:
         pick = away_team
         score = away_final
         edge = round((away_final - 5) * 4, 0)
+        reasons = reasons_away[:4]
     
-    return pick, score, edge, home_stars, away_stars
+    return pick, score, edge, reasons, home_stars, away_stars
 
 def get_signal_tier(score):
     """Return signal tier based on score"""
@@ -674,7 +707,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.4")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.5")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
@@ -687,7 +720,7 @@ if game_list:
         away_team = parts[0]
         home_team = parts[1]
         
-        pick, score, edge, home_out, away_out = calc_ml_score(home_team, away_team, yesterday_teams, injuries)
+        pick, score, edge, reasons, home_out, away_out = calc_ml_score(home_team, away_team, yesterday_teams, injuries)
         signal, color = get_signal_tier(score)
         
         all_picks.append({
@@ -699,6 +732,7 @@ if game_list:
             'edge': edge,
             'signal': signal,
             'color': color,
+            'reasons': reasons,
             'home_out': home_out,
             'away_out': away_out
         })
@@ -717,43 +751,37 @@ if game_list:
     if strong_buys:
         st.markdown("### 🟢 STRONG BUY")
         for p in strong_buys:
-            inj_note = ""
-            if p['home_out']:
-                inj_note += f" | 🏥 {p['home']}: {', '.join(p['home_out'][:2])} OUT"
-            if p['away_out']:
-                inj_note += f" | 🏥 {p['away']}: {', '.join(p['away_out'][:2])} OUT"
+            reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
             
-            col1, col2, col3 = st.columns([4, 2, 2])
-            col1.markdown(f"**{p['pick']} ML** vs {p['away'] if p['pick'] == p['home'] else p['home']}{inj_note}")
+            col1, col2, col3, col4 = st.columns([3, 2, 4, 1])
+            col1.markdown(f"**{p['pick']} ML** vs {p['away'] if p['pick'] == p['home'] else p['home']}")
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
             
-            # Buy button
-            if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
-                if col3.button(f"🚀 BUY", key=f"buy_strong_{p['game']}"):
-                    st.info(f"Go to Kalshi ML market for {p['game']}")
-            else:
-                kalshi_url = f"https://kalshi.com/markets/kxnbagame"
-                col3.link_button("🔗 Kalshi", kalshi_url)
+            kalshi_url = f"https://kalshi.com/markets/kxnbagame"
+            col4.link_button("🚀", kalshi_url)
     
     if buys:
         st.markdown("### 🔵 BUY")
         for p in buys:
-            inj_note = ""
-            if p['home_out']:
-                inj_note += f" | 🏥 {', '.join(p['home_out'][:2])} OUT"
-            if p['away_out']:
-                inj_note += f" | 🏥 {', '.join(p['away_out'][:2])} OUT"
+            reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
             
-            col1, col2, col3 = st.columns([4, 2, 2])
-            col1.markdown(f"**{p['pick']} ML** vs {p['away'] if p['pick'] == p['home'] else p['home']}{inj_note}")
+            col1, col2, col3, col4 = st.columns([3, 2, 4, 1])
+            col1.markdown(f"**{p['pick']} ML** vs {p['away'] if p['pick'] == p['home'] else p['home']}")
             col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
+            
             kalshi_url = f"https://kalshi.com/markets/kxnbagame"
-            col3.link_button("🔗 Kalshi", kalshi_url)
+            col4.link_button("🔗", kalshi_url)
     
     if leans:
         st.markdown("### 🟡 LEAN")
         for p in leans:
-            st.markdown(f"**{p['pick']} ML** vs {p['away'] if p['pick'] == p['home'] else p['home']} — <span style='color:{p['color']}'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
+            reasons_str = " • ".join(p['reasons'][:3]) if p['reasons'] else ""
+            col1, col2, col3 = st.columns([3, 2, 5])
+            col1.markdown(f"**{p['pick']} ML** vs {p['away'] if p['pick'] == p['home'] else p['home']}")
+            col2.markdown(f"<span style='color:{p['color']}'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
+            col3.markdown(f"<span style='color:#888;font-size:0.85em'>{reasons_str}</span>", unsafe_allow_html=True)
     
     if tossups:
         st.markdown("### ⚪ TOSS-UP")
