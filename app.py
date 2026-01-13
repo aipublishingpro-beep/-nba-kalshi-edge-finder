@@ -385,7 +385,7 @@ if game_list:
         for pick in all_edges:
             conf = "HIGH" if pick['pick_edge'] > 10 else "MEDIUM"
             conf_color = "#00ff00" if conf == "HIGH" else "#ffff00"
-            edge_color = "#00ff00" if pick['pick_side'] == "HOME" else "#ff4444"
+            edge_color = "#00ff00" if pick['pick_side'] == "HOME" else "#ff4444"  # Green=home, Red=away
             
             b2b_note = ""
             if pick['away_b2b']:
@@ -393,11 +393,17 @@ if game_list:
             if pick['home_b2b']:
                 b2b_note += f" 🔴 {pick['game'].split('@')[1]} B2B"
             
+            # Show win prob for the PICKED team, not just home %
+            if pick['pick_side'] == "HOME":
+                pick_prob = pick['home_win_prob']
+            else:
+                pick_prob = 100 - pick['home_win_prob']
+            
             st.markdown(f"""
             <div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {edge_color};margin-bottom:10px'>
                 <span style='color:{edge_color};font-size:1.8em;font-weight:bold'>🎯 BUY {pick['pick_team']} ML</span>
                 <span style='color:{conf_color};font-size:1.1em;margin-left:15px'>{conf} (+{pick['pick_edge']:.0f}% edge)</span>
-                <br><span style='color:#aaa;font-size:0.9em'>{pick['game'].replace('@', ' @ ')} | Model: {pick['home_win_prob']:.0f}% home | Spread: {pick['spread']:+.1f}{b2b_note}</span>
+                <br><span style='color:#aaa;font-size:0.9em'>{pick['game'].replace('@', ' @ ')} | {pick['pick_team']} {pick_prob:.0f}% to win ({pick['pick_side'].lower()}){b2b_note}</span>
             </div>
             """, unsafe_allow_html=True)
     else:
@@ -566,31 +572,9 @@ if game_list:
                 b2b_msg.append(f"🔴 {home_team} B2B")
             st.warning(" | ".join(b2b_msg))
         
-        # MAIN RECOMMENDATION - CLEAR AS DAY
-        edge = result['edge']
-        if edge > 5:
-            rec_text = f"🟢 BUY {home_team} ML"
-            rec_color = "#00ff00"
-        elif edge < -5:
-            rec_text = f"🔴 BUY {away_team} ML"
-            rec_color = "#ff4444"
-        else:
-            rec_text = "⚪ NO EDGE - SKIP"
-            rec_color = "#888888"
-        
-        conf = "HIGH" if abs(edge) > 10 else ("MEDIUM" if abs(edge) > 5 else "LOW")
-        conf_color = "#00ff00" if conf == "HIGH" else ("#ffff00" if conf == "MEDIUM" else "#888888")
-        
-        # BIG BOX WITH TEAM NAME
-        st.markdown(f"""
-        <div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:25px;border-radius:15px;text-align:center;border:2px solid {rec_color};margin-bottom:20px'>
-            <span style='color:{rec_color};font-size:2.5em;font-weight:bold'>{rec_text}</span><br>
-            <span style='color:{conf_color};font-size:1.3em'>{conf} CONFIDENCE</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
+        # Just show the metrics - no big recommendation box (that's in TOP PICKS)
         col1, col2, col3 = st.columns(3)
-        col1.metric("Model Win Prob", f"{result['home_win_prob']}%")
+        col1.metric("Model Win Prob", f"{result['home_win_prob']}% home")
         col2.metric("Kalshi Price", f"{result['kalshi_price']}¢")
         col3.metric("Edge", f"{result['edge']:+.1f}%")
         
