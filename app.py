@@ -93,12 +93,12 @@ with st.sidebar:
     🟢 VERY SAFE → +15 cushion  
     🟢 LOOKING GOOD → +8 to +15  
     🟡 ON TRACK → +3 to +8  
-    🟠 TIGHT → -3 to +3  
-    🔴 DANGER → Under -3
+    🟠 WARNING → -3 to +3  
+    🔴 AT RISK → Under -3
     """)
     
     st.divider()
-    st.caption("v12.0")
+    st.caption("v12.1")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -179,6 +179,27 @@ STAR_PLAYERS = {
     "Sacramento": ["De'Aaron Fox", "Domantas Sabonis"], "San Antonio": ["Victor Wembanyama"],
     "Toronto": ["Scottie Barnes"], "Utah": ["Lauri Markkanen"], "Washington": ["Jordan Poole"]
 }
+
+# ========== KALSHI TEAM CODES ==========
+KALSHI_CODES = {
+    "Atlanta": "ATL", "Boston": "BOS", "Brooklyn": "BKN", "Charlotte": "CHA",
+    "Chicago": "CHI", "Cleveland": "CLE", "Dallas": "DAL", "Denver": "DEN",
+    "Detroit": "DET", "Golden State": "GSW", "Houston": "HOU", "Indiana": "IND",
+    "LA Clippers": "LAC", "LA Lakers": "LAL", "Memphis": "MEM", "Miami": "MIA",
+    "Milwaukee": "MIL", "Minnesota": "MIN", "New Orleans": "NOP", "New York": "NYK",
+    "Oklahoma City": "OKC", "Orlando": "ORL", "Philadelphia": "PHI", "Phoenix": "PHX",
+    "Portland": "POR", "Sacramento": "SAC", "San Antonio": "SAS", "Toronto": "TOR",
+    "Utah": "UTA", "Washington": "WAS"
+}
+
+def build_kalshi_totals_url(away_team, home_team, threshold):
+    """Build Kalshi totals URL from game info"""
+    away_code = KALSHI_CODES.get(away_team, "XXX")
+    home_code = KALSHI_CODES.get(home_team, "XXX")
+    today = datetime.now(pytz.timezone('US/Eastern'))
+    date_str = today.strftime("%y%b%d").upper()  # e.g., 26JAN13
+    ticker = f"kxnbatotal-{date_str}{away_code}{home_code}-t{threshold}".lower()
+    return f"https://kalshi.com/markets/kxnbatotal/professional-basketball-game/{ticker}"
 
 def calc_distance(loc1, loc2):
     from math import radians, sin, cos, sqrt, atan2
@@ -342,7 +363,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.0")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v12.1")
 
 if yesterday_teams:
     st.info(f"📅 **B2B Teams Today:** {', '.join(sorted(yesterday_teams))}")
@@ -477,23 +498,27 @@ st.divider()
 # ========== ADD NEW POSITION ==========
 st.subheader("➕ ADD NEW POSITION")
 
+# Game selector (outside form for instant Kalshi link)
+game_options = ["Select a game..."] + [gk.replace("@", " @ ") for gk in game_list]
+selected_game = st.selectbox("🏀 Game", game_options, key="game_select")
+threshold_select = st.number_input("🎯 Threshold", min_value=180.0, max_value=280.0, value=235.5, step=0.5, key="threshold_select")
+
+# Show Kalshi link immediately when game selected
+if selected_game != "Select a game...":
+    parts = selected_game.replace(" @ ", "@").split("@")
+    away_t = parts[0]
+    home_t = parts[1]
+    kalshi_url = build_kalshi_totals_url(away_t, home_t, threshold_select)
+    st.link_button(f"🔗 BUY on Kalshi → {selected_game} | {threshold_select}", kalshi_url, use_container_width=True)
+
 with st.form("add_position_form"):
-    p1, p2 = st.columns(2)
+    p1, p2, p3 = st.columns(3)
     
-    game_options = ["Select a game..."] + [gk.replace("@", " @ ") for gk in game_list]
-    selected_game = p1.selectbox("🏀 Game", game_options)
+    side = p1.selectbox("📊 Side", ["NO (Under)", "YES (Over)"])
+    price_paid = p2.number_input("💵 Price Paid (¢)", min_value=1, max_value=99, value=50, step=1)
+    contracts = p3.number_input("📄 Contracts", min_value=1, max_value=1000, value=10, step=1)
     
-    side = p2.selectbox("📊 Side", ["NO (Under)", "YES (Over)"])
-    
-    p3, p4, p5 = st.columns(3)
-    
-    threshold = p3.number_input("🎯 Threshold", min_value=180.0, max_value=280.0, value=235.5, step=0.5)
-    
-    price_paid = p4.number_input("💵 Price Paid (¢)", min_value=1, max_value=99, value=50, step=1)
-    
-    contracts = p5.number_input("📄 Contracts", min_value=1, max_value=1000, value=10, step=1)
-    
-    submitted = st.form_submit_button("✅ ADD POSITION", use_container_width=True)
+    submitted = st.form_submit_button("✅ ADD POSITION (after you buy)", use_container_width=True)
     
     if submitted and selected_game != "Select a game...":
         game_key = selected_game.replace(" @ ", "@")
@@ -502,7 +527,7 @@ with st.form("add_position_form"):
         st.session_state.positions.append({
             'game': game_key,
             'side': side_clean,
-            'threshold': threshold,
+            'threshold': threshold_select,
             'price': price_paid,
             'contracts': contracts,
             'cost': round(price_paid * contracts / 100, 2)
@@ -556,10 +581,10 @@ if st.session_state.positions:
                     status_label = "🟡 ON TRACK"
                     status_color = "#ffff00"
                 elif cushion >= -3:
-                    status_label = "🟠 TIGHT"
+                    status_label = "🟠 WARNING"
                     status_color = "#ff8800"
                 else:
-                    status_label = "🔴 DANGER"
+                    status_label = "🔴 AT RISK"
                     status_color = "#ff0000"
                 pnl_display = f"Win: +${potential_win:.2f}"
                 pnl_color = "#888888"
@@ -590,7 +615,12 @@ if st.session_state.positions:
             </div>
             """, unsafe_allow_html=True)
             
-            if st.button("🗑️ Remove", key=f"del_{idx}"):
+            # Buttons row
+            btn1, btn2 = st.columns([3, 1])
+            parts = game_key.split("@")
+            kalshi_url = build_kalshi_totals_url(parts[0], parts[1], pos['threshold'])
+            btn1.link_button(f"🔗 Trade on Kalshi", kalshi_url, use_container_width=True)
+            if btn2.button("🗑️ Remove", key=f"del_{idx}"):
                 st.session_state.positions.pop(idx)
                 st.rerun()
         else:
