@@ -98,7 +98,7 @@ with st.sidebar:
     """)
     
     st.divider()
-    st.caption("v11.3")
+    st.caption("v11.4")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -423,7 +423,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v11.3 | 12-Factor Edge System")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v11.4 | 12-Factor Edge System")
 
 # ========== 1. ACTIVE POSITIONS ==========
 st.subheader("📈 ACTIVE POSITIONS")
@@ -494,6 +494,12 @@ st.divider()
 # ========== 2. FATIGUE SCANNER ==========
 st.subheader("😴 FATIGUE SCANNER")
 st.caption("Find BLOWOUT RISK (ML edge) and BOTH TIRED (NO edge) — check BEFORE games")
+
+# Debug: Show which teams played yesterday
+if yesterday_teams:
+    st.caption(f"📅 Teams that played yesterday: {', '.join(sorted(yesterday_teams))}")
+else:
+    st.caption("📅 No teams found in yesterday's games (API issue?)")
 
 if games:
     fatigue_games = []
@@ -633,8 +639,15 @@ if game_list:
         away_team = parts[0]
         home_team = parts[1]
         
-        home_rest = 0 if home_team in yesterday_teams else 1
-        away_rest = 0 if away_team in yesterday_teams else 1
+        # Check B2B status - 0 means played yesterday (tired), 1 means rested
+        away_b2b = away_team in yesterday_teams
+        home_b2b = home_team in yesterday_teams
+        away_rest = 0 if away_b2b else 1
+        home_rest = 0 if home_b2b else 1
+        
+        # Debug display
+        st.caption(f"🔍 Rest check: {away_team} B2B={away_b2b} | {home_team} B2B={home_b2b} | Yesterday teams: {len(yesterday_teams)}")
+        
         home_inj, home_stars = get_injury_score(home_team, injuries)
         away_inj, away_stars = get_injury_score(away_team, injuries)
         
