@@ -16,6 +16,11 @@ except ImportError:
 
 st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
 
+# ========== AUTO-REFRESH EVERY 30 SECONDS ==========
+st.markdown("""
+<meta http-equiv="refresh" content="30">
+""", unsafe_allow_html=True)
+
 # ============================================================
 # KALSHI TRADING API
 # ============================================================
@@ -146,7 +151,11 @@ def build_kalshi_ticker(away_team, home_team, threshold):
     home_code = KALSHI_CODES.get(home_team, "xxx")
     today = datetime.now(pytz.timezone('US/Eastern'))
     date_str = today.strftime("%y%b%d").upper()
-    return f"KXNBATOTAL-{date_str}{away_code.upper()}{home_code.upper()}-T{threshold}"
+    # Format threshold - remove trailing zeros (235.50 -> 235.5)
+    thresh_str = f"{float(threshold):.1f}".rstrip('0').rstrip('.')
+    if '.' not in thresh_str:
+        thresh_str += ".5"
+    return f"KXNBATOTAL-{date_str}{away_code.upper()}{home_code.upper()}-T{thresh_str}"
 
 if "positions" not in st.session_state:
     st.session_state.positions = []
@@ -322,7 +331,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v13.2")
+    st.caption("v13.6")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -903,7 +912,7 @@ now = datetime.now(pytz.timezone('US/Eastern'))
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v13.2")
+st.caption(f"🔄 Auto-refresh 30s | Last update: {now.strftime('%I:%M:%S %p ET')} | v13.6")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
@@ -1281,7 +1290,7 @@ st.subheader("➕ ADD NEW POSITION")
 # Game selector (outside form for instant Kalshi link)
 game_options = ["Select a game..."] + [gk.replace("@", " @ ") for gk in game_list]
 selected_game = st.selectbox("🏀 Game", game_options, key="game_select")
-threshold_select = st.number_input("🎯 Threshold", min_value=180.0, max_value=280.0, value=235.5, step=0.5, key="threshold_select")
+threshold_select = st.number_input("🎯 Threshold (check Kalshi for available)", min_value=180.0, max_value=280.0, value=225.5, step=3.0, key="threshold_select")
 
 # Show Kalshi link immediately when game selected
 if selected_game != "Select a game...":
