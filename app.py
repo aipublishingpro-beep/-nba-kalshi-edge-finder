@@ -905,12 +905,27 @@ if game_list:
                 display_color = "#ff8800" if is_best else p['color']
                 col1.markdown(f"**{p['away']}** @ **{p['home']}**")
                 col2.markdown(f"<span style='color:{display_color};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
+                
+                # Calculate recommended threshold (Kalshi uses 6-point brackets: 213.5, 219.5, 225.5, 231.5, 237.5, etc)
                 if p.get('best_thresh') and p.get('best_cushion'):
-                    col3.markdown(f"Model: <b>{p['projected']}</b> | +{p['best_cushion']:.0f} cushion @ {p['best_price']}¢", unsafe_allow_html=True)
-                    btn_label = f"⭐ {side} {p['best_thresh']}" if is_best else (f"🚀 {side} {p['best_thresh']}" if "strong" in tier else f"🔗 {side} {p['best_thresh']}")
+                    rec_thresh = p['best_thresh']
+                    rec_cushion = p['best_cushion']
                 else:
-                    col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b>", unsafe_allow_html=True)
-                    btn_label = f"⭐ BUY {side}" if is_best else (f"🚀 BUY {side}" if "strong" in tier else f"🔗 BUY {side}")
+                    proj = p['projected']
+                    if side == "NO":
+                        # For NO, go ABOVE projection with +12 safety buffer
+                        target = proj + 12
+                        n = int((target - 213.5) / 6) + 1  # Round up
+                        rec_thresh = 213.5 + 6 * n
+                    else:
+                        # For YES, go BELOW projection with +12 safety buffer  
+                        target = proj - 12
+                        n = int((target - 213.5) / 6)  # Round down
+                        rec_thresh = 213.5 + 6 * n
+                    rec_cushion = abs(rec_thresh - proj)
+                
+                col3.markdown(f"Model: <b>{p['projected']}</b> | +{rec_cushion:.0f} cushion", unsafe_allow_html=True)
+                btn_label = f"⭐ {side} {rec_thresh:.1f}" if is_best else (f"🚀 {side} {rec_thresh:.1f}" if "strong" in tier else f"🔗 {side} {rec_thresh:.1f}")
                 col4.link_button(btn_label, build_kalshi_totals_url(p['away'], p['home']))
                 if p.get('reasons'):
                     st.markdown(f"<div style='margin-left:20px;font-size:0.9em;color:#aaa'>{' • '.join(p['reasons'])}</div>", unsafe_allow_html=True)
