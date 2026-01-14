@@ -773,8 +773,16 @@ st.divider()
 st.subheader("🎯 CUSHION SCANNER - REAL KALSHI THRESHOLDS")
 
 MIN_CUSHION = 6
-cush_window = st.selectbox("Stability Window (minutes)", [6, 9, 12, 18, 24], index=1)
+cush_col1, cush_col2, cush_col3 = st.columns([1, 1, 1])
+with cush_col1:
+    cush_window = st.selectbox("Min Minutes", [6, 9, 12, 18, 24], index=1)
+with cush_col2:
+    cush_side = st.selectbox("Bet Side", ["NO", "YES"])
+with cush_col3:
+    st.caption("⭐ = Best Value")
 
+# Collect all games with data
+cush_games = []
 for gk, g in games.items():
     mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
     if mins < cush_window or g['status_type'] == "STATUS_FINAL":
@@ -784,83 +792,87 @@ for gk, g in games.items():
     pace_val = g['total'] / mins if mins > 0 else 0
     away_team, home_team = g['away_team'], g['home_team']
     
-    if pace_val < 4.5: pace_label, pace_color = "🟢 SLOW", "#00ff00"
-    elif pace_val < 4.8: pace_label, pace_color = "🟡 AVG", "#ffff00"
-    elif pace_val < 5.2: pace_label, pace_color = "🟠 FAST", "#ff8800"
-    else: pace_label, pace_color = "🔴 SHOOTOUT", "#ff0000"
-    
     _, all_markets = fetch_kalshi_markets(away_team, home_team)
-    
     if not all_markets:
         continue
     
-    st.markdown(f"""<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;margin-bottom:5px;margin-top:15px'>
-        <span style='color:#fff;font-size:1.3em;font-weight:bold'>{away_team} @ {home_team}</span>
-        <span style='color:#888;margin-left:15px'>{mins:.0f} min</span>
-        <span style='color:{pace_color};margin-left:15px;font-weight:bold'>{pace_label} {pace_val:.2f}/min</span>
-        <span style='color:#fff;margin-left:15px'>📈 Proj: <b>{proj}</b></span>
-    </div>""", unsafe_allow_html=True)
+    # Get thresholds from real Kalshi data
+    thresholds = sorted([m['threshold'] for m in all_markets])
     
-    threshold_rows = []
-    for market in all_markets:
-        thresh = market['threshold']
-        no_cushion = thresh - proj
-        yes_cushion = proj - thresh
+    cush_games.append({
+        'game': gk,
+        'away': away_team,
+        'home': home_team,
+        'proj': proj,
+        'pace': pace_val,
+        'mins': mins,
+        'thresholds': thresholds,
+        'markets': {m['threshold']: m for m in all_markets}
+    })
+
+if cush_games:
+    for cg in cush_games:
+        # Pace label
+        if cg['pace'] < 4.5: pace_label, pace_color = "🟢 SLOW", "#00ff00"
+        elif cg['pace'] < 4.8: pace_label, pace_color = "🟡 AVG", "#ffff00"
+        elif cg['pace'] < 5.2: pace_label, pace_color = "🟠 FAST", "#ff8800"
+        else: pace_label, pace_color = "🔴 SHOOTOUT", "#ff0000"
         
-        if pace_val >= 5.0:
-            if no_cushion >= MIN_CUSHION:
-                if no_cushion >= 20: size_label, size_color = "2x", "#00ff00"
-                elif no_cushion >= 12: size_label, size_color = "1x", "#00aaff"
-                else: size_label, size_color = "0.5x", "#ffff00"
-                threshold_rows.append({'thresh': thresh, 'side': 'NO', 'cushion': no_cushion, 'size_label': size_label, 'size_color': size_color, 'no_ask': market.get('no_ask', 0)})
-        else:
-            if no_cushion >= MIN_CUSHION:
-                if no_cushion >= 20: size_label, size_color = "2x", "#00ff00"
-                elif no_cushion >= 12: size_label, size_color = "1x", "#00aaff"
-                else: size_label, size_color = "0.5x", "#ffff00"
-                threshold_rows.append({'thresh': thresh, 'side': 'NO', 'cushion': no_cushion, 'size_label': size_label, 'size_color': size_color, 'no_ask': market.get('no_ask', 0)})
-            if yes_cushion >= MIN_CUSHION:
-                if yes_cushion >= 20: size_label, size_color = "2x", "#00ff00"
-                elif yes_cushion >= 12: size_label, size_color = "1x", "#00aaff"
-                else: size_label, size_color = "0.5x", "#ffff00"
-                threshold_rows.append({'thresh': thresh, 'side': 'YES', 'cushion': yes_cushion, 'size_label': size_label, 'size_color': size_color, 'yes_ask': market.get('yes_ask', 0)})
-    
-    threshold_rows.sort(key=lambda x: x['cushion'], reverse=True)
-    
-    # Find best value: highest cushion in 12-19 range (1x size), or highest under 20 if none
-    best_idx = None
-    for i, tr in enumerate(threshold_rows):
-        if 12 <= tr['cushion'] < 20:
-            best_idx = i
-            break
-    if best_idx is None and threshold_rows:
-        for i, tr in enumerate(threshold_rows):
-            if tr['cushion'] < 20:
-                best_idx = i
-                break
-    
-    if threshold_rows:
-        for i, tr in enumerate(threshold_rows):
-            is_best = (i == best_idx)
-            if is_best:
-                cush_color = "#ff8800"
-                bg_color = "#2a1a00"
-                label = "⭐ BEST VALUE"
+        # Game header
+        st.markdown(f"""<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:12px;border-radius:8px;margin-top:15px'>
+            <span style='color:#fff;font-weight:bold'>{cg['away']} @ {cg['home']}</span>
+            <span style='color:#888;margin-left:15px'>{cg['mins']:.0f} min</span>
+            <span style='color:{pace_color};margin-left:15px'>{pace_label} {cg['pace']:.2f}/min</span>
+            <span style='color:#fff;margin-left:15px'>Proj: <b>{cg['proj']}</b></span>
+        </div>""", unsafe_allow_html=True)
+        
+        # Calculate cushions for each threshold
+        threshold_cushions = []
+        for t in cg['thresholds']:
+            if cush_side == "NO":
+                cushion = t - cg['proj']
             else:
-                cush_color = "#00ff00" if tr['cushion'] >= 20 else ("#00aaff" if tr['cushion'] >= 12 else "#ffff00")
-                bg_color = "#0d1117"
-                label = f"Size: {tr['size_label']}"
-            price_info = f"NO @ {tr.get('no_ask', '?')}¢" if tr['side'] == 'NO' else f"YES @ {tr.get('yes_ask', '?')}¢"
-            st.markdown(f"""<div style='background:{bg_color};padding:10px 15px;border-left:4px solid {cush_color};margin-bottom:3px;display:flex;justify-content:space-between;align-items:center'>
-                <span style='color:#fff;font-weight:bold'>BUY {tr['side']} @ {tr['thresh']}</span>
-                <span style='color:{cush_color};font-weight:bold'>+{tr['cushion']:.0f} cushion</span>
-                <span style='color:#aaa'>{price_info}</span>
-                <span style='color:{cush_color};font-weight:bold'>{label}</span>
-            </div>""", unsafe_allow_html=True)
+                cushion = cg['proj'] - t
+            threshold_cushions.append({'thresh': t, 'cushion': cushion})
         
-        st.link_button(f"🚀 Trade {away_team} @ {home_team} on Kalshi", build_kalshi_totals_url(away_team, home_team), use_container_width=True)
-    else:
-        st.markdown(f"<div style='color:#666;padding:10px'>⚪ No thresholds with +{MIN_CUSHION} cushion</div>", unsafe_allow_html=True)
+        # Find best value (highest cushion in 12-19 range, or highest if none)
+        valid_cushions = [tc for tc in threshold_cushions if tc['cushion'] >= MIN_CUSHION]
+        best_thresh = None
+        for tc in valid_cushions:
+            if 12 <= tc['cushion'] < 20:
+                best_thresh = tc['thresh']
+                break
+        if best_thresh is None and valid_cushions:
+            best_thresh = valid_cushions[0]['thresh']
+        
+        # Build grid - header row
+        display_thresholds = [tc for tc in threshold_cushions if tc['cushion'] >= MIN_CUSHION][:8]
+        if display_thresholds:
+            cols = st.columns(len(display_thresholds))
+            for i, tc in enumerate(display_thresholds):
+                is_best = (tc['thresh'] == best_thresh)
+                cols[i].markdown(f"<div style='text-align:center;color:#aaa;font-size:0.85em'>{tc['thresh']}</div>", unsafe_allow_html=True)
+            
+            # Cushion row
+            cols2 = st.columns(len(display_thresholds))
+            for i, tc in enumerate(display_thresholds):
+                is_best = (tc['thresh'] == best_thresh)
+                if is_best:
+                    cols2[i].markdown(f"<div style='text-align:center;background:#2a1a00;border:2px solid #ff8800;border-radius:5px;padding:5px'><span style='color:#ff8800;font-weight:bold'>⭐ +{tc['cushion']:.0f}</span></div>", unsafe_allow_html=True)
+                elif tc['cushion'] >= 20:
+                    cols2[i].markdown(f"<div style='text-align:center'><span style='color:#00ff00;font-weight:bold'>+{tc['cushion']:.0f}</span></div>", unsafe_allow_html=True)
+                elif tc['cushion'] >= 12:
+                    cols2[i].markdown(f"<div style='text-align:center'><span style='color:#00aaff;font-weight:bold'>+{tc['cushion']:.0f}</span></div>", unsafe_allow_html=True)
+                else:
+                    cols2[i].markdown(f"<div style='text-align:center'><span style='color:#ffff00'>+{tc['cushion']:.0f}</span></div>", unsafe_allow_html=True)
+            
+            # Trade button
+            if best_thresh:
+                st.link_button(f"⭐ BUY {cush_side} @ {best_thresh}", build_kalshi_totals_url(cg['away'], cg['home']), use_container_width=True)
+        else:
+            st.markdown(f"<div style='color:#666;padding:10px'>⚪ No thresholds with +{MIN_CUSHION} cushion</div>", unsafe_allow_html=True)
+else:
+    st.info(f"No games with {cush_window}+ minutes played")
 
 st.divider()
 
