@@ -117,7 +117,6 @@ def build_kalshi_ticker(away_team, home_team, threshold):
     return f"KXNBATOTAL-{date_str}{away_code.upper()}{home_code.upper()}-T{thresh_str}"
 
 def fetch_kalshi_markets(away_team, home_team):
-    """Fetch ALL available Kalshi markets/thresholds for a game"""
     try:
         away_code = KALSHI_CODES.get(away_team, "xxx")
         home_code = KALSHI_CODES.get(home_team, "xxx")
@@ -637,7 +636,7 @@ if game_list:
                 col1.markdown(f"**<span style='color:{p['color']}'>{p['pick']}</span>** {tag} vs {opp}", unsafe_allow_html=True)
                 col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
                 col3.markdown(f"<span style='color:#aaa'>{' • '.join(p['reasons'])}</span>", unsafe_allow_html=True)
-                col4.link_button("🚀 BUY" if tier == "strong" else "🔗 BUY", build_kalshi_ml_url(p['away'], p['home']))
+                col4.link_button(f"🚀 BUY {p['pick']}" if tier == "strong" else f"🔗 BUY {p['pick']}", build_kalshi_ml_url(p['away'], p['home']))
     if not all_picks:
         st.info("⚪ No actionable ML plays today")
 else:
@@ -739,8 +738,9 @@ if st.session_state.positions:
                 elif cushion >= -3: status, color = "🟠 WARNING", "#ff8800"
                 else: status, color = "🔴 AT RISK", "#ff0000"
             else: status, color = "⏳ WAITING", "#888888"
+            game_status = 'FINAL' if is_final else f"Q{g['period']} {g['clock']}"
             st.markdown(f"""<div style='background:#1a1a2e;padding:15px;border-radius:10px;border:2px solid {color};margin-bottom:10px'>
-                <b style='color:#fff'>{pos['game'].replace('@', ' @ ')}</b> <span style='color:#888'>{'FINAL' if is_final else f"Q{g['period']} {g['clock']}"}</span>
+                <b style='color:#fff'>{pos['game'].replace('@', ' @ ')}</b> <span style='color:#888'>{game_status}</span>
                 <span style='color:{color};float:right;font-weight:bold'>{status}</span><br>
                 <span style='color:#aaa'>{pos['side']} {pos['threshold']} | {pos['contracts']}x @ {pos['price']}¢ | Proj: {proj or '—'} | Cushion: <b style='color:{color}'>{cushion:+.0f}</b> | Win: +${pot_win}</span>
             </div>""", unsafe_allow_html=True)
@@ -755,7 +755,6 @@ else:
 
 st.divider()
 
-# ========== CUSHION SCANNER - REAL KALSHI THRESHOLDS ==========
 st.subheader("🎯 CUSHION SCANNER - REAL KALSHI THRESHOLDS")
 
 MIN_CUSHION = 6
@@ -770,19 +769,16 @@ for gk, g in games.items():
     pace_val = g['total'] / mins if mins > 0 else 0
     away_team, home_team = g['away_team'], g['home_team']
     
-    # Pace label
     if pace_val < 4.5: pace_label, pace_color = "🟢 SLOW", "#00ff00"
     elif pace_val < 4.8: pace_label, pace_color = "🟡 AVG", "#ffff00"
     elif pace_val < 5.2: pace_label, pace_color = "🟠 FAST", "#ff8800"
     else: pace_label, pace_color = "🔴 SHOOTOUT", "#ff0000"
     
-    # FETCH REAL KALSHI THRESHOLDS
     _, all_markets = fetch_kalshi_markets(away_team, home_team)
     
     if not all_markets:
-        continue  # No markets available
+        continue
     
-    # Game header
     st.markdown(f"""<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;margin-bottom:5px;margin-top:15px'>
         <span style='color:#fff;font-size:1.3em;font-weight:bold'>{away_team} @ {home_team}</span>
         <span style='color:#888;margin-left:15px'>{mins:.0f} min</span>
@@ -790,14 +786,12 @@ for gk, g in games.items():
         <span style='color:#fff;margin-left:15px'>📈 Proj: <b>{proj}</b></span>
     </div>""", unsafe_allow_html=True)
     
-    # Build threshold rows from REAL Kalshi data
     threshold_rows = []
     for market in all_markets:
         thresh = market['threshold']
         no_cushion = thresh - proj
         yes_cushion = proj - thresh
         
-        # For shootouts (pace >= 5.0), ONLY show NO options
         if pace_val >= 5.0:
             if no_cushion >= MIN_CUSHION:
                 if no_cushion >= 20: size_label, size_color = "2x", "#00ff00"
@@ -805,7 +799,6 @@ for gk, g in games.items():
                 else: size_label, size_color = "0.5x", "#ffff00"
                 threshold_rows.append({'thresh': thresh, 'side': 'NO', 'cushion': no_cushion, 'size_label': size_label, 'size_color': size_color, 'no_ask': market.get('no_ask', 0)})
         else:
-            # Normal pace - show both sides if cushion is good
             if no_cushion >= MIN_CUSHION:
                 if no_cushion >= 20: size_label, size_color = "2x", "#00ff00"
                 elif no_cushion >= 12: size_label, size_color = "1x", "#00aaff"
@@ -817,7 +810,6 @@ for gk, g in games.items():
                 else: size_label, size_color = "0.5x", "#ffff00"
                 threshold_rows.append({'thresh': thresh, 'side': 'YES', 'cushion': yes_cushion, 'size_label': size_label, 'size_color': size_color, 'yes_ask': market.get('yes_ask', 0)})
     
-    # Sort by cushion descending
     threshold_rows.sort(key=lambda x: x['cushion'], reverse=True)
     
     if threshold_rows:
@@ -850,7 +842,8 @@ for p in pace_data:
     elif p['pace'] < 4.8: lbl, clr = "🟡 AVG", "#ffff00"
     elif p['pace'] < 5.2: lbl, clr = "🟠 FAST", "#ff8800"
     else: lbl, clr = "🔴 SHOOTOUT", "#ff0000"
-    st.markdown(f"**{p['game'].replace('@', ' @ ')}** — {p['total']} pts / {p['mins']:.0f} min — **{p['pace']}/min** <span style='color:{clr}'>**{lbl}**</span> — Proj: **{p['proj']}** — {'FINAL' if p['final'] else f\"Q{p['period']} {p['clock']}\"}", unsafe_allow_html=True)
+    status = 'FINAL' if p['final'] else f"Q{p['period']} {p['clock']}"
+    st.markdown(f"**{p['game'].replace('@', ' @ ')}** — {p['total']} pts / {p['mins']:.0f} min — **{p['pace']}/min** <span style='color:{clr}'>**{lbl}**</span> — Proj: **{p['proj']}** — {status}", unsafe_allow_html=True)
 if not pace_data:
     st.info("No games with 6+ minutes played")
 
@@ -863,7 +856,8 @@ if games:
         with cols[i % 4]:
             st.write(f"**{g['away_team']}** {g['away_score']}")
             st.write(f"**{g['home_team']}** {g['home_score']}")
-            st.caption(f"{'FINAL' if g['status_type'] == 'STATUS_FINAL' else f\"Q{g['period']} {g['clock']}\"} | {g['total']} pts")
+            game_status = 'FINAL' if g['status_type'] == 'STATUS_FINAL' else f"Q{g['period']} {g['clock']}"
+            st.caption(f"{game_status} | {g['total']} pts")
 else:
     st.info("No games today")
 
