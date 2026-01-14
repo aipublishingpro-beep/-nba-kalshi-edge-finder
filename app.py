@@ -625,18 +625,25 @@ if game_list:
         if signal:
             all_picks.append({'game': game_key, 'home': parts[1], 'away': parts[0], 'pick': pick, 'score': score, 'edge': edge, 'color': color, 'reasons': reasons})
     all_picks.sort(key=lambda x: x['score'], reverse=True)
+    best_ml_pick = all_picks[0] if all_picks else None
     for tier, min_score, label in [("strong", 8.0, "### 🟢 STRONG BUY"), ("buy", 6.5, "### 🔵 BUY")]:
         picks = [p for p in all_picks if (p['score'] >= 8.0 if tier == "strong" else 6.5 <= p['score'] < 8.0)]
         if picks:
             st.markdown(label)
             for p in picks:
+                is_best = (best_ml_pick and p['game'] == best_ml_pick['game'])
+                if is_best:
+                    st.markdown(f"""<div style='background:#2a1a00;padding:12px;border-radius:8px;border:2px solid #ff8800;margin-bottom:8px'>
+                        <span style='color:#ff8800;font-weight:bold'>⭐ BEST VALUE</span>
+                    </div>""", unsafe_allow_html=True)
                 col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
                 tag = "🏠" if p['pick'] == p['home'] else "✈️"
                 opp = p['away'] if p['pick'] == p['home'] else p['home']
-                col1.markdown(f"**<span style='color:{p['color']}'>{p['pick']}</span>** {tag} vs {opp}", unsafe_allow_html=True)
-                col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
+                display_color = "#ff8800" if is_best else p['color']
+                col1.markdown(f"**<span style='color:{display_color}'>{p['pick']}</span>** {tag} vs {opp}", unsafe_allow_html=True)
+                col2.markdown(f"<span style='color:{display_color};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
                 col3.markdown(f"<span style='color:#aaa'>{' • '.join(p['reasons'])}</span>", unsafe_allow_html=True)
-                col4.link_button(f"🚀 BUY {p['pick']}" if tier == "strong" else f"🔗 BUY {p['pick']}", build_kalshi_ml_url(p['away'], p['home']))
+                col4.link_button(f"⭐ BUY {p['pick']}" if is_best else (f"🚀 BUY {p['pick']}" if tier == "strong" else f"🔗 BUY {p['pick']}"), build_kalshi_ml_url(p['away'], p['home']))
     if not all_picks:
         st.info("⚪ No actionable ML plays today")
 else:
@@ -657,17 +664,24 @@ if game_list:
             if not kalshi_line: kalshi_line = 232
             all_totals.append({'game': game_key, 'home': parts[1], 'away': parts[0], 'pick': pick, 'score': score, 'color': color, 'projected': projected, 'kalshi_line': kalshi_line})
     all_totals.sort(key=lambda x: x['score'], reverse=True)
+    best_totals_pick = all_totals[0] if all_totals else None
     for tier, min_s, max_s, label in [("strong_no", 8.0, 99, "### 🟢 STRONG NO"), ("strong_yes", 8.0, 99, "### 🟢 STRONG YES"), ("no", 6.5, 8.0, "### 🔵 NO"), ("yes", 6.5, 8.0, "### 🔵 YES")]:
         side = "NO" if "no" in tier else "YES"
         picks = [p for p in all_totals if p['pick'] == side and ((p['score'] >= 8.0) if "strong" in tier else (6.5 <= p['score'] < 8.0))]
         if picks:
             st.markdown(label)
             for p in picks:
+                is_best = (best_totals_pick and p['game'] == best_totals_pick['game'])
+                if is_best:
+                    st.markdown(f"""<div style='background:#2a1a00;padding:12px;border-radius:8px;border:2px solid #ff8800;margin-bottom:8px'>
+                        <span style='color:#ff8800;font-weight:bold'>⭐ BEST VALUE</span>
+                    </div>""", unsafe_allow_html=True)
                 col1, col2, col3, col4 = st.columns([2, 2, 5, 2])
+                display_color = "#ff8800" if is_best else p['color']
                 col1.markdown(f"**{p['away']}** @ **{p['home']}**")
-                col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
+                col2.markdown(f"<span style='color:{display_color};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
                 col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b>", unsafe_allow_html=True)
-                col4.link_button(f"🚀 BUY {side}" if "strong" in tier else f"🔗 BUY {side}", build_kalshi_totals_url(p['away'], p['home']))
+                col4.link_button(f"⭐ BUY {side}" if is_best else (f"🚀 BUY {side}" if "strong" in tier else f"🔗 BUY {side}"), build_kalshi_totals_url(p['away'], p['home']))
     if not all_totals:
         st.info("⚪ No actionable totals plays today")
 
