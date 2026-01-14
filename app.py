@@ -22,7 +22,6 @@ if current_hour >= 19:  # 7PM ET or later
     st.markdown("""
     <meta http-equiv="refresh" content="30">
     <style>
-    /* Make all link buttons green */
     .stLinkButton > a {
         background-color: #00aa00 !important;
         border-color: #00aa00 !important;
@@ -38,7 +37,6 @@ if current_hour >= 19:  # 7PM ET or later
 else:
     st.markdown("""
     <style>
-    /* Make all link buttons green */
     .stLinkButton > a {
         background-color: #00aa00 !important;
         border-color: #00aa00 !important;
@@ -72,7 +70,6 @@ def init_trading():
         st.session_state.default_contracts = 10
 
 def create_kalshi_signature(private_key_pem, timestamp, method, path):
-    """Create signature for Kalshi API authentication using RSA-PSS."""
     if not CRYPTO_AVAILABLE:
         return None
     try:
@@ -94,7 +91,6 @@ def create_kalshi_signature(private_key_pem, timestamp, method, path):
         return None
 
 def place_kalshi_order(ticker, side, price_cents, count, api_key, private_key_pem):
-    """Place a limit order on Kalshi. Returns (success, message)."""
     if not CRYPTO_AVAILABLE:
         return False, "cryptography library not installed"
     try:
@@ -112,7 +108,6 @@ def place_kalshi_order(ticker, side, price_cents, count, api_key, private_key_pe
             'Content-Type': 'application/json'
         }
         
-        # Build order data based on side (YES or NO)
         order_data = {
             "ticker": ticker,
             "action": "buy",
@@ -122,7 +117,6 @@ def place_kalshi_order(ticker, side, price_cents, count, api_key, private_key_pe
             "client_order_id": str(uuid.uuid4())
         }
         
-        # Set price based on side
         if side.lower() == "no":
             order_data["no_price"] = price_cents
         else:
@@ -159,7 +153,6 @@ KALSHI_CODES = {
 }
 
 def build_kalshi_totals_url(away_team, home_team):
-    """Build Kalshi totals URL"""
     away_code = KALSHI_CODES.get(away_team, "xxx")
     home_code = KALSHI_CODES.get(home_team, "xxx")
     today = datetime.now(pytz.timezone('US/Eastern'))
@@ -168,7 +161,6 @@ def build_kalshi_totals_url(away_team, home_team):
     return f"https://kalshi.com/markets/kxnbatotal/pro-basketball-total-points/{ticker}"
 
 def build_kalshi_ml_url(away_team, home_team):
-    """Build Kalshi moneyline URL"""
     away_code = KALSHI_CODES.get(away_team, "xxx")
     home_code = KALSHI_CODES.get(home_team, "xxx")
     today = datetime.now(pytz.timezone('US/Eastern'))
@@ -177,12 +169,10 @@ def build_kalshi_ml_url(away_team, home_team):
     return f"https://kalshi.com/markets/kxnbagame/pro-basketball-moneyline/{ticker}"
 
 def build_kalshi_ticker(away_team, home_team, threshold):
-    """Build full Kalshi ticker for order placement"""
     away_code = KALSHI_CODES.get(away_team, "xxx")
     home_code = KALSHI_CODES.get(home_team, "xxx")
     today = datetime.now(pytz.timezone('US/Eastern'))
     date_str = today.strftime("%y%b%d").upper()
-    # Format threshold - remove trailing zeros (235.50 -> 235.5)
     thresh_str = f"{float(threshold):.1f}".rstrip('0').rstrip('.')
     if '.' not in thresh_str:
         thresh_str += ".5"
@@ -362,7 +352,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v13.8")
+    st.caption("v14.8")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -598,7 +588,6 @@ def calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, aw
     }
 
 def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
-    """Calculate 10-factor ML score. Returns (pick, score, edge, reasons, home_stars, away_stars)"""
     home = TEAM_STATS.get(home_team, {})
     away = TEAM_STATS.get(away_team, {})
     home_loc = TEAM_LOCATIONS.get(home_team, (0, 0))
@@ -609,7 +598,6 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     reasons_home = []
     reasons_away = []
     
-    # 1. REST ADVANTAGE (0-1)
     home_b2b = home_team in yesterday_teams
     away_b2b = away_team in yesterday_teams
     if away_b2b and not home_b2b:
@@ -622,7 +610,6 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
         score_home += 0.5
         score_away += 0.5
     
-    # 2. NET RATING (0-1)
     home_net = home.get('net_rating', 0)
     away_net = away.get('net_rating', 0)
     net_diff = home_net - away_net
@@ -643,7 +630,6 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
         score_away += 1.0
         reasons_away.append(f"📊 Net +{away_net:.1f}")
     
-    # 3. DEFENSE RANK (0-1)
     home_def = home.get('def_rank', 15)
     away_def = away.get('def_rank', 15)
     if home_def <= 5:
@@ -663,10 +649,8 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     elif away_def <= 15:
         score_away += 0.4
     
-    # 4. HOME COURT (0-1) - Always to home (shown by 🏠 emoji next to team name)
     score_home += 1.0
     
-    # 5. INJURY IMPACT (0-1)
     home_inj, home_stars = get_injury_score(home_team, injuries)
     away_inj, away_stars = get_injury_score(away_team, injuries)
     inj_diff = away_inj - home_inj
@@ -690,7 +674,6 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
         score_home += 0.3
         score_away += 0.3
     
-    # 6. TRAVEL FATIGUE (0-1)
     travel_miles = calc_distance(away_loc, home_loc)
     if travel_miles > 2000:
         score_home += 1.0
@@ -703,11 +686,9 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     elif travel_miles > 500:
         score_home += 0.3
     
-    # 7. HOME/AWAY SPLITS (0-1)
     home_hw = home.get('home_win_pct', 0.5)
     away_aw = away.get('away_win_pct', 0.5)
     
-    # Always show home record for home team
     reasons_home.append(f"🏠 {int(home_hw*100)}% home")
     
     if home_hw > 0.65:
@@ -722,17 +703,14 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
         score_home += 0.3
         reasons_home.append(f"📉 Opp {int(away_aw*100)}% road")
     
-    # 8. DIVISION RIVALRY (0-1) - Tighter games, home edge
     if home.get('division') == away.get('division') and home.get('division'):
         score_home += 0.5
         reasons_home.append("⚔️ Division")
     
-    # 9. ALTITUDE - Denver (0-1)
     if home_team == "Denver":
         score_home += 1.0
         reasons_home.append("🏔️ Altitude")
     
-    # 10. QUALITY FACTOR (0-1) - Better teams more reliable
     if home_net > 5:
         score_home += 0.5
         if f"📊 Net +{home_net:.1f}" not in reasons_home:
@@ -742,7 +720,6 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
         if f"📊 Net +{away_net:.1f}" not in reasons_away:
             reasons_away.append("⭐ Elite")
     
-    # Normalize to 10-point scale
     total = score_home + score_away
     if total > 0:
         home_final = round((score_home / total) * 10, 1)
@@ -751,12 +728,11 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
         home_final = 5.0
         away_final = 5.0
     
-    # Determine pick
     if home_final >= away_final:
         pick = home_team
         score = home_final
         edge = round((home_final - 5) * 4, 0)
-        reasons = reasons_home[:4]  # Top 4 reasons
+        reasons = reasons_home[:4]
     else:
         pick = away_team
         score = away_final
@@ -766,7 +742,6 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     return pick, score, edge, reasons, home_stars, away_stars
 
 def get_signal_tier(score):
-    """Return signal tier based on score"""
     if score >= 8.0:
         return "🟢 STRONG BUY", "#00ff00"
     elif score >= 6.5:
@@ -779,7 +754,6 @@ def get_signal_tier(score):
         return "🔴 SKIP", "#ff0000"
 
 def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
-    """Calculate 10-factor Totals score. Returns (pick, score, reasons)"""
     home = TEAM_STATS.get(home_team, {})
     away = TEAM_STATS.get(away_team, {})
     
@@ -788,7 +762,6 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
     reasons_under = []
     reasons_over = []
     
-    # 1. PACE (0-1.5) - Biggest factor
     home_pace = home.get('pace', 100)
     away_pace = away.get('pace', 100)
     avg_pace = (home_pace + away_pace) / 2
@@ -806,7 +779,6 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
         score_over += 1.0
         reasons_over.append(f"🔥 Pace {avg_pace:.1f}")
     
-    # 2. DEFENSE (0-1.5)
     home_def = home.get('def_rank', 15)
     away_def = away.get('def_rank', 15)
     avg_def = (home_def + away_def) / 2
@@ -824,7 +796,6 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
         score_over += 1.0
         reasons_over.append(f"💥 DEF #{int(avg_def)}")
     
-    # 3. REST/FATIGUE (0-1)
     home_b2b = home_team in yesterday_teams
     away_b2b = away_team in yesterday_teams
     
@@ -836,7 +807,6 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
         tired_team = home_team if home_b2b else away_team
         reasons_under.append(f"🛏️ {tired_team[:3]} B2B")
     
-    # 4. 3PT SHOOTING (0-1)
     home_3pt = home.get('three_pct', 36)
     away_3pt = away.get('three_pct', 36)
     avg_3pt = (home_3pt + away_3pt) / 2
@@ -848,7 +818,6 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
         score_over += 1.0
         reasons_over.append(f"🎯 High 3PT {avg_3pt:.1f}%")
     
-    # 5. INJURY IMPACT - Star scorers (0-1)
     home_inj, home_stars = get_injury_score(home_team, injuries)
     away_inj, away_stars = get_injury_score(away_team, injuries)
     
@@ -857,7 +826,6 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
         out_names = (home_stars + away_stars)[:2]
         reasons_under.append(f"🏥 {', '.join([n[:8] for n in out_names])} OUT")
     
-    # 6. NET RATING - Blowout potential (0-1)
     home_net = home.get('net_rating', 0)
     away_net = away.get('net_rating', 0)
     net_diff = abs(home_net - away_net)
@@ -869,12 +837,10 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
         score_under += 0.5
         reasons_under.append("⚔️ Close game")
     
-    # 7. ALTITUDE - Denver (0-0.5)
     if home_team == "Denver":
         score_under += 0.75
         reasons_under.append("🏔️ Denver altitude")
     
-    # 8. FT RATE (0-0.5)
     home_ft = home.get('ft_rate', 0.25)
     away_ft = away.get('ft_rate', 0.25)
     avg_ft = (home_ft + away_ft) / 2
@@ -886,7 +852,6 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
         score_over += 0.5
         reasons_over.append("🏃 Low FT rate")
     
-    # 9. REBOUND RATE - Pace control (0-0.5)
     home_reb = home.get('reb_rate', 50)
     away_reb = away.get('reb_rate', 50)
     avg_reb = (home_reb + away_reb) / 2
@@ -895,12 +860,10 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
         score_under += 0.5
         reasons_under.append("🏀 Control boards")
     
-    # 10. HOME COURT SCORING (0-0.5)
     if home.get('home_win_pct', 0.5) > 0.65 and home_net > 5:
         score_over += 0.5
         reasons_over.append("🏠 Home scoring")
     
-    # Normalize to 10-point scale
     total = score_under + score_over
     if total > 0:
         under_final = round((score_under / total) * 10, 1)
@@ -909,7 +872,6 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
         under_final = 5.0
         over_final = 5.0
     
-    # Determine pick
     if under_final >= over_final:
         pick = "NO"
         score = under_final
@@ -922,7 +884,6 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
     return pick, score, reasons
 
 def get_totals_signal_tier(score, pick):
-    """Return signal tier for totals based on score and pick"""
     if score >= 8.0:
         return f"🟢 STRONG {pick}", "#00ff00"
     elif score >= 6.5:
@@ -937,19 +898,28 @@ def get_totals_signal_tier(score, pick):
 # ========== FETCH DATA ==========
 games = fetch_espn_scores()
 game_list = sorted(list(games.keys()))
-yesterday_teams = fetch_yesterday_teams()
+yesterday_teams_raw = fetch_yesterday_teams()  # All teams that played yesterday
 injuries = fetch_espn_injuries()
 now = datetime.now(pytz.timezone('US/Eastern'))
 
+# Get teams playing TODAY
+today_teams = set()
+for game_key in games.keys():
+    parts = game_key.split("@")
+    today_teams.add(parts[0])  # away team
+    today_teams.add(parts[1])  # home team
+
+# TRUE B2B = played yesterday AND playing today
+yesterday_teams = yesterday_teams_raw.intersection(today_teams)
+
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v13.8")
+st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.8")
 
 # ========== 🎯 BIG SNAPSHOT - TOP OF PAGE ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
 
 if game_list:
-    # Calculate scores for all games
     all_picks = []
     for game_key in game_list:
         parts = game_key.split("@")
@@ -973,17 +943,14 @@ if game_list:
             'away_out': away_out
         })
     
-    # Sort by score descending
     all_picks.sort(key=lambda x: x['score'], reverse=True)
     
-    # Group by tier
     strong_buys = [p for p in all_picks if p['score'] >= 8.0]
     buys = [p for p in all_picks if 6.5 <= p['score'] < 8.0]
     leans = [p for p in all_picks if 5.5 <= p['score'] < 6.5]
     tossups = [p for p in all_picks if 4.5 <= p['score'] < 5.5]
     skips = [p for p in all_picks if p['score'] < 4.5]
     
-    # Display each tier
     if strong_buys:
         st.markdown("### 🟢 STRONG BUY")
         for p in strong_buys:
@@ -1039,7 +1006,6 @@ if game_list:
         for p in skips:
             st.markdown(f"~~{p['away']} @ {p['home']}~~ — <span style='color:{p['color']}'>{p['score']}/10</span>", unsafe_allow_html=True)
     
-    # Summary stats
     st.markdown("---")
     st.caption(f"📊 {len(strong_buys)} Strong Buys | {len(buys)} Buys | {len(leans)} Leans | {len(tossups)} Toss-ups | {len(skips)} Skips")
 
@@ -1052,7 +1018,6 @@ st.divider()
 st.subheader("🎯 TOTALS BIG SNAPSHOT - TODAY'S OVER/UNDER PICKS")
 
 if game_list:
-    # Calculate totals scores for all games
     all_totals = []
     for game_key in game_list:
         parts = game_key.split("@")
@@ -1073,10 +1038,8 @@ if game_list:
             'reasons': reasons
         })
     
-    # Sort by score descending
     all_totals.sort(key=lambda x: x['score'], reverse=True)
     
-    # Group by tier
     strong_no = [p for p in all_totals if p['score'] >= 8.0 and p['pick'] == "NO"]
     strong_yes = [p for p in all_totals if p['score'] >= 8.0 and p['pick'] == "YES"]
     reg_no = [p for p in all_totals if 6.5 <= p['score'] < 8.0 and p['pick'] == "NO"]
@@ -1086,7 +1049,6 @@ if game_list:
     tossups_t = [p for p in all_totals if 4.5 <= p['score'] < 5.5]
     skips_t = [p for p in all_totals if p['score'] < 4.5]
     
-    # Display STRONG NO
     if strong_no:
         st.markdown("### 🟢 STRONG NO (Under)")
         for p in strong_no:
@@ -1100,7 +1062,6 @@ if game_list:
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🚀 BUY NO", kalshi_url)
     
-    # Display STRONG YES
     if strong_yes:
         st.markdown("### 🟢 STRONG YES (Over)")
         for p in strong_yes:
@@ -1114,7 +1075,6 @@ if game_list:
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🚀 BUY YES", kalshi_url)
     
-    # Display NO
     if reg_no:
         st.markdown("### 🔵 NO (Under)")
         for p in reg_no:
@@ -1128,7 +1088,6 @@ if game_list:
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🔗 BUY NO", kalshi_url)
     
-    # Display YES
     if reg_yes:
         st.markdown("### 🔵 YES (Over)")
         for p in reg_yes:
@@ -1142,7 +1101,6 @@ if game_list:
             kalshi_url = build_kalshi_totals_url(p['away'], p['home'])
             col4.link_button(f"🔗 BUY YES", kalshi_url)
     
-    # Display LEAN NO
     if lean_no:
         st.markdown("### 🟡 LEAN NO (Under)")
         for p in lean_no:
@@ -1152,7 +1110,6 @@ if game_list:
             col2.markdown(f"<span style='color:{p['color']}'>{p['score']}/10</span>", unsafe_allow_html=True)
             col3.markdown(f"<span style='color:#888;font-size:0.85em'>{reasons_str}</span>", unsafe_allow_html=True)
     
-    # Display LEAN YES
     if lean_yes:
         st.markdown("### 🟡 LEAN YES (Over)")
         for p in lean_yes:
@@ -1162,19 +1119,16 @@ if game_list:
             col2.markdown(f"<span style='color:{p['color']}'>{p['score']}/10</span>", unsafe_allow_html=True)
             col3.markdown(f"<span style='color:#888;font-size:0.85em'>{reasons_str}</span>", unsafe_allow_html=True)
     
-    # Display TOSS-UP
     if tossups_t:
         st.markdown("### ⚪ TOSS-UP")
         for p in tossups_t:
             st.markdown(f"{p['away']} @ {p['home']} — <span style='color:{p['color']}'>{p['score']}/10</span> — No clear edge", unsafe_allow_html=True)
     
-    # Display SKIP
     if skips_t:
         st.markdown("### 🔴 SKIP")
         for p in skips_t:
             st.markdown(f"~~{p['away']} @ {p['home']}~~ — <span style='color:{p['color']}'>{p['score']}/10</span>", unsafe_allow_html=True)
     
-    # Summary
     st.markdown("---")
     total_no = len(strong_no) + len(reg_no) + len(lean_no)
     total_yes = len(strong_yes) + len(reg_yes) + len(lean_yes)
@@ -1186,7 +1140,9 @@ else:
 st.divider()
 
 if yesterday_teams:
-    st.info(f"📅 **B2B Teams Today:** {', '.join(sorted(yesterday_teams))}")
+    st.info(f"📅 **TRUE B2B Teams Today** (played yesterday + playing today): {', '.join(sorted(yesterday_teams))}")
+else:
+    st.info("📅 **No B2B teams today** — all teams are rested")
 
 # ========== 🔥 TOP PICKS ==========
 st.subheader("🔥 TOP PICKS - BLOWOUT RISK (Tired Away @ Fresh Home)")
@@ -1318,12 +1274,10 @@ st.divider()
 # ========== ADD NEW POSITION ==========
 st.subheader("➕ ADD NEW POSITION")
 
-# Game selector (outside form for instant Kalshi link)
 game_options = ["Select a game..."] + [gk.replace("@", " @ ") for gk in game_list]
 selected_game = st.selectbox("🏀 Game", game_options, key="game_select")
 threshold_select = st.number_input("🎯 Threshold (check Kalshi for available)", min_value=180.0, max_value=280.0, value=225.5, step=3.0, key="threshold_select")
 
-# Show Kalshi link immediately when game selected
 if selected_game != "Select a game...":
     parts = selected_game.replace(" @ ", "@").split("@")
     away_t = parts[0]
@@ -1338,7 +1292,6 @@ with st.form("add_position_form"):
     price_paid = p2.number_input("💵 Price (¢)", min_value=1, max_value=99, value=50, step=1, key="price_form")
     contracts = p3.number_input("📄 Contracts", min_value=1, max_value=1000, value=st.session_state.default_contracts, step=1)
     
-    # ONE-CLICK BUY inside form
     if st.session_state.trading_enabled and st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
         buy_col, add_col = st.columns(2)
         buy_now = buy_col.form_submit_button("🚀 BUY ON KALSHI NOW", use_container_width=True, type="primary")
@@ -1468,7 +1421,6 @@ if st.session_state.positions:
             </div>
             """, unsafe_allow_html=True)
             
-            # Buttons row
             btn1, btn2 = st.columns([3, 1])
             parts = game_key.split("@")
             kalshi_url = build_kalshi_totals_url(parts[0], parts[1])
