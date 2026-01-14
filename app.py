@@ -153,6 +153,73 @@ def fetch_kalshi_markets(away_team, home_team):
     except:
         return None, []
 
+def get_best_threshold(away_team, home_team, projected, pick_side):
+    """Find best threshold to buy based on cushion and price, with safety buffer"""
+    _, all_thresholds = fetch_kalshi_markets(away_team, home_team)
+    if not all_thresholds:
+        return None, None, None
+    
+    # Sort thresholds
+    sorted_thresh = sorted(all_thresholds, key=lambda x: x['threshold'])
+    
+    best = None
+    best_score = -999
+    best_idx = -1
+    
+    for idx, t in enumerate(sorted_thresh):
+        thresh = t['threshold']
+        no_price = t.get('no_bid') or (100 - (t.get('yes_ask') or 50))
+        yes_price = t.get('yes_bid') or (100 - (t.get('no_ask') or 50))
+        
+        if pick_side == "NO":
+            cushion = thresh - projected
+            price = no_price if no_price > 0 else 50
+            if cushion >= 6:
+                value_score = cushion * 0.5 + (70 - abs(price - 55)) * 0.3
+                if value_score > best_score:
+                    best_score = value_score
+                    best = {'threshold': thresh, 'cushion': cushion, 'price': price}
+                    best_idx = idx
+        else:
+            cushion = projected - thresh
+            price = yes_price if yes_price > 0 else 50
+            if cushion >= 6:
+                value_score = cushion * 0.5 + (70 - abs(price - 55)) * 0.3
+                if value_score > best_score:
+                    best_score = value_score
+                    best = {'threshold': thresh, 'cushion': cushion, 'price': price}
+                    best_idx = idx
+    
+    if best and best_idx >= 0:
+        # SAFETY BUFFER: Go one level safer
+        if pick_side == "NO":
+            # For NO, go to HIGHER threshold (more cushion)
+            safer_idx = best_idx + 1
+            if safer_idx < len(sorted_thresh):
+                safer = sorted_thresh[safer_idx]
+                safer_thresh = safer['threshold']
+                safer_cushion = safer_thresh - projected
+                safer_price = safer.get('no_bid') or (100 - (safer.get('yes_ask') or 50))
+                if safer_price <= 0:
+                    safer_price = 50
+                return safer_thresh, safer_cushion, safer_price
+        else:
+            # For YES, go to LOWER threshold (more cushion)
+            safer_idx = best_idx - 1
+            if safer_idx >= 0:
+                safer = sorted_thresh[safer_idx]
+                safer_thresh = safer['threshold']
+                safer_cushion = projected - safer_thresh
+                safer_price = safer.get('yes_bid') or (100 - (safer.get('no_ask') or 50))
+                if safer_price <= 0:
+                    safer_price = 50
+                return safer_thresh, safer_cushion, safer_price
+        
+        # If no safer level available, return original
+        return best['threshold'], best['cushion'], best['price']
+    
+    return None, None, None
+
 if "positions" not in st.session_state:
     st.session_state.positions = []
 
@@ -847,13 +914,14 @@ if game_list:
             projected = calc_projected_total(parts[1], parts[0], yesterday_teams)
             kalshi_line, _ = fetch_kalshi_markets(parts[0], parts[1])
             if not kalshi_line: kalshi_line = 232
+            best_thresh, best_cushion, best_price = get_best_threshold(parts[0], parts[1], projected, pick)
             g = games.get(game_key)
             trend_label, trend_color, trend_diff = None, None, None
             if g:
                 trend_label, trend_color, trend_diff = get_score_trend(g, parts[1], parts[0])
             _, home_out, home_gtd = get_injury_score(parts[1], injuries)
             _, away_out, away_gtd = get_injury_score(parts[0], injuries)
-            all_totals.append({'game': game_key, 'home': parts[1], 'away': parts[0], 'pick': pick, 'score': score, 'color': color, 'projected': projected, 'kalshi_line': kalshi_line, 'trend_label': trend_label, 'trend_color': trend_color, 'trend_diff': trend_diff, 'game_data': g, 'home_out': home_out, 'away_out': away_out, 'home_gtd': home_gtd, 'away_gtd': away_gtd})
+            all_totals.append({'game': game_key, 'home': parts[1], 'away': parts[0], 'pick': pick, 'score': score, 'color': color, 'projected': projected, 'kalshi_line': kalshi_line, 'best_thresh': best_thresh, 'best_cushion': best_cushion, 'best_price': best_price, 'reasons': reasons, 'trend_label': trend_label, 'trend_color': trend_color, 'trend_diff': trend_diff, 'game_data': g, 'home_out': home_out, 'away_out': away_out, 'home_gtd': home_gtd, 'away_gtd': away_gtd})
     all_totals.sort(key=lambda x: x['score'], reverse=True)
     best_no_pick = next((p for p in all_totals if p['pick'] == 'NO'), None)
     best_yes_pick = next((p for p in all_totals if p['pick'] == 'YES'), None)
@@ -872,8 +940,13 @@ if game_list:
                 display_color = "#ff8800" if is_best else p['color']
                 col1.markdown(f"**{p['away']}** @ **{p['home']}**")
                 col2.markdown(f"<span style='color:{display_color};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-                col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b>", unsafe_allow_html=True)
+                if p.get('best_thresh'):
+                    col3.markdown(f"🎯 <b>BUY {side} @ {p['best_thresh']}</b> ({p['best_price']}¢, +{p['best_cushion']:.0f} cushion)", unsafe_allow_html=True)
+                else:
+                    col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b>", unsafe_allow_html=True)
                 col4.link_button(f"⭐ BUY {side}" if is_best else (f"🚀 BUY {side}" if "strong" in tier else f"🔗 BUY {side}"), build_kalshi_totals_url(p['away'], p['home']))
+                if p.get('reasons'):
+                    st.markdown(f"<div style='margin-left:20px;font-size:0.9em;color:#aaa'>{' • '.join(p['reasons'])}</div>", unsafe_allow_html=True)
                 all_out = p['home_out'] + p['away_out']
                 all_gtd = p['home_gtd'] + p['away_gtd']
                 if all_out or all_gtd:
