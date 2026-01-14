@@ -106,16 +106,6 @@ def build_kalshi_ml_url(away_team, home_team):
     date_str = today.strftime("%y%b%d").lower()
     return f"https://kalshi.com/markets/kxnbagame/pro-basketball-moneyline/kxnbagame-{date_str}{away_code}{home_code}"
 
-def build_kalshi_ticker(away_team, home_team, threshold):
-    away_code = KALSHI_CODES.get(away_team, "xxx")
-    home_code = KALSHI_CODES.get(home_team, "xxx")
-    today = datetime.now(pytz.timezone('US/Eastern'))
-    date_str = today.strftime("%y%b%d").upper()
-    thresh_str = f"{float(threshold):.1f}".rstrip('0').rstrip('.')
-    if '.' not in thresh_str:
-        thresh_str += ".5"
-    return f"KXNBATOTAL-{date_str}{away_code.upper()}{home_code.upper()}-T{thresh_str}"
-
 def fetch_kalshi_markets(away_team, home_team):
     try:
         away_code = KALSHI_CODES.get(away_team, "xxx")
@@ -154,28 +144,20 @@ def fetch_kalshi_markets(away_team, home_team):
         return None, []
 
 def get_best_threshold(away_team, home_team, projected, pick_side):
-    """Find best threshold from actual Kalshi brackets with safety buffer"""
     _, all_thresholds = fetch_kalshi_markets(away_team, home_team)
     if not all_thresholds:
         return None, None, None
-    
-    # Sort thresholds by value
     sorted_thresh = sorted(all_thresholds, key=lambda x: x['threshold'])
-    
     if pick_side == "NO":
-        # For NO: find brackets ABOVE projected, pick one with good cushion, then go one level HIGHER for safety
         candidates = []
         for idx, t in enumerate(sorted_thresh):
             thresh = t['threshold']
             cushion = thresh - projected
-            if cushion >= 6:  # Minimum cushion
+            if cushion >= 6:
                 no_price = t.get('no_bid') or (100 - (t.get('yes_ask') or 50))
                 candidates.append({'idx': idx, 'threshold': thresh, 'cushion': cushion, 'price': no_price})
-        
         if candidates:
-            # Pick the one with best value (cushion vs price balance)
             best = max(candidates, key=lambda x: x['cushion'] * 0.5 + (70 - abs(x['price'] - 55)) * 0.3)
-            # Safety buffer: go one level HIGHER
             safer_idx = best['idx'] + 1
             if safer_idx < len(sorted_thresh):
                 safer = sorted_thresh[safer_idx]
@@ -185,19 +167,15 @@ def get_best_threshold(away_team, home_team, projected, pick_side):
             else:
                 return best['threshold'], best['cushion'], best['price'] if best['price'] > 0 else 50
     else:
-        # For YES: find brackets BELOW projected, pick one with good cushion, then go one level LOWER for safety
         candidates = []
         for idx, t in enumerate(sorted_thresh):
             thresh = t['threshold']
             cushion = projected - thresh
-            if cushion >= 6:  # Minimum cushion
+            if cushion >= 6:
                 yes_price = t.get('yes_bid') or (100 - (t.get('no_ask') or 50))
                 candidates.append({'idx': idx, 'threshold': thresh, 'cushion': cushion, 'price': yes_price})
-        
         if candidates:
-            # Pick the one with best value
             best = max(candidates, key=lambda x: x['cushion'] * 0.5 + (70 - abs(x['price'] - 55)) * 0.3)
-            # Safety buffer: go one level LOWER
             safer_idx = best['idx'] - 1
             if safer_idx >= 0:
                 safer = sorted_thresh[safer_idx]
@@ -206,7 +184,6 @@ def get_best_threshold(away_team, home_team, projected, pick_side):
                 return safer['threshold'], safer_cushion, safer_price if safer_price > 0 else 50
             else:
                 return best['threshold'], best['cushion'], best['price'] if best['price'] > 0 else 50
-    
     return None, None, None
 
 if "positions" not in st.session_state:
@@ -248,7 +225,7 @@ with st.sidebar:
                 st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", height=100)
             st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, max_value=500, value=st.session_state.default_contracts)
     st.divider()
-    st.caption("v16.2")
+    st.caption("v16.3")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -798,7 +775,7 @@ injuries = merge_injuries(espn_injuries, rotowire_injuries)
 now = datetime.now(pytz.timezone('US/Eastern'))
 
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v16.2 | 🔄 Press R to refresh")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v16.3 | 🔄 Press R to refresh")
 
 injury_time_str = injury_timestamp.strftime('%I:%M %p') if injury_timestamp else "?"
 roto_status = "✅" if rotowire_injuries else "❌"
@@ -810,10 +787,12 @@ if game_list:
     all_picks = []
     for game_key in game_list:
         parts = game_key.split("@")
+        g = games.get(game_key)
+        if g and g['status_type'] == "STATUS_FINAL":
+            continue
         pick, score, edge, reasons, home_out, away_out, home_gtd, away_gtd = calc_ml_score(parts[1], parts[0], yesterday_teams, injuries)
         signal, color = get_signal_tier(score)
         if signal:
-            g = games.get(game_key)
             trend_label, trend_color, trend_diff = None, None, None
             if g:
                 trend_label, trend_color, trend_diff = get_score_trend(g, parts[1], parts[0])
@@ -861,29 +840,17 @@ if game_list:
                         game_status = "FINAL" if g['status_type'] == "STATUS_FINAL" else f"Q{g['period']} {g['clock']}"
                         st.markdown(f"<div style='margin-left:20px;font-size:0.9em'><span style='color:{p['trend_color']}'>{p['trend_label']}</span> | Score: {g['total']} | Proj: {proj} | {game_status} | Diff: {p['trend_diff']:+.0f} vs expected</div>", unsafe_allow_html=True)
     if not all_picks:
-        st.info("⚪ No actionable ML plays today")
+        st.info("⚪ No actionable ML plays right now (games may be finished or scheduled)")
 else:
     st.info("No games scheduled today")
 
 st.divider()
 
 st.subheader("🎯 TOTALS BIG SNAPSHOT")
-# Debug: show game statuses
-game_statuses = {gk: games[gk]['status_type'] for gk in game_list} if game_list else {}
-scheduled_games = [gk for gk, status in game_statuses.items() if status == "STATUS_SCHEDULED"]
-live_games = [gk for gk, status in game_statuses.items() if status == "STATUS_IN_PROGRESS"]
-final_games = [gk for gk, status in game_statuses.items() if status == "STATUS_FINAL"]
-if scheduled_games:
-    st.success(f"📅 **Upcoming today:** {len(scheduled_games)} games")
-if live_games:
-    st.warning(f"🔴 **Live now:** {len(live_games)} games")
-if final_games and not scheduled_games and not live_games:
-    st.info(f"✅ All {len(final_games)} games finished. Check back tomorrow!")
 if game_list:
     all_totals = []
     for game_key in game_list:
         parts = game_key.split("@")
-        # Skip finished games - no point showing recommendations
         g = games.get(game_key)
         if g and g['status_type'] == "STATUS_FINAL":
             continue
@@ -893,16 +860,13 @@ if game_list:
         signal, color = get_totals_signal_tier(score, pick)
         if signal:
             projected = calc_projected_total(parts[1], parts[0], yesterday_teams)
-            kalshi_line, _ = fetch_kalshi_markets(parts[0], parts[1])
-            if not kalshi_line:
-                kalshi_line = 232
             best_thresh, best_cushion, best_price = get_best_threshold(parts[0], parts[1], projected, pick)
             trend_label, trend_color, trend_diff = None, None, None
             if g:
                 trend_label, trend_color, trend_diff = get_score_trend(g, parts[1], parts[0])
             _, home_out, home_gtd = get_injury_score(parts[1], injuries)
             _, away_out, away_gtd = get_injury_score(parts[0], injuries)
-            all_totals.append({'game': game_key, 'home': parts[1], 'away': parts[0], 'pick': pick, 'score': score, 'color': color, 'projected': projected, 'kalshi_line': kalshi_line, 'best_thresh': best_thresh, 'best_cushion': best_cushion, 'best_price': best_price, 'reasons': reasons, 'trend_label': trend_label, 'trend_color': trend_color, 'trend_diff': trend_diff, 'game_data': g, 'home_out': home_out, 'away_out': away_out, 'home_gtd': home_gtd, 'away_gtd': away_gtd})
+            all_totals.append({'game': game_key, 'home': parts[1], 'away': parts[0], 'pick': pick, 'score': score, 'color': color, 'projected': projected, 'best_thresh': best_thresh, 'best_cushion': best_cushion, 'best_price': best_price, 'reasons': reasons, 'trend_label': trend_label, 'trend_color': trend_color, 'trend_diff': trend_diff, 'game_data': g, 'home_out': home_out, 'away_out': away_out, 'home_gtd': home_gtd, 'away_gtd': away_gtd})
     all_totals.sort(key=lambda x: x['score'], reverse=True)
     best_no_pick = next((p for p in all_totals if p['pick'] == 'NO'), None)
     best_yes_pick = next((p for p in all_totals if p['pick'] == 'YES'), None)
@@ -921,13 +885,10 @@ if game_list:
                 display_color = "#ff8800" if is_best else p['color']
                 col1.markdown(f"**{p['away']}** @ **{p['home']}**")
                 col2.markdown(f"<span style='color:{display_color};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-                
-                # Simple recommendation
                 if p.get('best_thresh') and p.get('best_cushion'):
                     col3.markdown(f"🎯 <span style='color:#00ff00'><b>BUY {side} {p['best_thresh']}</b></span> (+{p['best_cushion']:.0f} cushion)", unsafe_allow_html=True)
                 else:
-                    col3.markdown(f"🎯 <span style='color:#00ff00'><b>BUY {side}</b></span> (check Kalshi for brackets)", unsafe_allow_html=True)
-                
+                    col3.markdown(f"🎯 <span style='color:#00ff00'><b>BUY {side}</b></span> (check Kalshi)", unsafe_allow_html=True)
                 btn_label = f"⭐ BUY {side}" if is_best else (f"🚀 BUY {side}" if "strong" in tier else f"🔗 BUY {side}")
                 col4.link_button(btn_label, build_kalshi_totals_url(p['away'], p['home']))
                 if p.get('reasons'):
@@ -950,7 +911,7 @@ if game_list:
                         trend_help = "✅ Supports NO" if (p['pick'] == 'NO' and p['trend_diff'] < 0) or (p['pick'] == 'YES' and p['trend_diff'] > 0) else "⚠️ Against pick" if (p['pick'] == 'NO' and p['trend_diff'] > 4) or (p['pick'] == 'YES' and p['trend_diff'] < -4) else ""
                         st.markdown(f"<div style='margin-left:20px;font-size:0.9em'><span style='color:{p['trend_color']}'>{p['trend_label']}</span> | Live: {g['total']} | Proj: {proj} | {game_status} | {trend_help}</div>", unsafe_allow_html=True)
     if not all_totals:
-        st.info("⚪ No actionable totals plays today")
+        st.info("⚪ No actionable totals plays right now (games may be finished or scheduled)")
 
 st.divider()
 
@@ -982,6 +943,9 @@ if game_list:
     top_picks = []
     for game_key in game_list:
         parts = game_key.split("@")
+        g = games.get(game_key)
+        if g and g['status_type'] == "STATUS_FINAL":
+            continue
         if parts[0] in yesterday_teams and parts[1] not in yesterday_teams:
             home_i, _, _ = get_injury_score(parts[1], injuries)
             away_i, _, _ = get_injury_score(parts[0], injuries)
@@ -1154,7 +1118,7 @@ if games:
         with cols[i % 4]:
             st.write(f"**{g['away_team']}** {g['away_score']}")
             st.write(f"**{g['home_team']}** {g['home_score']}")
-            game_status = 'FINAL' if g['status_type'] == 'STATUS_FINAL' else f"Q{g['period']} {g['clock']}"
+            game_status = 'FINAL' if g['status_type'] == 'STATUS_FINAL' else ('SCHEDULED' if g['status_type'] == 'STATUS_SCHEDULED' else f"Q{g['period']} {g['clock']}")
             st.caption(f"{game_status} | {g['total']} pts")
 else:
     st.info("No games today")
