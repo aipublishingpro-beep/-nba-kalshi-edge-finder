@@ -189,7 +189,7 @@ with st.sidebar:
                 st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", height=100)
             st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, max_value=500, value=st.session_state.default_contracts)
     st.divider()
-    st.caption("v16.0")
+    st.caption("v16.1")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -326,10 +326,12 @@ def fetch_yesterday_teams():
 
 def fetch_espn_injuries():
     injuries = {}
+    timestamp = None
     try:
         url = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
         resp = requests.get(url, timeout=10)
         data = resp.json()
+        timestamp = datetime.now(pytz.timezone('US/Eastern'))
         for team_data in data.get("injuries", []):
             team_name = team_data.get("team", {}).get("displayName", "")
             team_key = TEAM_ABBREVS.get(team_name, team_name)
@@ -338,7 +340,75 @@ def fetch_espn_injuries():
                 injuries[team_key].append({"name": player.get("athlete", {}).get("displayName", ""), "status": player.get("status", "")})
     except:
         pass
+    return injuries, timestamp
+
+def fetch_rotowire_injuries():
+    """Backup injury source from Rotowire"""
+    injuries = {}
+    try:
+        url = "https://www.rotowire.com/basketball/tables/injury-report.php?team=ALL&pos=ALL"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            for player in data:
+                team = player.get('team', '')
+                # Map Rotowire team abbrevs to our format
+                team_map = {
+                    'ATL': 'Atlanta', 'BOS': 'Boston', 'BKN': 'Brooklyn', 'CHA': 'Charlotte',
+                    'CHI': 'Chicago', 'CLE': 'Cleveland', 'DAL': 'Dallas', 'DEN': 'Denver',
+                    'DET': 'Detroit', 'GSW': 'Golden State', 'HOU': 'Houston', 'IND': 'Indiana',
+                    'LAC': 'LA Clippers', 'LAL': 'LA Lakers', 'MEM': 'Memphis', 'MIA': 'Miami',
+                    'MIL': 'Milwaukee', 'MIN': 'Minnesota', 'NOP': 'New Orleans', 'NYK': 'New York',
+                    'OKC': 'Oklahoma City', 'ORL': 'Orlando', 'PHI': 'Philadelphia', 'PHX': 'Phoenix',
+                    'POR': 'Portland', 'SAC': 'Sacramento', 'SAS': 'San Antonio', 'TOR': 'Toronto',
+                    'UTA': 'Utah', 'WAS': 'Washington'
+                }
+                team_key = team_map.get(team, team)
+                if team_key not in injuries:
+                    injuries[team_key] = []
+                status = player.get('status', '').upper()
+                injuries[team_key].append({
+                    "name": player.get('player', ''),
+                    "status": status
+                })
+    except:
+        pass
     return injuries
+
+def merge_injuries(espn_injuries, rotowire_injuries):
+    """Merge injury data from multiple sources, preferring more severe status"""
+    merged = {}
+    all_teams = set(list(espn_injuries.keys()) + list(rotowire_injuries.keys()))
+    
+    for team in all_teams:
+        merged[team] = []
+        espn_players = {p['name'].lower(): p for p in espn_injuries.get(team, [])}
+        roto_players = {p['name'].lower(): p for p in rotowire_injuries.get(team, [])}
+        
+        all_players = set(list(espn_players.keys()) + list(roto_players.keys()))
+        
+        for player_key in all_players:
+            espn_p = espn_players.get(player_key)
+            roto_p = roto_players.get(player_key)
+            
+            if espn_p and roto_p:
+                # Use the more severe status
+                espn_status = espn_p['status'].upper()
+                roto_status = roto_p['status'].upper()
+                if 'OUT' in roto_status or 'OUT' in espn_status:
+                    final_status = 'OUT'
+                elif 'GTD' in roto_status or 'GTD' in espn_status or 'QUESTIONABLE' in roto_status or 'QUESTIONABLE' in espn_status or 'DAY-TO-DAY' in espn_status:
+                    final_status = 'GTD'
+                else:
+                    final_status = espn_p['status']
+                merged[team].append({"name": espn_p['name'], "status": final_status})
+            elif espn_p:
+                merged[team].append(espn_p)
+            elif roto_p:
+                merged[team].append(roto_p)
+    
+    return merged
 
 def get_injury_score(team, injuries):
     team_injuries = injuries.get(team, [])
@@ -636,11 +706,19 @@ def get_totals_signal_tier(score, pick):
 games = fetch_espn_scores()
 game_list = sorted(list(games.keys()))
 yesterday_teams = fetch_yesterday_teams()
-injuries = fetch_espn_injuries()
+espn_injuries, injury_timestamp = fetch_espn_injuries()
+rotowire_injuries = fetch_rotowire_injuries()
+injuries = merge_injuries(espn_injuries, rotowire_injuries)
 now = datetime.now(pytz.timezone('US/Eastern'))
 
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v16.0 | 🔄 Press R to refresh")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v16.1 | 🔄 Press R to refresh")
+
+# Injury data warning
+injury_time_str = injury_timestamp.strftime('%I:%M %p') if injury_timestamp else "?"
+roto_status = "✅" if rotowire_injuries else "❌"
+espn_status = "✅" if espn_injuries else "❌"
+st.markdown(f"<div style='background:#331a00;padding:8px 12px;border-radius:6px;border:1px solid #ff8800;margin-bottom:15px'><span style='color:#ff8800'>⚠️ <b>INJURY DATA:</b></span> ESPN {espn_status} | Rotowire {roto_status} | Updated: {injury_time_str} ET — <b>Always verify before betting!</b></div>", unsafe_allow_html=True)
 
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
 if game_list:
@@ -768,6 +846,8 @@ if yesterday_teams:
     st.info(f"📅 **B2B Teams Today:** {', '.join(sorted(yesterday_teams))}")
 
 st.subheader("⭐ STAR INJURY REPORT")
+injury_time_str = injury_timestamp.strftime('%I:%M %p ET') if injury_timestamp else "Unknown"
+st.warning(f"⚠️ **ALWAYS VERIFY INJURIES BEFORE BETTING** — Data from ESPN + Rotowire as of {injury_time_str}. Check [@ShamsCharania](https://twitter.com/ShamsCharania) and [@wojespn](https://twitter.com/wojespn) for late scratches.")
 star_injuries = []
 for team in TEAM_STATS.keys():
     _, out, gtd = get_injury_score(team, injuries)
