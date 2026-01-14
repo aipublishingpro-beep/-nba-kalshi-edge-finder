@@ -664,17 +664,18 @@ if game_list:
             if not kalshi_line: kalshi_line = 232
             all_totals.append({'game': game_key, 'home': parts[1], 'away': parts[0], 'pick': pick, 'score': score, 'color': color, 'projected': projected, 'kalshi_line': kalshi_line})
     all_totals.sort(key=lambda x: x['score'], reverse=True)
-    best_totals_pick = all_totals[0] if all_totals else None
+    best_no_pick = next((p for p in all_totals if p['pick'] == 'NO'), None)
+    best_yes_pick = next((p for p in all_totals if p['pick'] == 'YES'), None)
     for tier, min_s, max_s, label in [("strong_no", 8.0, 99, "### 🟢 STRONG NO"), ("strong_yes", 8.0, 99, "### 🟢 STRONG YES"), ("no", 6.5, 8.0, "### 🔵 NO"), ("yes", 6.5, 8.0, "### 🔵 YES")]:
         side = "NO" if "no" in tier else "YES"
         picks = [p for p in all_totals if p['pick'] == side and ((p['score'] >= 8.0) if "strong" in tier else (6.5 <= p['score'] < 8.0))]
         if picks:
             st.markdown(label)
             for p in picks:
-                is_best = (best_totals_pick and p['game'] == best_totals_pick['game'])
+                is_best = (side == 'NO' and best_no_pick and p['game'] == best_no_pick['game']) or (side == 'YES' and best_yes_pick and p['game'] == best_yes_pick['game'])
                 if is_best:
                     st.markdown(f"""<div style='background:#2a1a00;padding:12px;border-radius:8px;border:2px solid #ff8800;margin-bottom:8px'>
-                        <span style='color:#ff8800;font-weight:bold'>⭐ BEST VALUE</span>
+                        <span style='color:#ff8800;font-weight:bold'>⭐ BEST {side}</span>
                     </div>""", unsafe_allow_html=True)
                 col1, col2, col3, col4 = st.columns([2, 2, 5, 2])
                 display_color = "#ff8800" if is_best else p['color']
