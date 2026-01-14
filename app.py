@@ -760,7 +760,7 @@ if game_list:
                     mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
                     if mins >= 6:
                         proj = round((g['total'] / mins) * 48)
-                        game_status = f"Q{g['period']} {g['clock']}" if g['status_type'] != "STATUS_FINAL" else "FINAL"
+                        game_status = "FINAL" if g['status_type'] == "STATUS_FINAL" else f"Q{g['period']} {g['clock']}"
                         st.markdown(f"<div style='margin-left:20px;font-size:0.9em'><span style='color:{p['trend_color']}'>{p['trend_label']}</span> | Score: {g['total']} | Proj: {proj} | {game_status} | Diff: {p['trend_diff']:+.0f} vs expected</div>", unsafe_allow_html=True)
     if not all_picks:
         st.info("⚪ No actionable ML plays today")
@@ -821,7 +821,7 @@ if game_list:
                     mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
                     if mins >= 6:
                         proj = round((g['total'] / mins) * 48)
-                        game_status = f"Q{g['period']} {g['clock']}" if g['status_type'] != "STATUS_FINAL" else "FINAL"
+                        game_status = "FINAL" if g['status_type'] == "STATUS_FINAL" else f"Q{g['period']} {g['clock']}"
                         trend_help = "✅ Supports NO" if (p['pick'] == 'NO' and p['trend_diff'] < 0) or (p['pick'] == 'YES' and p['trend_diff'] > 0) else "⚠️ Against pick" if (p['pick'] == 'NO' and p['trend_diff'] > 4) or (p['pick'] == 'YES' and p['trend_diff'] < -4) else ""
                         st.markdown(f"<div style='margin-left:20px;font-size:0.9em'><span style='color:{p['trend_color']}'>{p['trend_label']}</span> | Live: {g['total']} | Proj: {proj} | {game_status} | {trend_help}</div>", unsafe_allow_html=True)
     if not all_totals:
@@ -882,11 +882,11 @@ for gk, g in games.items():
     if trend_label:
         mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
         proj = round((g['total'] / mins) * 48) if mins > 0 else 0
-        trend_data.append({'game': gk, 'label': trend_label, 'color': trend_color, 'diff': trend_diff, 'total': g['total'], 'proj': proj, 'mins': mins, 'period': g['period'], 'clock': g['clock']})
+        trend_data.append({'game': gk, 'label': trend_label, 'color': trend_color, 'diff': trend_diff, 'total': g['total'], 'proj': proj, 'mins': mins, 'period': g['period'], 'clock': g['clock'], 'final': g['status_type'] == "STATUS_FINAL"})
 trend_data.sort(key=lambda x: x['diff'], reverse=True)
 if trend_data:
     for t in trend_data:
-        game_status = f"Q{t['period']} {t['clock']}"
+        game_status = 'FINAL' if t['final'] else f"Q{t['period']} {t['clock']}"
         st.markdown(f"**{t['game'].replace('@', ' @ ')}** — <span style='color:{t['color']}'><b>{t['label']}</b></span> — Score: {t['total']} | Proj: {t['proj']} | Diff: <b>{t['diff']:+.0f}</b> vs expected — {game_status}", unsafe_allow_html=True)
 else:
     st.info("No games with 6+ minutes played")
@@ -1035,10 +1035,6 @@ else:
     st.info("No games today")
 
 st.divider()
-
-# ============================================================================
-# DOCUMENTATION SECTION (TESTER-SAFE VERSION)
-# ============================================================================
 
 st.header("📖 HOW TO USE THIS APP")
 
