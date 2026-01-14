@@ -908,11 +908,11 @@ if game_list:
                 col1.markdown(f"**{p['away']}** @ **{p['home']}**")
                 col2.markdown(f"<span style='color:{display_color};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
                 
-                # Show model and recommended bracket
+                # Simple recommendation
                 if p.get('best_thresh') and p.get('best_cushion'):
-                    col3.markdown(f"Model: <b>{p['projected']}</b> | 🎯 Buy <b>{side} {p['best_thresh']}</b> | +{p['best_cushion']:.0f} cushion", unsafe_allow_html=True)
+                    col3.markdown(f"🎯 <span style='color:#00ff00'><b>BUY {side} {p['best_thresh']}</b></span> (+{p['best_cushion']:.0f} cushion)", unsafe_allow_html=True)
                 else:
-                    col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b>", unsafe_allow_html=True)
+                    col3.markdown(f"⚠️ Market closed", unsafe_allow_html=True)
                 
                 btn_label = f"⭐ BUY {side}" if is_best else (f"🚀 BUY {side}" if "strong" in tier else f"🔗 BUY {side}")
                 col4.link_button(btn_label, build_kalshi_totals_url(p['away'], p['home']))
