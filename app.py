@@ -1037,284 +1037,173 @@ else:
 st.divider()
 
 # ============================================================================
-# DOCUMENTATION SECTION
+# DOCUMENTATION SECTION (TESTER-SAFE VERSION)
 # ============================================================================
 
 st.header("📖 HOW TO USE THIS APP")
 
-with st.expander("🎯 MONEYLINE (ML) PICKS — Pick game winners", expanded=False):
+with st.expander("🎯 MONEYLINE (ML) PICKS", expanded=False):
     st.markdown("""
-**What It Shows:** Teams with the strongest edge based on a 12-factor model that analyzes rest, defense, injuries, travel, and more.
+**What It Shows:** Teams the model identifies as having an edge.
 
 **Signal Tiers:**
-- 🟢 **STRONG BUY (8.0+)** → High-confidence plays with multiple factors aligned
-- 🔵 **BUY (6.5-7.9)** → Solid edge worth considering
-- ⚪ **Below 6.5** → Skip (no actionable edge)
+- 🟢 **STRONG BUY** → Higher confidence
+- 🔵 **BUY** → Moderate confidence
 
-**The 12 Factors Analyzed:**
-1. **Rest Differential** — B2B disadvantage is huge (opponent on B2B = +1.0)
-2. **Net Rating** — Overall team quality differential
-3. **Defensive Rank** — Elite defense (Top 5) gets major bonus
-4. **Star Injuries** — Star OUT (+1.0) or GTD (+0.6) to opponent
-5. **Travel Distance** — 1500+ miles = fatigue penalty for away team
-6. **Home Win %** — Historical home court performance
-7. **Away Win %** — How opponent performs on the road
-8. **Division Rivalry** — Familiarity bonus in divisional games
-9. **Altitude** — Denver gets +1.0 at home (5,280 ft elevation)
-10. **Free Throw Rate** — Pace control indicator
-11. **Rebound Rate** — Possession control
-12. **3PT Percentage** — Scoring efficiency
+**Reading the Display:**
+- **⭐ BEST VALUE** = Top pick of the day (highlighted in orange)
+- **🏠** = Home team | **✈️** = Away team
+- **Score/10** = Model confidence rating
 
-**Understanding the Display:**
-- **⭐ BEST VALUE** = Highest-scoring pick of the day (highlighted in orange)
-- **🏠** = Home team pick | **✈️** = Away team pick
-- **Score/10** = Model confidence | **+X%** = Estimated edge percentage
+**Injury Colors:**
+- ✅ Green = Opponent injury (favors your pick)
+- ⚠️ Yellow = Game-time decision
+- ⛔ Red = Your pick has injury (caution)
 
-**Injury Alerts:**
-- ✅ Green = Opponent stars OUT (good for your pick)
-- ⚠️ Yellow = Stars are GTD (game-time decision)
-- ⛔ Red = YOUR pick has stars OUT (caution!)
-
-**How to Use:** Click the BUY button to open the Kalshi market directly. Always verify injuries on Twitter before placing bets.
+**How to Use:** Click the green BUY button to open Kalshi. Always verify injuries before betting.
 """)
 
-with st.expander("📊 TOTALS PICKS (NO/YES) — Over/Under predictions", expanded=False):
+with st.expander("📊 TOTALS PICKS (NO/YES)", expanded=False):
     st.markdown("""
-**What It Shows:** Whether the game total is likely to go OVER or UNDER the Kalshi line.
+**What It Shows:** Whether the model favors OVER or UNDER for each game.
 
 **Signal Tiers:**
-- 🟢 **STRONG NO/YES (8.0+)** → Multiple factors strongly favor one side
-- 🔵 **NO/YES (6.5-7.9)** → Moderate edge detected
+- 🟢 **STRONG NO/YES** → Higher confidence
+- 🔵 **NO/YES** → Moderate confidence
 
-**Key Factors for UNDER (NO):**
-- 🐢 **Slow pace** — Combined pace < 98.5
-- 🛡️ **Elite defense** — Combined defensive rank in Top 8
-- 🛏️ **Back-to-back fatigue** — One or both teams on B2B
-- 🎯 **Poor 3PT shooting** — Combined 3PT% < 35.5%
-- 🏥 **Star players OUT** — Missing scorers = fewer points
-- 🏔️ **Denver altitude** — Visiting teams tire faster
-- 🎁 **High FT rate** — More stoppages = slower pace
-- ⚔️ **Close game expected** — Low net rating differential
-
-**Key Factors for OVER (YES):**
-- 🔥 **Fast pace** — Combined pace > 101
-- 💥 **Poor defense** — Combined defensive rank 22+
-- 🎯 **Elite 3PT shooting** — Combined 3PT% > 37.5%
-- 💥 **Blowout risk** — Large net rating gap (garbage time scoring)
-- 🏃 **Low FT rate** — Fewer stoppages = faster pace
-
-**Model vs Kalshi Line:**
-- **Model** = Our projected total based on team stats
+**Reading the Display:**
+- **Model** = App's projected total
 - **Kalshi** = Current market line
-- Bigger gaps between Model and Kalshi = stronger edge
+- Larger gaps may indicate stronger opportunities
 
-**Example:** Model: 218 | Kalshi: 232 → Strong NO signal (14-point gap)
+**How to Use:** Click the BUY button to open the Kalshi totals market.
 """)
 
-with st.expander("🔥 LIVE SCORE TRENDS — Real-time pace tracking", expanded=False):
+with st.expander("🔥 LIVE SCORE TRENDS", expanded=False):
     st.markdown("""
-**What It Shows:** How the current score compares to the expected scoring pace based on team averages.
+**What It Shows:** How the current game pace compares to expectations.
 
 **Trend Labels:**
-- 🔥 **HOT** → +8 or more points vs expected (game running HIGH)
-- 🟢 **WARM** → +4 to +8 vs expected (slightly high)
-- ⚪ **NORMAL** → Within ±4 of expected (on pace)
-- ❄️ **COLD** → -4 to -8 vs expected (slightly low)
-- 🧊 **ICE** → -8 or worse vs expected (game running LOW)
-
-**How to Use for Totals Bets:**
-- **NO bets:** ❄️ COLD and 🧊 ICE trends SUPPORT your position
-- **YES bets:** 🔥 HOT and 🟢 WARM trends SUPPORT your position
-- **Warning:** If trend is AGAINST your pick (+4 for NO or -4 for YES), consider hedging
+- 🔥 **HOT** → Game running high
+- 🟢 **WARM** → Slightly above expected
+- ⚪ **NORMAL** → On pace
+- ❄️ **COLD** → Slightly below expected
+- 🧊 **ICE** → Game running low
 
 **Key Metrics:**
 - **Score** = Current combined score
-- **Proj** = Projected final total if pace continues
-- **Diff** = Points above/below expected at this time
+- **Proj** = Projected final total
+- **Diff** = Points vs expected
 
-**Note:** Trends require 6+ minutes of game time to display (need enough data for accuracy).
+**Note:** Requires 6+ minutes of game time to display.
 """)
 
-with st.expander("🎯 CUSHION SCANNER — Find optimal entry points", expanded=False):
+with st.expander("🎯 CUSHION SCANNER", expanded=False):
     st.markdown("""
-**What It Shows:** A grid showing your "cushion" (safety margin) at each threshold for all live games.
+**What It Shows:** Safety margin at each threshold for live games.
 
 **Reading the Grid:**
-- **Green (+X)** = Projected total is X points BELOW threshold (good for NO)
-- **Red (-X)** = Projected total is X points ABOVE threshold (bad for NO)
-- **⭐ Orange** = Best entry point for that game (sweet spot)
+- **Green (+X)** = Points of cushion (positive is good for NO)
+- **Red (-X)** = Negative cushion (bad for NO)
+- **⭐ Orange** = Suggested entry point
 
-**Cushion Sizing Guide:**
-| Cushion | Size | Risk Level |
-|---------|------|------------|
-| +20 or more | 2x normal | Very Safe |
-| +12 to +19 | 1x normal | Solid |
-| +6 to +11 | 0.5x normal | Risky |
-| Under +6 | SKIP | Too Risky |
+**Pace Column:**
+- 🟢 Green = Slow pace
+- 🟡 Yellow = Average
+- 🟠 Orange = Fast
+- 🔴 Red = Very fast
 
-**Pace Column Colors:**
-- 🟢 Green (<4.5/min) = SLOW pace, good for NO
-- 🟡 Yellow (4.5-4.8) = Average pace
-- 🟠 Orange (4.8-5.2) = FAST pace
-- 🔴 Red (5.2+) = SHOOTOUT, avoid NO
-
-**Strategy:** Look for games with SLOW pace (green) AND good cushion (+12 or more) at your target threshold.
+**How to Use:** Select NO or YES from dropdown, then scan for green numbers with orange stars.
 """)
 
-with st.expander("🔥 PACE SCANNER — Monitor scoring rates", expanded=False):
+with st.expander("🔥 PACE SCANNER", expanded=False):
     st.markdown("""
-**What It Shows:** Points per minute for all live games, sorted from slowest to fastest.
+**What It Shows:** Points per minute for all live games, sorted slowest to fastest.
 
-**Pace Benchmarks:**
-| Pace | Label | What It Means |
-|------|-------|---------------|
-| <4.5/min | 🟢 SLOW | Great for NO bets |
-| 4.5-4.8/min | 🟡 AVG | Neutral |
-| 4.8-5.2/min | 🟠 FAST | Risky for NO |
-| 5.2+/min | 🔴 SHOOTOUT | Avoid NO entirely |
+**Pace Labels:**
+- 🟢 **SLOW** → Lower scoring rate
+- 🟡 **AVG** → Normal scoring rate
+- 🟠 **FAST** → Higher scoring rate
+- 🔴 **SHOOTOUT** → Very high scoring rate
 
 **Key Metrics:**
 - **Pts/Min** = Current scoring rate
-- **Proj** = Projected final total at this pace
-
-**Why This Matters:**
-- NBA games average ~4.7 points per minute
-- Games under 4.5/min rarely hit high totals
-- Games over 5.2/min are "shootouts" that often exceed lines
-
-**Pro Tip:** If you have a NO position and see 🔴 SHOOTOUT, consider exiting or hedging.
+- **Proj** = Projected final total at current pace
 """)
 
-with st.expander("📈 POSITION TRACKING — Monitor your bets", expanded=False):
+with st.expander("📈 POSITION TRACKING", expanded=False):
     st.markdown("""
-**What It Does:** Track your active totals positions with real-time status updates.
+**What It Does:** Track your totals positions with live updates.
 
-**Position Status Colors:**
-| Status | Color | Meaning |
-|--------|-------|---------|
-| 🟢 VERY SAFE | Green | +15 cushion, relax |
-| 🟢 GOOD | Green | +8 to +14 cushion |
-| 🟡 ON TRACK | Yellow | +3 to +7 cushion |
-| 🟠 WARNING | Orange | -3 to +2 cushion |
-| 🔴 AT RISK | Red | Below -3 cushion |
-| ✅ WON! | Green | Final result: WIN |
-| ❌ LOST | Red | Final result: LOSS |
+**Status Colors:**
+- 🟢 Green = Position looking good
+- 🟡 Yellow = On track
+- 🟠 Orange = Getting tight
+- 🔴 Red = At risk
+- ✅ WON / ❌ LOST = Final result
 
 **Adding Positions:**
-1. Select the game from dropdown
-2. Choose your threshold (e.g., 225.5)
-3. Select side (NO or YES)
-4. Enter your price (in cents)
-5. Enter number of contracts
-6. Click ADD POSITION
+1. Select game from dropdown
+2. Set threshold
+3. Choose NO or YES
+4. Enter price (cents) and contracts
+5. Click ADD POSITION
 
-**Tracked Metrics:**
+**Displayed Info:**
 - **Proj** = Projected final total
-- **Cushion** = Points of safety margin
-- **Win** = Potential profit if position wins
+- **Cushion** = Safety margin
+- **Win** = Potential profit
 """)
 
-with st.expander("⭐ STAR INJURY REPORT — Critical injury info", expanded=False):
+with st.expander("⭐ STAR INJURY REPORT", expanded=False):
     st.markdown("""
-**What It Shows:** All star players currently OUT or GTD (Game-Time Decision) across the league.
+**What It Shows:** Star players currently OUT or GTD league-wide.
 
 **Status Meanings:**
-- **OUT** (Red) = Confirmed not playing
-- **GTD** (Orange) = Game-time decision, may or may not play
+- **OUT** (Red) = Not playing
+- **GTD** (Orange) = Game-time decision
 
-**Why Stars Matter:**
-- Star OUT adds +1.0 to opponent's ML score
-- Star GTD adds +0.6 to opponent's ML score
-- Missing stars also affects totals (fewer points scored)
-
-**⚠️ CRITICAL WARNING:**
-Injury data comes from ESPN and Rotowire but can be DELAYED. Always verify late scratches by checking:
+**⚠️ IMPORTANT:**
+Injury data can be delayed. Always verify before betting:
 - [@ShamsCharania](https://twitter.com/ShamsCharania)
 - [@wojespn](https://twitter.com/wojespn)
-- Team official accounts
-
-**Pro Tip:** If a star is GTD, wait until 30 mins before tip-off for final confirmation before betting.
 """)
 
-with st.expander("🔥 BLOWOUT RISK — High-value situations", expanded=False):
+with st.expander("🔥 BLOWOUT RISK", expanded=False):
     st.markdown("""
-**What It Shows:** Games where the away team is on a back-to-back while the home team is rested.
-
-**Why This Matters:**
-- B2B teams show significant performance drops
-- Home teams with rest advantage often dominate
-- These situations create the highest-probability ML bets
-
-**The Setup:**
-- ✅ Home team: RESTED (did not play yesterday)
-- 🔴 Away team: B2B (played yesterday)
-- = Recipe for potential blowout
+**What It Shows:** Games where the away team played yesterday (B2B) and the home team is rested.
 
 **Display Shows:**
-- Home team win probability (from 12-factor model)
-- Direct link to buy the home ML on Kalshi
-
-**Strategy:** These are often the best ML plays of the day. Consider larger position sizes when the home team is also the better team by net rating.
+- Home team win probability
+- Link to Kalshi market
 """)
 
-with st.expander("🚀 TRADING INTEGRATION — Direct Kalshi execution", expanded=False):
+with st.expander("🚀 TRADING SETUP", expanded=False):
     st.markdown("""
-**What It Does:** Optionally connect your Kalshi API credentials to view account info.
+**Optional:** Connect Kalshi API for direct integration.
 
-**Setup (in Sidebar):**
+**Setup (Sidebar):**
 1. Toggle "Enable Trading" ON
-2. Enter your Kalshi API Key
-3. Enter your Kalshi Private Key (PEM format)
-4. Set your default contract size
+2. Enter API Key
+3. Enter Private Key (PEM)
+4. Set default contract size
 
-**Security Notes:**
-- Credentials are stored in session only (not saved)
-- Use Streamlit Secrets for persistent storage
-- Never share your private key
-
-**Requirements:**
-- `cryptography` library must be in requirements.txt
-- Valid Kalshi API credentials
-
-**Current Features:**
-- API authentication
-- Signature generation for requests
-- Order placement capability
-
-**Note:** Most users simply use the direct Kalshi links (green BUY buttons) which open Kalshi in a new tab for manual execution.
+**Note:** Most users just click the green BUY buttons to open Kalshi directly.
 """)
 
-with st.expander("💡 GENERAL TIPS & BEST PRACTICES", expanded=False):
+with st.expander("💡 QUICK TIPS", expanded=False):
     st.markdown("""
-**Before Every Bet:**
-1. ✅ Verify injuries on Twitter (late scratches happen!)
-2. ✅ Check the Kalshi price hasn't moved significantly
-3. ✅ Confirm your thesis still holds
+**Before Betting:**
+- ✅ Verify injuries on Twitter
+- ✅ Check current Kalshi prices
+- ✅ Press **R** to refresh data
 
-**ML Betting Strategy:**
-- Focus on 🟢 STRONG BUY (8.0+) signals
-- Prioritize games with opponent on B2B
-- Avoid betting against elite teams (OKC, Boston, Cleveland)
-- Star injuries create the biggest edges
+**Navigation:**
+- Sidebar has the legend for all icons
+- Green buttons open Kalshi markets
+- All data updates when you refresh
 
-**Totals Betting Strategy:**
-- NO bets work best with: slow pace + good defense + B2B teams
-- YES bets work best with: fast pace + poor defense + full rosters
-- Use Cushion Scanner to find optimal thresholds
-- Monitor Pace Scanner during games
-
-**Position Management:**
-- Start with smaller sizes until you learn the system
-- Use cushion sizing guide (+20 = 2x, +12 = 1x, +6 = 0.5x)
-- Exit or hedge when trends go against you
-- Track your results to improve over time
-
-**Refresh Often:**
-- Press **R** to refresh the page
-- Data updates every few seconds during games
-- Injury data may lag — always verify externally
-
-**Remember:** This tool surfaces WHEN to pay attention, not WHAT to do. Final decisions are always yours. Never bet more than you can afford to lose.
+**Remember:** This tool helps identify opportunities. Final decisions are yours. Bet responsibly.
 """)
 
 st.divider()
