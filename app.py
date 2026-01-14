@@ -812,15 +812,35 @@ for gk, g in games.items():
     
     threshold_rows.sort(key=lambda x: x['cushion'], reverse=True)
     
+    # Find best value: highest cushion in 12-19 range (1x size), or highest under 20 if none
+    best_idx = None
+    for i, tr in enumerate(threshold_rows):
+        if 12 <= tr['cushion'] < 20:
+            best_idx = i
+            break
+    if best_idx is None and threshold_rows:
+        for i, tr in enumerate(threshold_rows):
+            if tr['cushion'] < 20:
+                best_idx = i
+                break
+    
     if threshold_rows:
-        for tr in threshold_rows:
-            cush_color = "#00ff00" if tr['cushion'] >= 20 else ("#00aaff" if tr['cushion'] >= 12 else "#ffff00")
+        for i, tr in enumerate(threshold_rows):
+            is_best = (i == best_idx)
+            if is_best:
+                cush_color = "#ff8800"
+                bg_color = "#2a1a00"
+                label = "⭐ BEST VALUE"
+            else:
+                cush_color = "#00ff00" if tr['cushion'] >= 20 else ("#00aaff" if tr['cushion'] >= 12 else "#ffff00")
+                bg_color = "#0d1117"
+                label = f"Size: {tr['size_label']}"
             price_info = f"NO @ {tr.get('no_ask', '?')}¢" if tr['side'] == 'NO' else f"YES @ {tr.get('yes_ask', '?')}¢"
-            st.markdown(f"""<div style='background:#0d1117;padding:10px 15px;border-left:4px solid {cush_color};margin-bottom:3px;display:flex;justify-content:space-between;align-items:center'>
+            st.markdown(f"""<div style='background:{bg_color};padding:10px 15px;border-left:4px solid {cush_color};margin-bottom:3px;display:flex;justify-content:space-between;align-items:center'>
                 <span style='color:#fff;font-weight:bold'>BUY {tr['side']} @ {tr['thresh']}</span>
                 <span style='color:{cush_color};font-weight:bold'>+{tr['cushion']:.0f} cushion</span>
                 <span style='color:#aaa'>{price_info}</span>
-                <span style='color:{tr['size_color']}'>Size: {tr['size_label']}</span>
+                <span style='color:{cush_color};font-weight:bold'>{label}</span>
             </div>""", unsafe_allow_html=True)
         
         st.link_button(f"🚀 Trade {away_team} @ {home_team} on Kalshi", build_kalshi_totals_url(away_team, home_team), use_container_width=True)
