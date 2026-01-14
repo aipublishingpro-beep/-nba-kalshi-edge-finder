@@ -154,57 +154,59 @@ def fetch_kalshi_markets(away_team, home_team):
         return None, []
 
 def get_best_threshold(away_team, home_team, projected, pick_side):
+    """Find best threshold from actual Kalshi brackets with safety buffer"""
     _, all_thresholds = fetch_kalshi_markets(away_team, home_team)
     if not all_thresholds:
         return None, None, None
+    
+    # Sort thresholds by value
     sorted_thresh = sorted(all_thresholds, key=lambda x: x['threshold'])
-    best = None
-    best_score = -999
-    best_idx = -1
-    for idx, t in enumerate(sorted_thresh):
-        thresh = t['threshold']
-        no_price = t.get('no_bid') or (100 - (t.get('yes_ask') or 50))
-        yes_price = t.get('yes_bid') or (100 - (t.get('no_ask') or 50))
-        if pick_side == "NO":
+    
+    if pick_side == "NO":
+        # For NO: find brackets ABOVE projected, pick one with good cushion, then go one level HIGHER for safety
+        candidates = []
+        for idx, t in enumerate(sorted_thresh):
+            thresh = t['threshold']
             cushion = thresh - projected
-            price = no_price if no_price > 0 else 50
-            if cushion >= 6:
-                value_score = cushion * 0.5 + (70 - abs(price - 55)) * 0.3
-                if value_score > best_score:
-                    best_score = value_score
-                    best = {'threshold': thresh, 'cushion': cushion, 'price': price}
-                    best_idx = idx
-        else:
-            cushion = projected - thresh
-            price = yes_price if yes_price > 0 else 50
-            if cushion >= 6:
-                value_score = cushion * 0.5 + (70 - abs(price - 55)) * 0.3
-                if value_score > best_score:
-                    best_score = value_score
-                    best = {'threshold': thresh, 'cushion': cushion, 'price': price}
-                    best_idx = idx
-    if best and best_idx >= 0:
-        if pick_side == "NO":
-            safer_idx = best_idx + 1
+            if cushion >= 6:  # Minimum cushion
+                no_price = t.get('no_bid') or (100 - (t.get('yes_ask') or 50))
+                candidates.append({'idx': idx, 'threshold': thresh, 'cushion': cushion, 'price': no_price})
+        
+        if candidates:
+            # Pick the one with best value (cushion vs price balance)
+            best = max(candidates, key=lambda x: x['cushion'] * 0.5 + (70 - abs(x['price'] - 55)) * 0.3)
+            # Safety buffer: go one level HIGHER
+            safer_idx = best['idx'] + 1
             if safer_idx < len(sorted_thresh):
                 safer = sorted_thresh[safer_idx]
-                safer_thresh = safer['threshold']
-                safer_cushion = safer_thresh - projected
+                safer_cushion = safer['threshold'] - projected
                 safer_price = safer.get('no_bid') or (100 - (safer.get('yes_ask') or 50))
-                if safer_price <= 0:
-                    safer_price = 50
-                return safer_thresh, safer_cushion, safer_price
-        else:
-            safer_idx = best_idx - 1
+                return safer['threshold'], safer_cushion, safer_price if safer_price > 0 else 50
+            else:
+                return best['threshold'], best['cushion'], best['price'] if best['price'] > 0 else 50
+    else:
+        # For YES: find brackets BELOW projected, pick one with good cushion, then go one level LOWER for safety
+        candidates = []
+        for idx, t in enumerate(sorted_thresh):
+            thresh = t['threshold']
+            cushion = projected - thresh
+            if cushion >= 6:  # Minimum cushion
+                yes_price = t.get('yes_bid') or (100 - (t.get('no_ask') or 50))
+                candidates.append({'idx': idx, 'threshold': thresh, 'cushion': cushion, 'price': yes_price})
+        
+        if candidates:
+            # Pick the one with best value
+            best = max(candidates, key=lambda x: x['cushion'] * 0.5 + (70 - abs(x['price'] - 55)) * 0.3)
+            # Safety buffer: go one level LOWER
+            safer_idx = best['idx'] - 1
             if safer_idx >= 0:
                 safer = sorted_thresh[safer_idx]
-                safer_thresh = safer['threshold']
-                safer_cushion = projected - safer_thresh
+                safer_cushion = projected - safer['threshold']
                 safer_price = safer.get('yes_bid') or (100 - (safer.get('no_ask') or 50))
-                if safer_price <= 0:
-                    safer_price = 50
-                return safer_thresh, safer_cushion, safer_price
-        return best['threshold'], best['cushion'], best['price']
+                return safer['threshold'], safer_cushion, safer_price if safer_price > 0 else 50
+            else:
+                return best['threshold'], best['cushion'], best['price'] if best['price'] > 0 else 50
+    
     return None, None, None
 
 if "positions" not in st.session_state:
@@ -906,26 +908,17 @@ if game_list:
                 col1.markdown(f"**{p['away']}** @ **{p['home']}**")
                 col2.markdown(f"<span style='color:{display_color};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
                 
-                # Calculate recommended threshold (Kalshi uses 6-point brackets: 213.5, 219.5, 225.5, 231.5, 237.5, etc)
+                # Use actual Kalshi brackets - no guessing
                 if p.get('best_thresh') and p.get('best_cushion'):
                     rec_thresh = p['best_thresh']
                     rec_cushion = p['best_cushion']
+                    col3.markdown(f"Model: <b>{p['projected']}</b> | +{rec_cushion:.0f} cushion", unsafe_allow_html=True)
+                    btn_label = f"⭐ {side} {rec_thresh}" if is_best else (f"🚀 {side} {rec_thresh}" if "strong" in tier else f"🔗 {side} {rec_thresh}")
                 else:
-                    proj = p['projected']
-                    if side == "NO":
-                        # For NO, go ABOVE projection with +12 safety buffer
-                        target = proj + 12
-                        n = int((target - 213.5) / 6) + 1  # Round up
-                        rec_thresh = 213.5 + 6 * n
-                    else:
-                        # For YES, go BELOW projection with +12 safety buffer  
-                        target = proj - 12
-                        n = int((target - 213.5) / 6)  # Round down
-                        rec_thresh = 213.5 + 6 * n
-                    rec_cushion = abs(rec_thresh - proj)
+                    # No Kalshi data available - don't guess
+                    col3.markdown(f"Model: <b>{p['projected']}</b>", unsafe_allow_html=True)
+                    btn_label = f"⭐ {side}" if is_best else (f"🚀 {side}" if "strong" in tier else f"🔗 {side}")
                 
-                col3.markdown(f"Model: <b>{p['projected']}</b> | +{rec_cushion:.0f} cushion", unsafe_allow_html=True)
-                btn_label = f"⭐ {side} {rec_thresh:.1f}" if is_best else (f"🚀 {side} {rec_thresh:.1f}" if "strong" in tier else f"🔗 {side} {rec_thresh:.1f}")
                 col4.link_button(btn_label, build_kalshi_totals_url(p['away'], p['home']))
                 if p.get('reasons'):
                     st.markdown(f"<div style='margin-left:20px;font-size:0.9em;color:#aaa'>{' • '.join(p['reasons'])}</div>", unsafe_allow_html=True)
