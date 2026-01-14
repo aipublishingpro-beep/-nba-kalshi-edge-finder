@@ -154,23 +154,17 @@ def fetch_kalshi_markets(away_team, home_team):
         return None, []
 
 def get_best_threshold(away_team, home_team, projected, pick_side):
-    """Find best threshold to buy based on cushion and price, with safety buffer"""
     _, all_thresholds = fetch_kalshi_markets(away_team, home_team)
     if not all_thresholds:
         return None, None, None
-    
-    # Sort thresholds
     sorted_thresh = sorted(all_thresholds, key=lambda x: x['threshold'])
-    
     best = None
     best_score = -999
     best_idx = -1
-    
     for idx, t in enumerate(sorted_thresh):
         thresh = t['threshold']
         no_price = t.get('no_bid') or (100 - (t.get('yes_ask') or 50))
         yes_price = t.get('yes_bid') or (100 - (t.get('no_ask') or 50))
-        
         if pick_side == "NO":
             cushion = thresh - projected
             price = no_price if no_price > 0 else 50
@@ -189,11 +183,8 @@ def get_best_threshold(away_team, home_team, projected, pick_side):
                     best_score = value_score
                     best = {'threshold': thresh, 'cushion': cushion, 'price': price}
                     best_idx = idx
-    
     if best and best_idx >= 0:
-        # SAFETY BUFFER: Go one level safer
         if pick_side == "NO":
-            # For NO, go to HIGHER threshold (more cushion)
             safer_idx = best_idx + 1
             if safer_idx < len(sorted_thresh):
                 safer = sorted_thresh[safer_idx]
@@ -204,7 +195,6 @@ def get_best_threshold(away_team, home_team, projected, pick_side):
                     safer_price = 50
                 return safer_thresh, safer_cushion, safer_price
         else:
-            # For YES, go to LOWER threshold (more cushion)
             safer_idx = best_idx - 1
             if safer_idx >= 0:
                 safer = sorted_thresh[safer_idx]
@@ -214,10 +204,7 @@ def get_best_threshold(away_team, home_team, projected, pick_side):
                 if safer_price <= 0:
                     safer_price = 50
                 return safer_thresh, safer_cushion, safer_price
-        
-        # If no safer level available, return original
         return best['threshold'], best['cushion'], best['price']
-    
     return None, None, None
 
 if "positions" not in st.session_state:
@@ -259,7 +246,7 @@ with st.sidebar:
                 st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", height=100)
             st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, max_value=500, value=st.session_state.default_contracts)
     st.divider()
-    st.caption("v16.1")
+    st.caption("v16.2")
 
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
@@ -520,7 +507,6 @@ def get_score_trend(game_data, home_team, away_team):
     expected_total = get_expected_total(home_team, away_team)
     expected_at_time = (expected_total / 48) * mins
     diff = actual_total - expected_at_time
-    proj_total = round((actual_total / mins) * 48) if mins > 0 else 0
     if diff >= 8:
         return "🔥 HOT", "#ff4400", diff
     elif diff >= 4:
@@ -690,32 +676,28 @@ def calc_projected_total(home_team, away_team, yesterday_teams):
 def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
     home, away = TEAM_STATS.get(home_team, {}), TEAM_STATS.get(away_team, {})
     reasons = []
-    
-    # CATEGORY 1: PACE (cap ±1.75)
     pace_score = 0.0
     avg_pace = (home.get('pace', 100) + away.get('pace', 100)) / 2
     if avg_pace >= 101.5:
-        pace_score = +1.75 * 1.2  # rare, high weight
+        pace_score = 1.75 * 1.2
         reasons.append(f"🔥 Fast {avg_pace:.1f}")
     elif avg_pace >= 100.5:
-        pace_score = +1.0 * 1.1
+        pace_score = 1.0 * 1.1
         reasons.append(f"🔥 Pace {avg_pace:.1f}")
     elif avg_pace <= 97.5:
-        pace_score = -1.5 * 0.7  # common, lower weight
+        pace_score = -1.5 * 0.7
         reasons.append(f"🐢 Slow {avg_pace:.1f}")
     elif avg_pace <= 98.5:
         pace_score = -0.75 * 0.6
         reasons.append(f"🐢 Pace {avg_pace:.1f}")
     pace_score = max(-1.75, min(1.75, pace_score))
-    
-    # CATEGORY 2: PPG (cap ±1.75)
     ppg_score = 0.0
     combined_ppg = home.get('ppg', 112) + away.get('ppg', 112)
     if combined_ppg >= 238:
-        ppg_score = +1.75 * 1.3  # rare
+        ppg_score = 1.75 * 1.3
         reasons.append(f"🔥 High PPG {combined_ppg:.0f}")
     elif combined_ppg >= 230:
-        ppg_score = +1.0 * 1.2
+        ppg_score = 1.0 * 1.2
         reasons.append(f"🔥 PPG {combined_ppg:.0f}")
     elif combined_ppg <= 212:
         ppg_score = -1.5 * 0.7
@@ -724,15 +706,13 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
         ppg_score = -0.75 * 0.6
         reasons.append(f"🐢 PPG {combined_ppg:.0f}")
     ppg_score = max(-1.75, min(1.75, ppg_score))
-    
-    # CATEGORY 3: DEFENSE (cap ±1.25)
     def_score = 0.0
     avg_def = (home.get('def_rank', 15) + away.get('def_rank', 15)) / 2
     if avg_def >= 25:
-        def_score = +1.25 * 1.1
+        def_score = 1.25 * 1.1
         reasons.append(f"💥 Weak DEF #{int(avg_def)}")
     elif avg_def >= 21:
-        def_score = +0.75 * 1.0
+        def_score = 0.75 * 1.0
         reasons.append(f"💥 DEF #{int(avg_def)}")
     elif avg_def <= 5:
         def_score = -1.25 * 0.9
@@ -741,8 +721,6 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
         def_score = -0.75 * 0.8
         reasons.append(f"🛡️ DEF #{int(avg_def)}")
     def_score = max(-1.25, min(1.25, def_score))
-    
-    # CATEGORY 4: SITUATIONAL - B2B, altitude (cap ±1.0)
     sit_score = 0.0
     home_b2b = home_team in yesterday_teams
     away_b2b = away_team in yesterday_teams
@@ -756,12 +734,10 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
         sit_score -= 0.4
         reasons.append("🏔️ Altitude")
     sit_score = max(-1.0, min(1.0, sit_score))
-    
-    # CATEGORY 5: SHOOTING (cap ±1.0)
     shoot_score = 0.0
     avg_3pt = (home.get('three_pct', 36) + away.get('three_pct', 36)) / 2
     if avg_3pt >= 37.5:
-        shoot_score = +0.75 * 1.1
+        shoot_score = 0.75 * 1.1
         reasons.append(f"🎯 High 3PT {avg_3pt:.1f}%")
     elif avg_3pt <= 34.5:
         shoot_score = -0.5 * 0.8
@@ -772,24 +748,20 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
     elif avg_ft <= 0.22:
         shoot_score += 0.3
     shoot_score = max(-1.0, min(1.0, shoot_score))
-    
-    # CATEGORY 6: MISMATCH / GAME TYPE (cap ±0.75)
     match_score = 0.0
     home_net = home.get('net_rating', 0)
     away_net = away.get('net_rating', 0)
     net_diff = abs(home_net - away_net)
     if home_net > 8 and away_net > 5:
-        match_score = +0.75
+        match_score = 0.75
         reasons.append("⭐ Both elite")
     elif net_diff >= 12:
-        match_score = +0.5
+        match_score = 0.5
         reasons.append("💥 Mismatch")
     elif net_diff <= 2:
         match_score = -0.4
         reasons.append("⚔️ Close game")
     match_score = max(-0.75, min(0.75, match_score))
-    
-    # CATEGORY 7: INJURIES (cap ±0.75)
     inj_score = 0.0
     _, home_out, _ = get_injury_score(home_team, injuries)
     _, away_out, _ = get_injury_score(away_team, injuries)
@@ -797,18 +769,10 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
         inj_score = -0.6
         reasons.append(f"🏥 {', '.join([n[:8] for n in (home_out + away_out)[:2]])} OUT")
     inj_score = max(-0.75, min(0.75, inj_score))
-    
-    # FINAL CALCULATION
     raw_score = pace_score + ppg_score + def_score + sit_score + shoot_score + match_score + inj_score
-    
-    # KILL SWITCH: No trade if signal too weak
     if abs(raw_score) < 0.75:
         return None, 5.0, ["No clear edge"]
-    
-    # Map to confidence scale
     confidence = round(min(8.5, max(1.5, 5.0 + abs(raw_score) * 1.25)), 1)
-    
-    # Determine direction and filter reasons
     if raw_score < 0:
         under_reasons = [r for r in reasons if any(x in r for x in ["🐢", "🛡️", "🛏️", "🏔️", "⚔️", "🏥", "Low"])][:4]
         return "NO", confidence, under_reasons if under_reasons else ["Under signals"]
@@ -832,7 +796,7 @@ injuries = merge_injuries(espn_injuries, rotowire_injuries)
 now = datetime.now(pytz.timezone('US/Eastern'))
 
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v16.1 | 🔄 Press R to refresh")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v16.2 | 🔄 Press R to refresh")
 
 injury_time_str = injury_timestamp.strftime('%I:%M %p') if injury_timestamp else "?"
 roto_status = "✅" if rotowire_injuries else "❌"
@@ -913,7 +877,8 @@ if game_list:
         if signal:
             projected = calc_projected_total(parts[1], parts[0], yesterday_teams)
             kalshi_line, _ = fetch_kalshi_markets(parts[0], parts[1])
-            if not kalshi_line: kalshi_line = 232
+            if not kalshi_line:
+                kalshi_line = 232
             best_thresh, best_cushion, best_price = get_best_threshold(parts[0], parts[1], projected, pick)
             g = games.get(game_key)
             trend_label, trend_color, trend_diff = None, None, None
@@ -940,7 +905,7 @@ if game_list:
                 display_color = "#ff8800" if is_best else p['color']
                 col1.markdown(f"**{p['away']}** @ **{p['home']}**")
                 col2.markdown(f"<span style='color:{display_color};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-                if p.get('best_thresh'):
+                if p.get('best_thresh') and p.get('best_cushion'):
                     col3.markdown(f"Model: <b>{p['projected']}</b> | +{p['best_cushion']:.0f} cushion @ {p['best_price']}¢", unsafe_allow_html=True)
                     btn_label = f"⭐ {side} {p['best_thresh']}" if is_best else (f"🚀 {side} {p['best_thresh']}" if "strong" in tier else f"🔗 {side} {p['best_thresh']}")
                 else:
@@ -1175,174 +1140,6 @@ if games:
             st.caption(f"{game_status} | {g['total']} pts")
 else:
     st.info("No games today")
-
-st.divider()
-
-st.header("📖 HOW TO USE THIS APP")
-
-with st.expander("🎯 MONEYLINE (ML) PICKS", expanded=False):
-    st.markdown("""
-**What It Shows:** Teams the model identifies as having an edge.
-
-**Signal Tiers:**
-- 🟢 **STRONG BUY** → Higher confidence
-- 🔵 **BUY** → Moderate confidence
-
-**Reading the Display:**
-- **⭐ BEST VALUE** = Top pick of the day (highlighted in orange)
-- **🏠** = Home team | **✈️** = Away team
-- **Score/10** = Model confidence rating
-
-**Injury Colors:**
-- ✅ Green = Opponent injury (favors your pick)
-- ⚠️ Yellow = Game-time decision
-- ⛔ Red = Your pick has injury (caution)
-
-**How to Use:** Click the green BUY button to open Kalshi. Always verify injuries before betting.
-""")
-
-with st.expander("📊 TOTALS PICKS (NO/YES)", expanded=False):
-    st.markdown("""
-**What It Shows:** Whether the model favors OVER or UNDER for each game.
-
-**Signal Tiers:**
-- 🟢 **STRONG NO/YES** → Higher confidence
-- 🔵 **NO/YES** → Moderate confidence
-
-**Reading the Display:**
-- **Model** = App's projected total
-- **Kalshi** = Current market line
-- Larger gaps may indicate stronger opportunities
-
-**How to Use:** Click the BUY button to open the Kalshi totals market.
-""")
-
-with st.expander("🔥 LIVE SCORE TRENDS", expanded=False):
-    st.markdown("""
-**What It Shows:** How the current game pace compares to expectations.
-
-**Trend Labels:**
-- 🔥 **HOT** → Game running high
-- 🟢 **WARM** → Slightly above expected
-- ⚪ **NORMAL** → On pace
-- ❄️ **COLD** → Slightly below expected
-- 🧊 **ICE** → Game running low
-
-**Key Metrics:**
-- **Score** = Current combined score
-- **Proj** = Projected final total
-- **Diff** = Points vs expected
-
-**Note:** Requires 6+ minutes of game time to display.
-""")
-
-with st.expander("🎯 CUSHION SCANNER", expanded=False):
-    st.markdown("""
-**What It Shows:** Safety margin at each threshold for live games.
-
-**Reading the Grid:**
-- **Green (+X)** = Points of cushion (positive is good for NO)
-- **Red (-X)** = Negative cushion (bad for NO)
-- **⭐ Orange** = Suggested entry point
-
-**Pace Column:**
-- 🟢 Green = Slow pace
-- 🟡 Yellow = Average
-- 🟠 Orange = Fast
-- 🔴 Red = Very fast
-
-**How to Use:** Select NO or YES from dropdown, then scan for green numbers with orange stars.
-""")
-
-with st.expander("🔥 PACE SCANNER", expanded=False):
-    st.markdown("""
-**What It Shows:** Points per minute for all live games, sorted slowest to fastest.
-
-**Pace Labels:**
-- 🟢 **SLOW** → Lower scoring rate
-- 🟡 **AVG** → Normal scoring rate
-- 🟠 **FAST** → Higher scoring rate
-- 🔴 **SHOOTOUT** → Very high scoring rate
-
-**Key Metrics:**
-- **Pts/Min** = Current scoring rate
-- **Proj** = Projected final total at current pace
-""")
-
-with st.expander("📈 POSITION TRACKING", expanded=False):
-    st.markdown("""
-**What It Does:** Track your totals positions with live updates.
-
-**Status Colors:**
-- 🟢 Green = Position looking good
-- 🟡 Yellow = On track
-- 🟠 Orange = Getting tight
-- 🔴 Red = At risk
-- ✅ WON / ❌ LOST = Final result
-
-**Adding Positions:**
-1. Select game from dropdown
-2. Set threshold
-3. Choose NO or YES
-4. Enter price (cents) and contracts
-5. Click ADD POSITION
-
-**Displayed Info:**
-- **Proj** = Projected final total
-- **Cushion** = Safety margin
-- **Win** = Potential profit
-""")
-
-with st.expander("⭐ STAR INJURY REPORT", expanded=False):
-    st.markdown("""
-**What It Shows:** Star players currently OUT or GTD league-wide.
-
-**Status Meanings:**
-- **OUT** (Red) = Not playing
-- **GTD** (Orange) = Game-time decision
-
-**⚠️ IMPORTANT:**
-Injury data can be delayed. Always verify before betting:
-- [@ShamsCharania](https://twitter.com/ShamsCharania)
-- [@wojespn](https://twitter.com/wojespn)
-""")
-
-with st.expander("🔥 BLOWOUT RISK", expanded=False):
-    st.markdown("""
-**What It Shows:** Games where the away team played yesterday (B2B) and the home team is rested.
-
-**Display Shows:**
-- Home team win probability
-- Link to Kalshi market
-""")
-
-with st.expander("🚀 TRADING SETUP", expanded=False):
-    st.markdown("""
-**Optional:** Connect Kalshi API for direct integration.
-
-**Setup (Sidebar):**
-1. Toggle "Enable Trading" ON
-2. Enter API Key
-3. Enter Private Key (PEM)
-4. Set default contract size
-
-**Note:** Most users just click the green BUY buttons to open Kalshi directly.
-""")
-
-with st.expander("💡 QUICK TIPS", expanded=False):
-    st.markdown("""
-**Before Betting:**
-- ✅ Verify injuries on Twitter
-- ✅ Check current Kalshi prices
-- ✅ Press **R** to refresh data
-
-**Navigation:**
-- Sidebar has the legend for all icons
-- Green buttons open Kalshi markets
-- All data updates when you refresh
-
-**Remember:** This tool helps identify opportunities. Final decisions are yours. Bet responsibly.
-""")
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice. Always verify information before placing any bets.")
