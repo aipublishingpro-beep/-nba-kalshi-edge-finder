@@ -908,17 +908,13 @@ if game_list:
                 col1.markdown(f"**{p['away']}** @ **{p['home']}**")
                 col2.markdown(f"<span style='color:{display_color};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
                 
-                # Use actual Kalshi brackets - no guessing
+                # Show model and recommended bracket
                 if p.get('best_thresh') and p.get('best_cushion'):
-                    rec_thresh = p['best_thresh']
-                    rec_cushion = p['best_cushion']
-                    col3.markdown(f"Model: <b>{p['projected']}</b> | +{rec_cushion:.0f} cushion", unsafe_allow_html=True)
-                    btn_label = f"⭐ {side} {rec_thresh}" if is_best else (f"🚀 {side} {rec_thresh}" if "strong" in tier else f"🔗 {side} {rec_thresh}")
+                    col3.markdown(f"Model: <b>{p['projected']}</b> | 🎯 Buy <b>{side} {p['best_thresh']}</b> | +{p['best_cushion']:.0f} cushion", unsafe_allow_html=True)
                 else:
-                    # No Kalshi data available - don't guess
-                    col3.markdown(f"Model: <b>{p['projected']}</b>", unsafe_allow_html=True)
-                    btn_label = f"⭐ {side}" if is_best else (f"🚀 {side}" if "strong" in tier else f"🔗 {side}")
+                    col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b>", unsafe_allow_html=True)
                 
+                btn_label = f"⭐ BUY {side}" if is_best else (f"🚀 BUY {side}" if "strong" in tier else f"🔗 BUY {side}")
                 col4.link_button(btn_label, build_kalshi_totals_url(p['away'], p['home']))
                 if p.get('reasons'):
                     st.markdown(f"<div style='margin-left:20px;font-size:0.9em;color:#aaa'>{' • '.join(p['reasons'])}</div>", unsafe_allow_html=True)
