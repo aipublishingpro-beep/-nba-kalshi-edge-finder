@@ -162,7 +162,7 @@ with st.sidebar:
     st.markdown("🟢 **STRONG BUY** → 8.0+\n🔵 **BUY** → 6.5-7.9\n⚪ Below 6.5 → Skip")
     st.divider()
     st.subheader("📊 Totals Signal Tiers")
-    st.markdown("🟢 **STRONG** → 7.5+\n🔵 **BUY** → 6.5-7.4\n⚪ Below 6.5 → Skip")
+    st.markdown("🟢 **STRONG** → 7.0+\n🔵 **BUY** → 6.0-6.9\n⚪ Below 6.0 → No Trade")
     st.divider()
     st.subheader("⭐ Star Injury Impact")
     st.markdown("🏥 **Star OUT** → +1.0 to opponent\n🏥 **Star GTD** → +0.6 to opponent")
@@ -622,111 +622,138 @@ def calc_projected_total(home_team, away_team, yesterday_teams):
 
 def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
     home, away = TEAM_STATS.get(home_team, {}), TEAM_STATS.get(away_team, {})
-    score_under, score_over, reasons_under, reasons_over = 0, 0, [], []
-    home_ppg = home.get('ppg', 112)
-    away_ppg = away.get('ppg', 112)
-    combined_ppg = home_ppg + away_ppg
-    if combined_ppg >= 235:
-        score_over += 1.5
-        reasons_over.append(f"🔥 High PPG {combined_ppg:.0f}")
-    elif combined_ppg >= 228:
-        score_over += 0.75
-        reasons_over.append(f"🔥 PPG {combined_ppg:.0f}")
-    elif combined_ppg <= 215:
-        score_under += 1.5
-        reasons_under.append(f"🐢 Low PPG {combined_ppg:.0f}")
-    elif combined_ppg <= 222:
-        score_under += 0.75
-        reasons_under.append(f"🐢 PPG {combined_ppg:.0f}")
+    reasons = []
+    
+    # CATEGORY 1: PACE (cap ±1.75)
+    pace_score = 0.0
     avg_pace = (home.get('pace', 100) + away.get('pace', 100)) / 2
     if avg_pace >= 101.5:
-        score_over += 1.5
-        reasons_over.append(f"🔥 Fast {avg_pace:.1f}")
+        pace_score = +1.75 * 1.2  # rare, high weight
+        reasons.append(f"🔥 Fast {avg_pace:.1f}")
     elif avg_pace >= 100.5:
-        score_over += 1.0
-        reasons_over.append(f"🔥 Pace {avg_pace:.1f}")
+        pace_score = +1.0 * 1.1
+        reasons.append(f"🔥 Pace {avg_pace:.1f}")
     elif avg_pace <= 97.5:
-        score_under += 1.5
-        reasons_under.append(f"🐢 Slow {avg_pace:.1f}")
+        pace_score = -1.5 * 0.7  # common, lower weight
+        reasons.append(f"🐢 Slow {avg_pace:.1f}")
     elif avg_pace <= 98.5:
-        score_under += 1.0
-        reasons_under.append(f"🐢 Pace {avg_pace:.1f}")
+        pace_score = -0.75 * 0.6
+        reasons.append(f"🐢 Pace {avg_pace:.1f}")
+    pace_score = max(-1.75, min(1.75, pace_score))
+    
+    # CATEGORY 2: PPG (cap ±1.75)
+    ppg_score = 0.0
+    combined_ppg = home.get('ppg', 112) + away.get('ppg', 112)
+    if combined_ppg >= 238:
+        ppg_score = +1.75 * 1.3  # rare
+        reasons.append(f"🔥 High PPG {combined_ppg:.0f}")
+    elif combined_ppg >= 230:
+        ppg_score = +1.0 * 1.2
+        reasons.append(f"🔥 PPG {combined_ppg:.0f}")
+    elif combined_ppg <= 212:
+        ppg_score = -1.5 * 0.7
+        reasons.append(f"🐢 Low PPG {combined_ppg:.0f}")
+    elif combined_ppg <= 220:
+        ppg_score = -0.75 * 0.6
+        reasons.append(f"🐢 PPG {combined_ppg:.0f}")
+    ppg_score = max(-1.75, min(1.75, ppg_score))
+    
+    # CATEGORY 3: DEFENSE (cap ±1.25)
+    def_score = 0.0
     avg_def = (home.get('def_rank', 15) + away.get('def_rank', 15)) / 2
-    if avg_def <= 6:
-        score_under += 1.25
-        reasons_under.append(f"🛡️ Elite DEF #{int(avg_def)}")
-    elif avg_def <= 10:
-        score_under += 0.75
-        reasons_under.append(f"🛡️ DEF #{int(avg_def)}")
-    elif avg_def >= 24:
-        score_over += 1.25
-        reasons_over.append(f"💥 Weak DEF #{int(avg_def)}")
-    elif avg_def >= 20:
-        score_over += 0.75
-        reasons_over.append(f"💥 DEF #{int(avg_def)}")
-    home_b2b, away_b2b = home_team in yesterday_teams, away_team in yesterday_teams
+    if avg_def >= 25:
+        def_score = +1.25 * 1.1
+        reasons.append(f"💥 Weak DEF #{int(avg_def)}")
+    elif avg_def >= 21:
+        def_score = +0.75 * 1.0
+        reasons.append(f"💥 DEF #{int(avg_def)}")
+    elif avg_def <= 5:
+        def_score = -1.25 * 0.9
+        reasons.append(f"🛡️ Elite DEF #{int(avg_def)}")
+    elif avg_def <= 9:
+        def_score = -0.75 * 0.8
+        reasons.append(f"🛡️ DEF #{int(avg_def)}")
+    def_score = max(-1.25, min(1.25, def_score))
+    
+    # CATEGORY 4: SITUATIONAL - B2B, altitude (cap ±1.0)
+    sit_score = 0.0
+    home_b2b = home_team in yesterday_teams
+    away_b2b = away_team in yesterday_teams
     if home_b2b and away_b2b:
-        score_under += 1.0
-        reasons_under.append("🛏️ Both B2B")
+        sit_score -= 0.75 * 1.0
+        reasons.append("🛏️ Both B2B")
     elif home_b2b or away_b2b:
-        score_under += 0.5
-        reasons_under.append(f"🛏️ {(home_team if home_b2b else away_team)[:3]} B2B")
+        sit_score -= 0.4 * 1.0
+        reasons.append(f"🛏️ {(home_team if home_b2b else away_team)[:3]} B2B")
+    if home_team == "Denver":
+        sit_score -= 0.4
+        reasons.append("🏔️ Altitude")
+    sit_score = max(-1.0, min(1.0, sit_score))
+    
+    # CATEGORY 5: SHOOTING (cap ±1.0)
+    shoot_score = 0.0
     avg_3pt = (home.get('three_pct', 36) + away.get('three_pct', 36)) / 2
     if avg_3pt >= 37.5:
-        score_over += 1.0
-        reasons_over.append(f"🎯 High 3PT {avg_3pt:.1f}%")
-    elif avg_3pt <= 35:
-        score_under += 0.75
-        reasons_under.append(f"🎯 Low 3PT {avg_3pt:.1f}%")
-    _, home_out, _ = get_injury_score(home_team, injuries)
-    _, away_out, _ = get_injury_score(away_team, injuries)
-    if home_out or away_out:
-        score_under += 0.75
-        reasons_under.append(f"🏥 {', '.join([n[:8] for n in (home_out + away_out)[:2]])} OUT")
+        shoot_score = +0.75 * 1.1
+        reasons.append(f"🎯 High 3PT {avg_3pt:.1f}%")
+    elif avg_3pt <= 34.5:
+        shoot_score = -0.5 * 0.8
+        reasons.append(f"🎯 Low 3PT {avg_3pt:.1f}%")
+    avg_ft = (home.get('ft_rate', 0.25) + away.get('ft_rate', 0.25)) / 2
+    if avg_ft >= 0.28:
+        shoot_score -= 0.3
+    elif avg_ft <= 0.22:
+        shoot_score += 0.3
+    shoot_score = max(-1.0, min(1.0, shoot_score))
+    
+    # CATEGORY 6: MISMATCH / GAME TYPE (cap ±0.75)
+    match_score = 0.0
     home_net = home.get('net_rating', 0)
     away_net = away.get('net_rating', 0)
     net_diff = abs(home_net - away_net)
-    if net_diff >= 12:
-        score_over += 0.75
-        reasons_over.append("💥 Mismatch")
-    elif net_diff <= 2:
-        score_under += 0.5
-        reasons_under.append("⚔️ Close game")
-    if home_team == "Denver":
-        score_under += 0.5
-        reasons_under.append("🏔️ Altitude")
-    avg_ft = (home.get('ft_rate', 0.25) + away.get('ft_rate', 0.25)) / 2
-    if avg_ft >= 0.28:
-        score_under += 0.5
-        reasons_under.append("🎁 High FT rate")
-    elif avg_ft <= 0.22:
-        score_over += 0.5
-        reasons_over.append("🏃 Low FT rate")
     if home_net > 8 and away_net > 5:
-        score_over += 0.75
-        reasons_over.append("⭐ Both elite")
-    elif home_net < -5 and away_net < -5:
-        score_under += 0.5
-        reasons_under.append("📉 Both struggling")
-    total = score_under + score_over
-    if total == 0:
-        return "NO", 5.0, ["No strong signals"]
-    under_pct = score_under / total
-    over_pct = score_over / total
-    max_confidence = 8.5
-    under_final = round(min(max_confidence, 5.0 + (under_pct - 0.5) * 6), 1)
-    over_final = round(min(max_confidence, 5.0 + (over_pct - 0.5) * 6), 1)
-    if under_final > over_final and under_final >= 6.0:
-        return "NO", under_final, reasons_under[:4]
-    elif over_final > under_final and over_final >= 6.0:
-        return "YES", over_final, reasons_over[:4]
-    elif under_final >= over_final:
-        return "NO", under_final, reasons_under[:4]
-    return "YES", over_final, reasons_over[:4]
+        match_score = +0.75
+        reasons.append("⭐ Both elite")
+    elif net_diff >= 12:
+        match_score = +0.5
+        reasons.append("💥 Mismatch")
+    elif net_diff <= 2:
+        match_score = -0.4
+        reasons.append("⚔️ Close game")
+    match_score = max(-0.75, min(0.75, match_score))
+    
+    # CATEGORY 7: INJURIES (cap ±0.75)
+    inj_score = 0.0
+    _, home_out, _ = get_injury_score(home_team, injuries)
+    _, away_out, _ = get_injury_score(away_team, injuries)
+    if home_out or away_out:
+        inj_score = -0.6
+        reasons.append(f"🏥 {', '.join([n[:8] for n in (home_out + away_out)[:2]])} OUT")
+    inj_score = max(-0.75, min(0.75, inj_score))
+    
+    # FINAL CALCULATION
+    raw_score = pace_score + ppg_score + def_score + sit_score + shoot_score + match_score + inj_score
+    
+    # KILL SWITCH: No trade if signal too weak
+    if abs(raw_score) < 0.75:
+        return None, 5.0, ["No clear edge"]
+    
+    # Map to confidence scale
+    confidence = round(min(8.5, max(1.5, 5.0 + abs(raw_score) * 1.25)), 1)
+    
+    # Determine direction and filter reasons
+    if raw_score < 0:
+        under_reasons = [r for r in reasons if any(x in r for x in ["🐢", "🛡️", "🛏️", "🏔️", "⚔️", "🏥", "Low"])][:4]
+        return "NO", confidence, under_reasons if under_reasons else ["Under signals"]
+    else:
+        over_reasons = [r for r in reasons if any(x in r for x in ["🔥", "💥", "⭐", "High"])][:4]
+        return "YES", confidence, over_reasons if over_reasons else ["Over signals"]
 
 def get_totals_signal_tier(score, pick):
-    if score >= 7.5: return f"🟢 STRONG {pick}", "#00ff00"
-    elif score >= 6.5: return f"🔵 {pick}", "#00aaff"
+    if pick is None:
+        return None, None
+    if score >= 7.0: return f"🟢 STRONG {pick}", "#00ff00"
+    elif score >= 6.0: return f"🔵 {pick}", "#00aaff"
     return None, None
 
 games = fetch_espn_scores()
@@ -813,6 +840,8 @@ if game_list:
     for game_key in game_list:
         parts = game_key.split("@")
         pick, score, reasons = calc_totals_score(parts[1], parts[0], yesterday_teams, injuries)
+        if pick is None:
+            continue
         signal, color = get_totals_signal_tier(score, pick)
         if signal:
             projected = calc_projected_total(parts[1], parts[0], yesterday_teams)
@@ -828,9 +857,9 @@ if game_list:
     all_totals.sort(key=lambda x: x['score'], reverse=True)
     best_no_pick = next((p for p in all_totals if p['pick'] == 'NO'), None)
     best_yes_pick = next((p for p in all_totals if p['pick'] == 'YES'), None)
-    for tier, min_s, max_s, label in [("strong_no", 7.5, 99, "### 🟢 STRONG NO"), ("strong_yes", 7.5, 99, "### 🟢 STRONG YES"), ("no", 6.5, 7.5, "### 🔵 NO"), ("yes", 6.5, 7.5, "### 🔵 YES")]:
+    for tier, min_s, max_s, label in [("strong_no", 7.0, 99, "### 🟢 STRONG NO"), ("strong_yes", 7.0, 99, "### 🟢 STRONG YES"), ("no", 6.0, 7.0, "### 🔵 NO"), ("yes", 6.0, 7.0, "### 🔵 YES")]:
         side = "NO" if "no" in tier else "YES"
-        picks = [p for p in all_totals if p['pick'] == side and ((p['score'] >= 7.5) if "strong" in tier else (6.5 <= p['score'] < 7.5))]
+        picks = [p for p in all_totals if p['pick'] == side and ((p['score'] >= 7.0) if "strong" in tier else (6.0 <= p['score'] < 7.0))]
         if picks:
             st.markdown(label)
             for p in picks:
