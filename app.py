@@ -5,7 +5,6 @@ import pytz
 import uuid
 import base64
 
-# Try to import cryptography for trading (optional)
 try:
     from cryptography.hazmat.primitives import serialization, hashes
     from cryptography.hazmat.primitives.asymmetric import padding
@@ -16,7 +15,6 @@ except ImportError:
 
 st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
 
-# ========== STYLING (NO AUTO-REFRESH) ==========
 st.markdown("""
 <style>
 .stLinkButton > a {
@@ -31,9 +29,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ============================================================
-# KALSHI TRADING API
-# ============================================================
 def init_trading():
     if 'kalshi_api_key' not in st.session_state:
         try:
@@ -54,16 +49,9 @@ def create_kalshi_signature(private_key_pem, timestamp, method, path):
     if not CRYPTO_AVAILABLE:
         return None
     try:
-        private_key = serialization.load_pem_private_key(
-            private_key_pem.encode(), password=None, backend=default_backend()
-        )
-        path_without_query = path.split('?')[0]
-        message = f"{timestamp}{method}{path_without_query}".encode('utf-8')
-        signature = private_key.sign(
-            message,
-            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.DIGEST_LENGTH),
-            hashes.SHA256()
-        )
+        private_key = serialization.load_pem_private_key(private_key_pem.encode(), password=None, backend=default_backend())
+        message = f"{timestamp}{method}{path.split('?')[0]}".encode('utf-8')
+        signature = private_key.sign(message, padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.DIGEST_LENGTH), hashes.SHA256())
         return base64.b64encode(signature).decode()
     except:
         return None
@@ -77,16 +65,8 @@ def place_kalshi_order(ticker, side, price_cents, count, api_key, private_key_pe
         signature = create_kalshi_signature(private_key_pem, timestamp, "POST", path)
         if not signature:
             return False, "Failed to create signature"
-        headers = {
-            'KALSHI-ACCESS-KEY': api_key,
-            'KALSHI-ACCESS-SIGNATURE': signature,
-            'KALSHI-ACCESS-TIMESTAMP': timestamp,
-            'Content-Type': 'application/json'
-        }
-        order_data = {
-            "ticker": ticker, "action": "buy", "side": side.lower(),
-            "count": count, "type": "limit", "client_order_id": str(uuid.uuid4())
-        }
+        headers = {'KALSHI-ACCESS-KEY': api_key, 'KALSHI-ACCESS-SIGNATURE': signature, 'KALSHI-ACCESS-TIMESTAMP': timestamp, 'Content-Type': 'application/json'}
+        order_data = {"ticker": ticker, "action": "buy", "side": side.lower(), "count": count, "type": "limit", "client_order_id": str(uuid.uuid4())}
         if side.lower() == "no":
             order_data["no_price"] = price_cents
         else:
@@ -95,14 +75,12 @@ def place_kalshi_order(ticker, side, price_cents, count, api_key, private_key_pe
         if response.status_code == 201:
             return True, f"✅ Order placed! {count}x {side} @ {price_cents}¢"
         else:
-            error_msg = response.json().get('error', {}).get('message', response.text)
-            return False, f"❌ Error: {error_msg}"
+            return False, f"❌ Error: {response.json().get('error', {}).get('message', response.text)}"
     except Exception as e:
         return False, f"❌ Error: {str(e)}"
 
 init_trading()
 
-# ========== KALSHI TEAM CODES ==========
 KALSHI_CODES = {
     "Atlanta": "atl", "Boston": "bos", "Brooklyn": "bkn", "Charlotte": "cha",
     "Chicago": "chi", "Cleveland": "cle", "Dallas": "dal", "Denver": "den",
@@ -119,16 +97,14 @@ def build_kalshi_totals_url(away_team, home_team):
     home_code = KALSHI_CODES.get(home_team, "xxx")
     today = datetime.now(pytz.timezone('US/Eastern'))
     date_str = today.strftime("%y%b%d").lower()
-    ticker = f"kxnbatotal-{date_str}{away_code}{home_code}"
-    return f"https://kalshi.com/markets/kxnbatotal/pro-basketball-total-points/{ticker}"
+    return f"https://kalshi.com/markets/kxnbatotal/pro-basketball-total-points/kxnbatotal-{date_str}{away_code}{home_code}"
 
 def build_kalshi_ml_url(away_team, home_team):
     away_code = KALSHI_CODES.get(away_team, "xxx")
     home_code = KALSHI_CODES.get(home_team, "xxx")
     today = datetime.now(pytz.timezone('US/Eastern'))
     date_str = today.strftime("%y%b%d").lower()
-    ticker = f"kxnbagame-{date_str}{away_code}{home_code}"
-    return f"https://kalshi.com/markets/kxnbagame/pro-basketball-moneyline/{ticker}"
+    return f"https://kalshi.com/markets/kxnbagame/pro-basketball-moneyline/kxnbagame-{date_str}{away_code}{home_code}"
 
 def build_kalshi_ticker(away_team, home_team, threshold):
     away_code = KALSHI_CODES.get(away_team, "xxx")
@@ -140,7 +116,8 @@ def build_kalshi_ticker(away_team, home_team, threshold):
         thresh_str += ".5"
     return f"KXNBATOTAL-{date_str}{away_code.upper()}{home_code.upper()}-T{thresh_str}"
 
-def fetch_kalshi_market_line(away_team, home_team):
+def fetch_kalshi_markets(away_team, home_team):
+    """Fetch ALL available Kalshi markets/thresholds for a game"""
     try:
         away_code = KALSHI_CODES.get(away_team, "xxx")
         home_code = KALSHI_CODES.get(home_team, "xxx")
@@ -150,49 +127,55 @@ def fetch_kalshi_market_line(away_team, home_team):
         url = f"https://api.elections.kalshi.com/trade-api/v2/markets?event_ticker={event_ticker}"
         resp = requests.get(url, timeout=10)
         if resp.status_code != 200:
-            return None, None, {}
+            return None, []
         data = resp.json()
         markets = data.get("markets", [])
         if not markets:
-            return None, None, {}
+            return None, []
+        all_thresholds = []
         best_threshold = None
         best_diff = 100
-        all_thresholds = []
         for market in markets:
             thresh = market.get("floor_strike")
-            yes_price = market.get("yes_ask") or market.get("last_price") or 50
+            yes_bid = market.get("yes_bid") or 0
+            yes_ask = market.get("yes_ask") or 0
+            no_bid = market.get("no_bid") or 0
+            no_ask = market.get("no_ask") or 0
+            last_price = market.get("last_price") or 50
             if thresh:
-                all_thresholds.append({"threshold": thresh, "yes_price": yes_price})
-                diff = abs(yes_price - 50)
+                all_thresholds.append({
+                    "threshold": thresh,
+                    "yes_bid": yes_bid,
+                    "yes_ask": yes_ask,
+                    "no_bid": no_bid,
+                    "no_ask": no_ask,
+                    "last_price": last_price
+                })
+                mid_price = (yes_bid + yes_ask) / 2 if yes_bid and yes_ask else last_price
+                diff = abs(mid_price - 50)
                 if diff < best_diff:
                     best_diff = diff
                     best_threshold = thresh
-        return best_threshold, all_thresholds, {}
+        all_thresholds.sort(key=lambda x: x['threshold'])
+        return best_threshold, all_thresholds
     except:
-        return None, None, {}
+        return None, []
 
 if "positions" not in st.session_state:
     st.session_state.positions = []
 
-# ========== SIDEBAR ==========
 with st.sidebar:
     st.header("📖 LEGEND")
     st.subheader("🎯 ML Signal Tiers")
-    st.markdown("🟢 **STRONG BUY** → 8.0+\n🔵 **BUY** → 6.5 - 7.9\n⚪ Below 6.5 → Skip")
-    st.divider()
-    st.subheader("📊 10-Factor ML System")
-    st.markdown("1. Rest Advantage\n2. Net Rating Edge\n3. Defense Ranking\n4. Home Court\n5. Injury Impact\n6. Travel Fatigue\n7. Home/Away Splits\n8. Division Rivalry\n9. Altitude (Denver)\n10. Team Quality")
-    st.divider()
-    st.subheader("🎯 Totals Signal Tiers")
-    st.markdown("🟢 **STRONG** → 8.0+\n🔵 **Regular** → 6.5 - 7.9\n⚪ Below 6.5 → Skip")
+    st.markdown("🟢 **STRONG BUY** → 8.0+\n🔵 **BUY** → 6.5-7.9\n⚪ Below 6.5 → Skip")
     st.divider()
     st.subheader("Cushion Scanner")
-    st.markdown("🟢 **+20** → 2x size\n🔵 **+12-19** → 1x size\n🟡 **+6-11** → 0.5x size\n❌ Under +6 → Skip")
+    st.markdown("🟢 **+20** → 2x size\n🔵 **+12-19** → 1x size\n🟡 **+6-11** → 0.5x\n❌ Under +6 → Skip")
     st.divider()
     st.subheader("Pace Benchmarks")
-    st.markdown("🟢 SLOW → Under 4.5/min\n🟡 AVG → 4.5-4.8/min\n🟠 FAST → 4.8-5.2/min\n🔴 SHOOTOUT → 5.2+/min")
+    st.markdown("🟢 SLOW → <4.5/min\n🟡 AVG → 4.5-4.8\n🟠 FAST → 4.8-5.2\n🔴 SHOOTOUT → 5.2+")
     st.divider()
-    st.subheader("🚀 ONE-CLICK TRADING")
+    st.subheader("🚀 TRADING")
     if not CRYPTO_AVAILABLE:
         st.warning("Add `cryptography` to requirements.txt")
     else:
@@ -207,12 +190,9 @@ with st.sidebar:
             else:
                 st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", height=100)
             st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, max_value=500, value=st.session_state.default_contracts)
-            if st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
-                st.success("✅ Ready to trade!")
     st.divider()
-    st.caption("v15.0")
+    st.caption("v15.1")
 
-# ========== TEAM DATA ==========
 TEAM_ABBREVS = {
     "Atlanta Hawks": "Atlanta", "Boston Celtics": "Boston", "Brooklyn Nets": "Brooklyn",
     "Charlotte Hornets": "Charlotte", "Chicago Bulls": "Chicago", "Cleveland Cavaliers": "Cleveland",
@@ -325,12 +305,7 @@ def fetch_espn_scores():
             clock = status_obj.get("displayClock", "")
             period = status_obj.get("period", 0)
             game_key = f"{away_team}@{home_team}"
-            games[game_key] = {
-                "away_team": away_team, "home_team": home_team,
-                "away_score": away_score, "home_score": home_score,
-                "total": away_score + home_score,
-                "period": period, "clock": clock, "status_type": status_type
-            }
+            games[game_key] = {"away_team": away_team, "home_team": home_team, "away_score": away_score, "home_score": home_score, "total": away_score + home_score, "period": period, "clock": clock, "status_type": status_type}
         return games
     except:
         return {}
@@ -346,8 +321,7 @@ def fetch_yesterday_teams():
             comp = event.get("competitions", [{}])[0]
             for c in comp.get("competitors", []):
                 full_name = c.get("team", {}).get("displayName", "")
-                team_name = TEAM_ABBREVS.get(full_name, full_name)
-                teams_played.add(team_name)
+                teams_played.add(TEAM_ABBREVS.get(full_name, full_name))
         return teams_played
     except:
         return set()
@@ -363,9 +337,7 @@ def fetch_espn_injuries():
             team_key = TEAM_ABBREVS.get(team_name, team_name)
             injuries[team_key] = []
             for player in team_data.get("injuries", []):
-                name = player.get("athlete", {}).get("displayName", "")
-                status = player.get("status", "")
-                injuries[team_key].append({"name": name, "status": status})
+                injuries[team_key].append({"name": player.get("athlete", {}).get("displayName", ""), "status": player.get("status", "")})
     except:
         pass
     return injuries
@@ -373,11 +345,9 @@ def fetch_espn_injuries():
 def get_injury_score(team, injuries):
     team_injuries = injuries.get(team, [])
     stars = STAR_PLAYERS.get(team, [])
-    score = 0
-    out_stars = []
+    score, out_stars = 0, []
     for inj in team_injuries:
-        name = inj.get("name", "")
-        status = inj.get("status", "").upper()
+        name, status = inj.get("name", ""), inj.get("status", "").upper()
         is_star = any(star.lower() in name.lower() for star in stars)
         if "OUT" in status:
             score += 4.0 if is_star else 1.0
@@ -398,11 +368,9 @@ def get_minutes_played(period, clock, status_type):
         clock_str = str(clock)
         if ':' in clock_str:
             parts = clock_str.split(':')
-            mins = int(parts[0])
-            secs = int(float(parts[1])) if len(parts) > 1 else 0
+            mins, secs = int(parts[0]), int(float(parts[1])) if len(parts) > 1 else 0
         else:
-            mins = 0
-            secs = float(clock_str) if clock_str else 0
+            mins, secs = 0, float(clock_str) if clock_str else 0
         time_left = mins + secs/60
         if period <= 4:
             return (period - 1) * 12 + (12 - time_left)
@@ -414,11 +382,8 @@ def get_minutes_played(period, clock, status_type):
 def calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, away_inj, kalshi_price):
     home = TEAM_STATS.get(home_team, {"pace": 100, "def_rank": 15, "net_rating": 0, "ft_rate": 0.25, "reb_rate": 50, "three_pct": 36, "home_win_pct": 0.5, "away_win_pct": 0.5, "division": ""})
     away = TEAM_STATS.get(away_team, {"pace": 100, "def_rank": 15, "net_rating": 0, "ft_rate": 0.25, "reb_rate": 50, "three_pct": 36, "home_win_pct": 0.5, "away_win_pct": 0.5, "division": ""})
-    home_loc = TEAM_LOCATIONS.get(home_team, (0, 0))
-    away_loc = TEAM_LOCATIONS.get(away_team, (0, 0))
-    travel_miles = calc_distance(away_loc, home_loc)
-    rest_diff = home_rest - away_rest
-    rest_score = max(-6, min(6, rest_diff * 2))
+    travel_miles = calc_distance(TEAM_LOCATIONS.get(away_team, (0,0)), TEAM_LOCATIONS.get(home_team, (0,0)))
+    rest_score = max(-6, min(6, (home_rest - away_rest) * 2))
     def_score = (away['def_rank'] - home['def_rank']) * 0.15
     injury_score = (away_inj - home_inj) * 1.5
     pace_diff = home['pace'] - away['pace']
@@ -431,32 +396,26 @@ def calc_12_factor_edge(home_team, away_team, home_rest, away_rest, home_inj, aw
     ft_score = (home.get('ft_rate', 0.25) - away.get('ft_rate', 0.25)) * 20
     reb_score = (home.get('reb_rate', 50) - away.get('reb_rate', 50)) * 0.3
     three_score = (home.get('three_pct', 36) - away.get('three_pct', 36)) * 0.5
-    home_court = 3.0
-    weighted_spread = home_court + rest_score + def_score + injury_score + pace_score + net_score + travel_score + split_score + h2h_score + altitude_score + ft_score + reb_score + three_score
+    weighted_spread = 3.0 + rest_score + def_score + injury_score + pace_score + net_score + travel_score + split_score + h2h_score + altitude_score + ft_score + reb_score + three_score
     home_win_prob = max(5, min(95, 50 + weighted_spread * 2.5))
-    edge = home_win_prob - kalshi_price
-    return {'home_win_prob': round(home_win_prob, 1), 'kalshi_price': kalshi_price, 'edge': round(edge, 1), 'expected_spread': round(weighted_spread, 1)}
+    return {'home_win_prob': round(home_win_prob, 1), 'kalshi_price': kalshi_price, 'edge': round(home_win_prob - kalshi_price, 1), 'expected_spread': round(weighted_spread, 1)}
 
 def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     home = TEAM_STATS.get(home_team, {})
     away = TEAM_STATS.get(away_team, {})
-    home_loc = TEAM_LOCATIONS.get(home_team, (0, 0))
-    away_loc = TEAM_LOCATIONS.get(away_team, (0, 0))
-    score_home, score_away = 0, 0
-    reasons_home, reasons_away = [], []
-    home_b2b = home_team in yesterday_teams
-    away_b2b = away_team in yesterday_teams
+    home_loc, away_loc = TEAM_LOCATIONS.get(home_team, (0,0)), TEAM_LOCATIONS.get(away_team, (0,0))
+    score_home, score_away, reasons_home, reasons_away = 0, 0, [], []
+    home_b2b, away_b2b = home_team in yesterday_teams, away_team in yesterday_teams
     if away_b2b and not home_b2b:
         score_home += 1.0
         reasons_home.append("🛏️ Opp B2B")
     elif home_b2b and not away_b2b:
         score_away += 1.0
         reasons_away.append("🛏️ Opp B2B")
-    elif not home_b2b and not away_b2b:
+    else:
         score_home += 0.5
         score_away += 0.5
-    home_net = home.get('net_rating', 0)
-    away_net = away.get('net_rating', 0)
+    home_net, away_net = home.get('net_rating', 0), away.get('net_rating', 0)
     net_diff = home_net - away_net
     if net_diff > 5:
         score_home += 1.0
@@ -474,8 +433,7 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     else:
         score_away += 1.0
         reasons_away.append(f"📊 Net +{away_net:.1f}")
-    home_def = home.get('def_rank', 15)
-    away_def = away.get('def_rank', 15)
+    home_def, away_def = home.get('def_rank', 15), away.get('def_rank', 15)
     if home_def <= 5:
         score_home += 1.0
         reasons_home.append(f"🛡️ #{home_def} DEF")
@@ -498,20 +456,16 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     inj_diff = away_inj - home_inj
     if inj_diff > 3:
         score_home += 1.0
-        if away_stars:
-            reasons_home.append(f"🏥 {away_stars[0][:10]} OUT")
+        if away_stars: reasons_home.append(f"🏥 {away_stars[0][:10]} OUT")
     elif inj_diff > 1:
         score_home += 0.6
-        if away_stars:
-            reasons_home.append(f"🏥 {away_stars[0][:10]} OUT")
+        if away_stars: reasons_home.append(f"🏥 {away_stars[0][:10]} OUT")
     elif inj_diff < -3:
         score_away += 1.0
-        if home_stars:
-            reasons_away.append(f"🏥 {home_stars[0][:10]} OUT")
+        if home_stars: reasons_away.append(f"🏥 {home_stars[0][:10]} OUT")
     elif inj_diff < -1:
         score_away += 0.6
-        if home_stars:
-            reasons_away.append(f"🏥 {home_stars[0][:10]} OUT")
+        if home_stars: reasons_away.append(f"🏥 {home_stars[0][:10]} OUT")
     else:
         score_home += 0.3
         score_away += 0.3
@@ -526,102 +480,53 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
         score_home += 0.5
     elif travel_miles > 500:
         score_home += 0.3
-    home_hw = home.get('home_win_pct', 0.5)
-    away_aw = away.get('away_win_pct', 0.5)
+    home_hw, away_aw = home.get('home_win_pct', 0.5), away.get('away_win_pct', 0.5)
     reasons_home.append(f"🏠 {int(home_hw*100)}% home")
-    if home_hw > 0.65:
-        score_home += 0.8
-    elif home_hw > 0.55:
-        score_home += 0.5
+    if home_hw > 0.65: score_home += 0.8
+    elif home_hw > 0.55: score_home += 0.5
     if away_aw < 0.35:
         score_home += 0.5
         reasons_home.append(f"📉 Opp {int(away_aw*100)}% road")
     elif away_aw < 0.45:
         score_home += 0.3
-        reasons_home.append(f"📉 Opp {int(away_aw*100)}% road")
     if home.get('division') == away.get('division') and home.get('division'):
         score_home += 0.5
         reasons_home.append("⚔️ Division")
     if home_team == "Denver":
         score_home += 1.0
         reasons_home.append("🏔️ Altitude")
-    if home_net > 5:
+    if home_net > 5 and f"📊 Net +{home_net:.1f}" not in reasons_home:
         score_home += 0.5
-        if f"📊 Net +{home_net:.1f}" not in reasons_home:
-            reasons_home.append("⭐ Elite")
-    if away_net > 5:
+        reasons_home.append("⭐ Elite")
+    if away_net > 5 and f"📊 Net +{away_net:.1f}" not in reasons_away:
         score_away += 0.5
-        if f"📊 Net +{away_net:.1f}" not in reasons_away:
-            reasons_away.append("⭐ Elite")
+        reasons_away.append("⭐ Elite")
     total = score_home + score_away
-    if total > 0:
-        home_final = round((score_home / total) * 10, 1)
-        away_final = round((score_away / total) * 10, 1)
-    else:
-        home_final, away_final = 5.0, 5.0
+    home_final = round((score_home / total) * 10, 1) if total > 0 else 5.0
+    away_final = round((score_away / total) * 10, 1) if total > 0 else 5.0
     if home_final >= away_final:
         return home_team, home_final, round((home_final - 5) * 4, 0), reasons_home[:4], home_stars, away_stars
-    else:
-        return away_team, away_final, round((away_final - 5) * 4, 0), reasons_away[:4], home_stars, away_stars
+    return away_team, away_final, round((away_final - 5) * 4, 0), reasons_away[:4], home_stars, away_stars
 
 def get_signal_tier(score):
-    if score >= 8.0:
-        return "🟢 STRONG BUY", "#00ff00"
-    elif score >= 6.5:
-        return "🔵 BUY", "#00aaff"
+    if score >= 8.0: return "🟢 STRONG BUY", "#00ff00"
+    elif score >= 6.5: return "🔵 BUY", "#00aaff"
     return None, None
 
 def calc_projected_total(home_team, away_team, yesterday_teams):
-    home = TEAM_STATS.get(home_team, {})
-    away = TEAM_STATS.get(away_team, {})
-    base_total = 225
-    home_pace = home.get('pace', 100)
-    away_pace = away.get('pace', 100)
-    avg_pace = (home_pace + away_pace) / 2
-    pace_adj = (avg_pace - 100) * 2
-    home_def = home.get('def_rank', 15)
-    away_def = away.get('def_rank', 15)
-    avg_def = (home_def + away_def) / 2
-    def_adj = (avg_def - 15) * 0.8
-    home_b2b = home_team in yesterday_teams
-    away_b2b = away_team in yesterday_teams
-    if home_b2b and away_b2b:
-        fatigue_adj = -6
-    elif home_b2b or away_b2b:
-        fatigue_adj = -3
-    else:
-        fatigue_adj = 0
+    home, away = TEAM_STATS.get(home_team, {}), TEAM_STATS.get(away_team, {})
+    base = 225
+    pace_adj = ((home.get('pace', 100) + away.get('pace', 100)) / 2 - 100) * 2
+    def_adj = ((home.get('def_rank', 15) + away.get('def_rank', 15)) / 2 - 15) * 0.8
+    home_b2b, away_b2b = home_team in yesterday_teams, away_team in yesterday_teams
+    fatigue_adj = -6 if home_b2b and away_b2b else (-3 if home_b2b or away_b2b else 0)
     altitude_adj = -4 if home_team == "Denver" else 0
-    return round(base_total + pace_adj + def_adj + fatigue_adj + altitude_adj)
-
-def calc_recommended_threshold(kalshi_line, pick, score):
-    if score >= 10:
-        cushion = 6
-    elif score >= 9:
-        cushion = 8
-    elif score >= 8:
-        cushion = 10
-    elif score >= 7:
-        cushion = 12
-    else:
-        cushion = 14
-    if pick == "NO":
-        threshold = kalshi_line + cushion
-    else:
-        threshold = kalshi_line - cushion
-    threshold = round(threshold * 2) / 2
-    if threshold == int(threshold):
-        threshold += 0.5
-    return threshold
+    return round(base + pace_adj + def_adj + fatigue_adj + altitude_adj)
 
 def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
-    home = TEAM_STATS.get(home_team, {})
-    away = TEAM_STATS.get(away_team, {})
-    score_under, score_over = 0, 0
-    reasons_under, reasons_over = [], []
-    home_pace = home.get('pace', 100)
-    away_pace = away.get('pace', 100)
-    avg_pace = (home_pace + away_pace) / 2
+    home, away = TEAM_STATS.get(home_team, {}), TEAM_STATS.get(away_team, {})
+    score_under, score_over, reasons_under, reasons_over = 0, 0, [], []
+    avg_pace = (home.get('pace', 100) + away.get('pace', 100)) / 2
     if avg_pace < 98.5:
         score_under += 1.5
         reasons_under.append(f"🐢 Slow {avg_pace:.1f}")
@@ -634,9 +539,7 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
     elif avg_pace > 100:
         score_over += 1.0
         reasons_over.append(f"🔥 Pace {avg_pace:.1f}")
-    home_def = home.get('def_rank', 15)
-    away_def = away.get('def_rank', 15)
-    avg_def = (home_def + away_def) / 2
+    avg_def = (home.get('def_rank', 15) + away.get('def_rank', 15)) / 2
     if avg_def <= 8:
         score_under += 1.5
         reasons_under.append(f"🛡️ DEF #{int(avg_def)}")
@@ -649,33 +552,26 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
     elif avg_def >= 18:
         score_over += 1.0
         reasons_over.append(f"💥 DEF #{int(avg_def)}")
-    home_b2b = home_team in yesterday_teams
-    away_b2b = away_team in yesterday_teams
+    home_b2b, away_b2b = home_team in yesterday_teams, away_team in yesterday_teams
     if home_b2b and away_b2b:
         score_under += 1.5
         reasons_under.append("🛏️ Both B2B")
     elif home_b2b or away_b2b:
         score_under += 0.75
-        tired_team = home_team if home_b2b else away_team
-        reasons_under.append(f"🛏️ {tired_team[:3]} B2B")
-    home_3pt = home.get('three_pct', 36)
-    away_3pt = away.get('three_pct', 36)
-    avg_3pt = (home_3pt + away_3pt) / 2
+        reasons_under.append(f"🛏️ {(home_team if home_b2b else away_team)[:3]} B2B")
+    avg_3pt = (home.get('three_pct', 36) + away.get('three_pct', 36)) / 2
     if avg_3pt < 35.5:
         score_under += 1.0
         reasons_under.append(f"🎯 Low 3PT {avg_3pt:.1f}%")
     elif avg_3pt > 37.5:
         score_over += 1.0
         reasons_over.append(f"🎯 High 3PT {avg_3pt:.1f}%")
-    home_inj, home_stars = get_injury_score(home_team, injuries)
-    away_inj, away_stars = get_injury_score(away_team, injuries)
+    _, home_stars = get_injury_score(home_team, injuries)
+    _, away_stars = get_injury_score(away_team, injuries)
     if home_stars or away_stars:
         score_under += 1.0
-        out_names = (home_stars + away_stars)[:2]
-        reasons_under.append(f"🏥 {', '.join([n[:8] for n in out_names])} OUT")
-    home_net = home.get('net_rating', 0)
-    away_net = away.get('net_rating', 0)
-    net_diff = abs(home_net - away_net)
+        reasons_under.append(f"🏥 {', '.join([n[:8] for n in (home_stars + away_stars)[:2]])} OUT")
+    net_diff = abs(home.get('net_rating', 0) - away.get('net_rating', 0))
     if net_diff > 10:
         score_over += 0.75
         reasons_over.append("💥 Blowout risk")
@@ -685,386 +581,241 @@ def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
     if home_team == "Denver":
         score_under += 0.75
         reasons_under.append("🏔️ Denver altitude")
-    home_ft = home.get('ft_rate', 0.25)
-    away_ft = away.get('ft_rate', 0.25)
-    avg_ft = (home_ft + away_ft) / 2
+    avg_ft = (home.get('ft_rate', 0.25) + away.get('ft_rate', 0.25)) / 2
     if avg_ft > 0.27:
         score_under += 0.5
         reasons_under.append("🎁 High FT rate")
     elif avg_ft < 0.23:
         score_over += 0.5
         reasons_over.append("🏃 Low FT rate")
-    home_reb = home.get('reb_rate', 50)
-    away_reb = away.get('reb_rate', 50)
-    avg_reb = (home_reb + away_reb) / 2
+    avg_reb = (home.get('reb_rate', 50) + away.get('reb_rate', 50)) / 2
     if avg_reb > 51.5:
         score_under += 0.5
         reasons_under.append("🏀 Control boards")
-    if home.get('home_win_pct', 0.5) > 0.65 and home_net > 5:
+    if home.get('home_win_pct', 0.5) > 0.65 and home.get('net_rating', 0) > 5:
         score_over += 0.5
         reasons_over.append("🏠 Home scoring")
     total = score_under + score_over
-    if total > 0:
-        under_final = round((score_under / total) * 10, 1)
-        over_final = round((score_over / total) * 10, 1)
-    else:
-        under_final, over_final = 5.0, 5.0
+    under_final = round((score_under / total) * 10, 1) if total > 0 else 5.0
+    over_final = round((score_over / total) * 10, 1) if total > 0 else 5.0
     if under_final >= over_final:
         return "NO", under_final, reasons_under[:4]
-    else:
-        return "YES", over_final, reasons_over[:4]
+    return "YES", over_final, reasons_over[:4]
 
 def get_totals_signal_tier(score, pick):
-    if score >= 8.0:
-        return f"🟢 STRONG {pick}", "#00ff00"
-    elif score >= 6.5:
-        return f"🔵 {pick}", "#00aaff"
+    if score >= 8.0: return f"🟢 STRONG {pick}", "#00ff00"
+    elif score >= 6.5: return f"🔵 {pick}", "#00aaff"
     return None, None
 
-# ========== FETCH DATA ==========
 games = fetch_espn_scores()
 game_list = sorted(list(games.keys()))
 yesterday_teams = fetch_yesterday_teams()
 injuries = fetch_espn_injuries()
 now = datetime.now(pytz.timezone('US/Eastern'))
 
-# ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v15.0 | 🔄 Press R to refresh")
+st.caption(f"Last update: {now.strftime('%I:%M:%S %p ET')} | v15.1 | 🔄 Press R to refresh")
 
-# ========== ML BIG SNAPSHOT ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
 if game_list:
     all_picks = []
     for game_key in game_list:
         parts = game_key.split("@")
-        away_team, home_team = parts[0], parts[1]
-        pick, score, edge, reasons, home_out, away_out = calc_ml_score(home_team, away_team, yesterday_teams, injuries)
+        pick, score, edge, reasons, _, _ = calc_ml_score(parts[1], parts[0], yesterday_teams, injuries)
         signal, color = get_signal_tier(score)
         if signal:
-            all_picks.append({'game': game_key, 'home': home_team, 'away': away_team, 'pick': pick, 'score': score, 'edge': edge, 'signal': signal, 'color': color, 'reasons': reasons})
+            all_picks.append({'game': game_key, 'home': parts[1], 'away': parts[0], 'pick': pick, 'score': score, 'edge': edge, 'color': color, 'reasons': reasons})
     all_picks.sort(key=lambda x: x['score'], reverse=True)
-    strong_buys = [p for p in all_picks if p['score'] >= 8.0]
-    buys = [p for p in all_picks if 6.5 <= p['score'] < 8.0]
-    if strong_buys:
-        st.markdown("### 🟢 STRONG BUY")
-        for p in strong_buys:
-            reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
-            is_home = p['pick'] == p['home']
-            opp = p['away'] if is_home else p['home']
-            tag = "🏠" if is_home else "✈️"
-            col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
-            col1.markdown(f"**<span style='color:#00ff00'>{p['pick']}</span>** {tag} vs {opp}", unsafe_allow_html=True)
-            col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
-            col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
-            col4.link_button(f"🚀 BUY", build_kalshi_ml_url(p['away'], p['home']))
-    if buys:
-        st.markdown("### 🔵 BUY")
-        for p in buys:
-            reasons_str = " • ".join(p['reasons']) if p['reasons'] else "Multiple factors"
-            is_home = p['pick'] == p['home']
-            opp = p['away'] if is_home else p['home']
-            tag = "🏠" if is_home else "✈️"
-            col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
-            col1.markdown(f"**<span style='color:#00aaff'>{p['pick']}</span>** {tag} vs {opp}", unsafe_allow_html=True)
-            col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
-            col3.markdown(f"<span style='color:#aaa;font-size:0.9em'>{reasons_str}</span>", unsafe_allow_html=True)
-            col4.link_button(f"🔗 BUY", build_kalshi_ml_url(p['away'], p['home']))
-    if not strong_buys and not buys:
+    for tier, min_score, label in [("strong", 8.0, "### 🟢 STRONG BUY"), ("buy", 6.5, "### 🔵 BUY")]:
+        picks = [p for p in all_picks if (p['score'] >= 8.0 if tier == "strong" else 6.5 <= p['score'] < 8.0)]
+        if picks:
+            st.markdown(label)
+            for p in picks:
+                col1, col2, col3, col4 = st.columns([3, 2, 4, 2])
+                tag = "🏠" if p['pick'] == p['home'] else "✈️"
+                opp = p['away'] if p['pick'] == p['home'] else p['home']
+                col1.markdown(f"**<span style='color:{p['color']}'>{p['pick']}</span>** {tag} vs {opp}", unsafe_allow_html=True)
+                col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10 | +{p['edge']:.0f}%</span>", unsafe_allow_html=True)
+                col3.markdown(f"<span style='color:#aaa'>{' • '.join(p['reasons'])}</span>", unsafe_allow_html=True)
+                col4.link_button("🚀 BUY" if tier == "strong" else "🔗 BUY", build_kalshi_ml_url(p['away'], p['home']))
+    if not all_picks:
         st.info("⚪ No actionable ML plays today")
 else:
     st.info("No games scheduled today")
 
 st.divider()
 
-# ========== TOTALS BIG SNAPSHOT ==========
-st.subheader("🎯 TOTALS BIG SNAPSHOT - TODAY'S OVER/UNDER PICKS")
+st.subheader("🎯 TOTALS BIG SNAPSHOT")
 if game_list:
     all_totals = []
     for game_key in game_list:
         parts = game_key.split("@")
-        away_team, home_team = parts[0], parts[1]
-        pick, score, reasons = calc_totals_score(home_team, away_team, yesterday_teams, injuries)
+        pick, score, reasons = calc_totals_score(parts[1], parts[0], yesterday_teams, injuries)
         signal, color = get_totals_signal_tier(score, pick)
-        projected = calc_projected_total(home_team, away_team, yesterday_teams)
-        kalshi_line, _, _ = fetch_kalshi_market_line(away_team, home_team)
-        if not kalshi_line:
-            kalshi_line = 232
-        rec_threshold = calc_recommended_threshold(kalshi_line, pick, score)
         if signal:
-            all_totals.append({'game': game_key, 'home': home_team, 'away': away_team, 'pick': pick, 'score': score, 'signal': signal, 'color': color, 'reasons': reasons, 'projected': projected, 'kalshi_line': kalshi_line, 'rec_threshold': rec_threshold})
+            projected = calc_projected_total(parts[1], parts[0], yesterday_teams)
+            kalshi_line, _ = fetch_kalshi_markets(parts[0], parts[1])
+            if not kalshi_line: kalshi_line = 232
+            all_totals.append({'game': game_key, 'home': parts[1], 'away': parts[0], 'pick': pick, 'score': score, 'color': color, 'projected': projected, 'kalshi_line': kalshi_line})
     all_totals.sort(key=lambda x: x['score'], reverse=True)
-    strong_no = [p for p in all_totals if p['score'] >= 8.0 and p['pick'] == "NO"]
-    strong_yes = [p for p in all_totals if p['score'] >= 8.0 and p['pick'] == "YES"]
-    reg_no = [p for p in all_totals if 6.5 <= p['score'] < 8.0 and p['pick'] == "NO"]
-    reg_yes = [p for p in all_totals if 6.5 <= p['score'] < 8.0 and p['pick'] == "YES"]
-    if strong_no:
-        st.markdown("### 🟢 STRONG NO (Under)")
-        for p in strong_no:
-            col1, col2, col3, col4 = st.columns([2, 2, 5, 2])
-            col1.markdown(f"**{p['away']}** @ **{p['home']}**")
-            col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00ff00;font-weight:bold'>SAFE: NO @ {p['rec_threshold']}+</span>", unsafe_allow_html=True)
-            col4.link_button(f"🚀 BUY NO", build_kalshi_totals_url(p['away'], p['home']))
-    if strong_yes:
-        st.markdown("### 🟢 STRONG YES (Over)")
-        for p in strong_yes:
-            col1, col2, col3, col4 = st.columns([2, 2, 5, 2])
-            col1.markdown(f"**{p['away']}** @ **{p['home']}**")
-            col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00ff00;font-weight:bold'>SAFE: YES @ {p['rec_threshold']}-</span>", unsafe_allow_html=True)
-            col4.link_button(f"🚀 BUY YES", build_kalshi_totals_url(p['away'], p['home']))
-    if reg_no:
-        st.markdown("### 🔵 NO (Under)")
-        for p in reg_no:
-            col1, col2, col3, col4 = st.columns([2, 2, 5, 2])
-            col1.markdown(f"**{p['away']}** @ **{p['home']}**")
-            col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00aaff;font-weight:bold'>SAFE: NO @ {p['rec_threshold']}+</span>", unsafe_allow_html=True)
-            col4.link_button(f"🔗 BUY NO", build_kalshi_totals_url(p['away'], p['home']))
-    if reg_yes:
-        st.markdown("### 🔵 YES (Over)")
-        for p in reg_yes:
-            col1, col2, col3, col4 = st.columns([2, 2, 5, 2])
-            col1.markdown(f"**{p['away']}** @ **{p['home']}**")
-            col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
-            col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b> → <span style='color:#00aaff;font-weight:bold'>SAFE: YES @ {p['rec_threshold']}-</span>", unsafe_allow_html=True)
-            col4.link_button(f"🔗 BUY YES", build_kalshi_totals_url(p['away'], p['home']))
-    if not strong_no and not strong_yes and not reg_no and not reg_yes:
+    for tier, min_s, max_s, label in [("strong_no", 8.0, 99, "### 🟢 STRONG NO"), ("strong_yes", 8.0, 99, "### 🟢 STRONG YES"), ("no", 6.5, 8.0, "### 🔵 NO"), ("yes", 6.5, 8.0, "### 🔵 YES")]:
+        side = "NO" if "no" in tier else "YES"
+        picks = [p for p in all_totals if p['pick'] == side and ((p['score'] >= 8.0) if "strong" in tier else (6.5 <= p['score'] < 8.0))]
+        if picks:
+            st.markdown(label)
+            for p in picks:
+                col1, col2, col3, col4 = st.columns([2, 2, 5, 2])
+                col1.markdown(f"**{p['away']}** @ **{p['home']}**")
+                col2.markdown(f"<span style='color:{p['color']};font-weight:bold'>{p['score']}/10</span>", unsafe_allow_html=True)
+                col3.markdown(f"Model: <b>{p['projected']}</b> | Kalshi: <b>{p['kalshi_line']}</b>", unsafe_allow_html=True)
+                col4.link_button(f"🚀 BUY {side}" if "strong" in tier else f"🔗 BUY {side}", build_kalshi_totals_url(p['away'], p['home']))
+    if not all_totals:
         st.info("⚪ No actionable totals plays today")
-else:
-    st.info("No games scheduled today")
 
 st.divider()
 
 if yesterday_teams:
     st.info(f"📅 **B2B Teams Today:** {', '.join(sorted(yesterday_teams))}")
 
-# ========== BLOWOUT RISK ==========
-st.subheader("🔥 TOP PICKS - BLOWOUT RISK (Tired Away @ Fresh Home)")
+st.subheader("🔥 TOP PICKS - BLOWOUT RISK")
 if game_list:
     top_picks = []
     for game_key in game_list:
         parts = game_key.split("@")
-        away_t, home_t = parts[0], parts[1]
-        if away_t in yesterday_teams and home_t not in yesterday_teams:
-            home_i, _ = get_injury_score(home_t, injuries)
-            away_i, _ = get_injury_score(away_t, injuries)
-            res = calc_12_factor_edge(home_t, away_t, 1, 0, home_i, away_i, 50)
-            top_picks.append({'game': game_key, 'home_team': home_t, 'away_team': away_t, 'home_win_prob': res['home_win_prob'], 'spread': res['expected_spread']})
-    top_picks.sort(key=lambda x: x['home_win_prob'], reverse=True)
+        if parts[0] in yesterday_teams and parts[1] not in yesterday_teams:
+            home_i, _ = get_injury_score(parts[1], injuries)
+            away_i, _ = get_injury_score(parts[0], injuries)
+            res = calc_12_factor_edge(parts[1], parts[0], 1, 0, home_i, away_i, 50)
+            top_picks.append({'game': game_key, 'home': parts[1], 'away': parts[0], 'prob': res['home_win_prob']})
+    top_picks.sort(key=lambda x: x['prob'], reverse=True)
     if top_picks:
-        for pick in top_picks:
+        for p in top_picks:
             st.markdown(f"""<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid #00ff00;margin-bottom:10px'>
-                <span style='color:#00ff00;font-size:1.8em;font-weight:bold'>🎯 BUY {pick['home_team']} ML</span>
-                <span style='color:#00ff00;font-size:1.1em;margin-left:15px'>HIGH CONFIDENCE</span>
-                <br><span style='color:#aaa;font-size:0.9em'>{pick['game'].replace('@', ' @ ')} | {pick['home_team']} {pick['home_win_prob']:.0f}% to win | 🔴 {pick['away_team']} B2B</span>
+                <span style='color:#00ff00;font-size:1.5em;font-weight:bold'>🎯 BUY {p['home']} ML</span>
+                <br><span style='color:#aaa'>{p['game'].replace('@', ' @ ')} | {p['home']} {p['prob']:.0f}% | 🔴 {p['away']} B2B</span>
             </div>""", unsafe_allow_html=True)
     else:
         st.info("⚪ No BLOWOUT RISK games today")
-else:
-    st.info("No games today")
 
 st.divider()
 
-# ========== ADD POSITION ==========
 st.subheader("➕ ADD NEW POSITION")
 game_options = ["Select a game..."] + [gk.replace("@", " @ ") for gk in game_list]
-selected_game = st.selectbox("🏀 Game", game_options, key="game_select")
-threshold_select = st.number_input("🎯 Threshold", min_value=180.0, max_value=280.0, value=225.5, step=3.0, key="threshold_select")
+selected_game = st.selectbox("🏀 Game", game_options)
+threshold_select = st.number_input("🎯 Threshold", min_value=180.0, max_value=280.0, value=225.5, step=0.5)
 if selected_game != "Select a game...":
     parts = selected_game.replace(" @ ", "@").split("@")
-    st.link_button(f"🔗 View {selected_game} on Kalshi", build_kalshi_totals_url(parts[0], parts[1]), use_container_width=True)
-
-with st.form("add_position_form"):
-    p1, p2, p3 = st.columns(3)
-    side = p1.selectbox("📊 Side", ["NO (Under)", "YES (Over)"], key="side_form")
-    price_paid = p2.number_input("💵 Price (¢)", min_value=1, max_value=99, value=50, step=1, key="price_form")
-    contracts = p3.number_input("📄 Contracts", min_value=1, max_value=1000, value=st.session_state.default_contracts, step=1)
-    if st.session_state.trading_enabled and st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
-        buy_col, add_col = st.columns(2)
-        buy_now = buy_col.form_submit_button("🚀 BUY ON KALSHI NOW", use_container_width=True, type="primary")
-        add_manual = add_col.form_submit_button("✅ ADD POSITION (manual)", use_container_width=True)
-    else:
-        buy_now = False
-        add_manual = st.form_submit_button("✅ ADD POSITION", use_container_width=True)
-    if selected_game != "Select a game...":
+    st.link_button(f"🔗 View on Kalshi", build_kalshi_totals_url(parts[0], parts[1]), use_container_width=True)
+with st.form("add_position"):
+    col1, col2, col3 = st.columns(3)
+    side = col1.selectbox("Side", ["NO (Under)", "YES (Over)"])
+    price = col2.number_input("Price (¢)", 1, 99, 50)
+    contracts = col3.number_input("Contracts", 1, 1000, st.session_state.default_contracts)
+    submitted = st.form_submit_button("✅ ADD POSITION", use_container_width=True)
+    if submitted and selected_game != "Select a game...":
         game_key = selected_game.replace(" @ ", "@")
-        side_clean = "NO" if "NO" in side else "YES"
-        parts = game_key.split("@")
-        if buy_now:
-            ticker = build_kalshi_ticker(parts[0], parts[1], threshold_select)
-            success, msg = place_kalshi_order(ticker, side_clean, price_paid, contracts, st.session_state.kalshi_api_key, st.session_state.kalshi_private_key)
-            if success:
-                st.success(msg)
-                st.session_state.positions.append({'game': game_key, 'side': side_clean, 'threshold': threshold_select, 'price': price_paid, 'contracts': contracts, 'cost': round(price_paid * contracts / 100, 2)})
-                st.rerun()
-            else:
-                st.error(msg)
-        if add_manual:
-            st.session_state.positions.append({'game': game_key, 'side': side_clean, 'threshold': threshold_select, 'price': price_paid, 'contracts': contracts, 'cost': round(price_paid * contracts / 100, 2)})
-            st.rerun()
+        st.session_state.positions.append({'game': game_key, 'side': "NO" if "NO" in side else "YES", 'threshold': threshold_select, 'price': price, 'contracts': contracts, 'cost': round(price * contracts / 100, 2)})
+        st.rerun()
 
 st.divider()
 
-# ========== ACTIVE POSITIONS ==========
 st.subheader("📈 ACTIVE POSITIONS")
 if st.session_state.positions:
     for idx, pos in enumerate(st.session_state.positions):
-        game_key = pos['game']
-        g = games.get(game_key)
-        price = pos.get('price', 50)
-        contracts = pos.get('contracts', 1)
-        cost = pos.get('cost', round(price * contracts / 100, 2))
+        g = games.get(pos['game'])
         if g:
-            total = g['total']
             mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
             is_final = g['status_type'] == "STATUS_FINAL"
-            projected = round((total / mins) * 48) if mins > 0 else None
-            cushion = (pos['threshold'] - projected) if pos['side'] == "NO" and projected else ((projected - pos['threshold']) if projected else 0)
-            potential_win = round((100 - price) * contracts / 100, 2)
-            potential_loss = cost
+            proj = round((g['total'] / mins) * 48) if mins > 0 else None
+            cushion = (pos['threshold'] - proj) if pos['side'] == "NO" and proj else ((proj - pos['threshold']) if proj else 0)
+            pot_win = round((100 - pos['price']) * pos['contracts'] / 100, 2)
             if is_final:
-                won = (total < pos['threshold']) if pos['side'] == "NO" else (total > pos['threshold'])
-                status_label = "✅ WON!" if won else "❌ LOST"
-                status_color = "#00ff00" if won else "#ff0000"
-                pnl_display = f"+${potential_win:.2f}" if won else f"-${potential_loss:.2f}"
-                pnl_color = "#00ff00" if won else "#ff0000"
-            elif projected:
-                if cushion >= 15:
-                    status_label, status_color = "🟢 VERY SAFE", "#00ff00"
-                elif cushion >= 8:
-                    status_label, status_color = "🟢 LOOKING GOOD", "#00ff00"
-                elif cushion >= 3:
-                    status_label, status_color = "🟡 ON TRACK", "#ffff00"
-                elif cushion >= -3:
-                    status_label, status_color = "🟠 WARNING", "#ff8800"
-                else:
-                    status_label, status_color = "🔴 AT RISK", "#ff0000"
-                pnl_display = f"Win: +${potential_win:.2f}"
-                pnl_color = "#888888"
-            else:
-                status_label, status_color = "⏳ WAITING", "#888888"
-                pnl_display = f"Win: +${potential_win:.2f}"
-                pnl_color = "#888888"
-            game_status = "FINAL" if is_final else f"Q{g['period']} {g['clock']}"
-            st.markdown(f"""<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'>
-                <div style='display:flex;justify-content:space-between;align-items:center'>
-                    <div><span style='color:#fff;font-size:1.2em;font-weight:bold'>{game_key.replace('@', ' @ ')}</span><span style='color:#888;margin-left:10px'>{game_status}</span></div>
-                    <span style='color:{status_color};font-size:1.3em;font-weight:bold'>{status_label}</span>
-                </div>
-                <div style='margin-top:10px;display:flex;gap:30px'>
-                    <span style='color:#aaa'>📊 <b style="color:#fff">{pos['side']} {pos['threshold']}</b></span>
-                    <span style='color:#aaa'>💵 <b style="color:#fff">{contracts}x @ {price}¢</b> (${cost:.2f})</span>
-                    <span style='color:#aaa'>📈 Proj: <b style="color:#fff">{projected if projected else '—'}</b></span>
-                    <span style='color:#aaa'>🎯 Cushion: <b style="color:{status_color}">{cushion:+.0f}</b></span>
-                    <span style='color:{pnl_color}'>{pnl_display}</span>
-                </div>
+                won = (g['total'] < pos['threshold']) if pos['side'] == "NO" else (g['total'] > pos['threshold'])
+                status, color = ("✅ WON!", "#00ff00") if won else ("❌ LOST", "#ff0000")
+            elif proj:
+                if cushion >= 15: status, color = "🟢 VERY SAFE", "#00ff00"
+                elif cushion >= 8: status, color = "🟢 GOOD", "#00ff00"
+                elif cushion >= 3: status, color = "🟡 ON TRACK", "#ffff00"
+                elif cushion >= -3: status, color = "🟠 WARNING", "#ff8800"
+                else: status, color = "🔴 AT RISK", "#ff0000"
+            else: status, color = "⏳ WAITING", "#888888"
+            st.markdown(f"""<div style='background:#1a1a2e;padding:15px;border-radius:10px;border:2px solid {color};margin-bottom:10px'>
+                <b style='color:#fff'>{pos['game'].replace('@', ' @ ')}</b> <span style='color:#888'>{'FINAL' if is_final else f"Q{g['period']} {g['clock']}"}</span>
+                <span style='color:{color};float:right;font-weight:bold'>{status}</span><br>
+                <span style='color:#aaa'>{pos['side']} {pos['threshold']} | {pos['contracts']}x @ {pos['price']}¢ | Proj: {proj or '—'} | Cushion: <b style='color:{color}'>{cushion:+.0f}</b> | Win: +${pot_win}</span>
             </div>""", unsafe_allow_html=True)
-            btn1, btn2 = st.columns([3, 1])
-            parts = game_key.split("@")
-            btn1.link_button(f"🔗 Trade on Kalshi", build_kalshi_totals_url(parts[0], parts[1]), use_container_width=True)
-            if btn2.button("🗑️ Remove", key=f"del_{idx}"):
-                st.session_state.positions.pop(idx)
-                st.rerun()
-        else:
-            st.markdown(f"""<div style='background:#1a1a2e;padding:15px;border-radius:10px;border:1px solid #444;margin-bottom:10px'>
-                <span style='color:#888'>{game_key.replace('@', ' @ ')} — {pos['side']} {pos['threshold']} — {contracts}x @ {price}¢</span>
-                <span style='color:#666;margin-left:15px'>⏳ Game not started</span>
-            </div>""", unsafe_allow_html=True)
-            if st.button("🗑️ Remove", key=f"del_{idx}"):
-                st.session_state.positions.pop(idx)
-                st.rerun()
-    if st.button("🗑️ Clear All Positions", use_container_width=True):
+        if st.button("🗑️ Remove", key=f"del_{idx}"):
+            st.session_state.positions.pop(idx)
+            st.rerun()
+    if st.button("🗑️ Clear All", use_container_width=True):
         st.session_state.positions = []
         st.rerun()
 else:
-    st.info("No positions tracked — add your first position above")
+    st.info("No positions tracked")
 
 st.divider()
 
-# ========== CUSHION SCANNER (FIXED v15.0) ==========
-st.subheader("🎯 CUSHION SCANNER - ALL THRESHOLDS")
+# ========== CUSHION SCANNER - REAL KALSHI THRESHOLDS ==========
+st.subheader("🎯 CUSHION SCANNER - REAL KALSHI THRESHOLDS")
 
 MIN_CUSHION = 6
-ALL_THRESHOLDS = [215.5, 220.5, 225.5, 230.5, 235.5, 240.5, 245.5, 250.5, 255.5]
-
-cs1, cs2 = st.columns([1, 1])
-cush_window = cs1.selectbox("Stability Window", [6, 9, 12, 18, 24], index=1, key="cush_window")
+cush_window = st.selectbox("Stability Window (minutes)", [6, 9, 12, 18, 24], index=1)
 
 for gk, g in games.items():
     mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
-    if mins < cush_window:
-        continue
-    if g['status_type'] == "STATUS_FINAL":
+    if mins < cush_window or g['status_type'] == "STATUS_FINAL":
         continue
     
     proj = round((g['total'] / mins) * 48) if mins > 0 else 0
     pace_val = g['total'] / mins if mins > 0 else 0
-    away_team = g.get('away_team', '')
-    home_team = g.get('home_team', '')
+    away_team, home_team = g['away_team'], g['home_team']
     
     # Pace label
-    if pace_val < 4.5:
-        pace_label, pace_color = "🟢 SLOW", "#00ff00"
-    elif pace_val < 4.8:
-        pace_label, pace_color = "🟡 AVG", "#ffff00"
-    elif pace_val < 5.2:
-        pace_label, pace_color = "🟠 FAST", "#ff8800"
-    else:
-        pace_label, pace_color = "🔴 SHOOTOUT", "#ff0000"
+    if pace_val < 4.5: pace_label, pace_color = "🟢 SLOW", "#00ff00"
+    elif pace_val < 4.8: pace_label, pace_color = "🟡 AVG", "#ffff00"
+    elif pace_val < 5.2: pace_label, pace_color = "🟠 FAST", "#ff8800"
+    else: pace_label, pace_color = "🔴 SHOOTOUT", "#ff0000"
+    
+    # FETCH REAL KALSHI THRESHOLDS
+    _, all_markets = fetch_kalshi_markets(away_team, home_team)
+    
+    if not all_markets:
+        continue  # No markets available
     
     # Game header
     st.markdown(f"""<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;margin-bottom:5px;margin-top:15px'>
         <span style='color:#fff;font-size:1.3em;font-weight:bold'>{away_team} @ {home_team}</span>
-        <span style='color:#888;margin-left:15px'>{mins:.0f} min played</span>
+        <span style='color:#888;margin-left:15px'>{mins:.0f} min</span>
         <span style='color:{pace_color};margin-left:15px;font-weight:bold'>{pace_label} {pace_val:.2f}/min</span>
         <span style='color:#fff;margin-left:15px'>📈 Proj: <b>{proj}</b></span>
     </div>""", unsafe_allow_html=True)
     
-    # Build threshold rows - NO ONLY for shootouts
+    # Build threshold rows from REAL Kalshi data
     threshold_rows = []
-    for thresh in ALL_THRESHOLDS:
+    for market in all_markets:
+        thresh = market['threshold']
         no_cushion = thresh - proj
         yes_cushion = proj - thresh
         
-        # For shootouts (pace >= 5.0), only show NO options
+        # For shootouts (pace >= 5.0), ONLY show NO options
         if pace_val >= 5.0:
             if no_cushion >= MIN_CUSHION:
-                if no_cushion >= 20:
-                    size_label, size_color = "2x", "#00ff00"
-                elif no_cushion >= 12:
-                    size_label, size_color = "1x", "#00aaff"
-                else:
-                    size_label, size_color = "0.5x", "#ffff00"
-                threshold_rows.append({
-                    'thresh': thresh, 'side': 'NO', 'cushion': no_cushion,
-                    'size_label': size_label, 'size_color': size_color
-                })
+                if no_cushion >= 20: size_label, size_color = "2x", "#00ff00"
+                elif no_cushion >= 12: size_label, size_color = "1x", "#00aaff"
+                else: size_label, size_color = "0.5x", "#ffff00"
+                threshold_rows.append({'thresh': thresh, 'side': 'NO', 'cushion': no_cushion, 'size_label': size_label, 'size_color': size_color, 'no_ask': market.get('no_ask', 0)})
         else:
-            # Normal pace - show both sides
+            # Normal pace - show both sides if cushion is good
             if no_cushion >= MIN_CUSHION:
-                if no_cushion >= 20:
-                    size_label, size_color = "2x", "#00ff00"
-                elif no_cushion >= 12:
-                    size_label, size_color = "1x", "#00aaff"
-                else:
-                    size_label, size_color = "0.5x", "#ffff00"
-                threshold_rows.append({
-                    'thresh': thresh, 'side': 'NO', 'cushion': no_cushion,
-                    'size_label': size_label, 'size_color': size_color
-                })
+                if no_cushion >= 20: size_label, size_color = "2x", "#00ff00"
+                elif no_cushion >= 12: size_label, size_color = "1x", "#00aaff"
+                else: size_label, size_color = "0.5x", "#ffff00"
+                threshold_rows.append({'thresh': thresh, 'side': 'NO', 'cushion': no_cushion, 'size_label': size_label, 'size_color': size_color, 'no_ask': market.get('no_ask', 0)})
             if yes_cushion >= MIN_CUSHION:
-                if yes_cushion >= 20:
-                    size_label, size_color = "2x", "#00ff00"
-                elif yes_cushion >= 12:
-                    size_label, size_color = "1x", "#00aaff"
-                else:
-                    size_label, size_color = "0.5x", "#ffff00"
-                threshold_rows.append({
-                    'thresh': thresh, 'side': 'YES', 'cushion': yes_cushion,
-                    'size_label': size_label, 'size_color': size_color
-                })
+                if yes_cushion >= 20: size_label, size_color = "2x", "#00ff00"
+                elif yes_cushion >= 12: size_label, size_color = "1x", "#00aaff"
+                else: size_label, size_color = "0.5x", "#ffff00"
+                threshold_rows.append({'thresh': thresh, 'side': 'YES', 'cushion': yes_cushion, 'size_label': size_label, 'size_color': size_color, 'yes_ask': market.get('yes_ask', 0)})
     
     # Sort by cushion descending
     threshold_rows.sort(key=lambda x: x['cushion'], reverse=True)
@@ -1072,47 +823,39 @@ for gk, g in games.items():
     if threshold_rows:
         for tr in threshold_rows:
             cush_color = "#00ff00" if tr['cushion'] >= 20 else ("#00aaff" if tr['cushion'] >= 12 else "#ffff00")
+            price_info = f"NO @ {tr.get('no_ask', '?')}¢" if tr['side'] == 'NO' else f"YES @ {tr.get('yes_ask', '?')}¢"
             st.markdown(f"""<div style='background:#0d1117;padding:10px 15px;border-left:4px solid {cush_color};margin-bottom:3px;display:flex;justify-content:space-between;align-items:center'>
                 <span style='color:#fff;font-weight:bold'>BUY {tr['side']} @ {tr['thresh']}</span>
                 <span style='color:{cush_color};font-weight:bold'>+{tr['cushion']:.0f} cushion</span>
+                <span style='color:#aaa'>{price_info}</span>
                 <span style='color:{tr['size_color']}'>Size: {tr['size_label']}</span>
             </div>""", unsafe_allow_html=True)
         
-        kalshi_url = build_kalshi_totals_url(away_team, home_team)
-        st.link_button(f"🚀 Trade {away_team} @ {home_team} on Kalshi", kalshi_url, use_container_width=True)
+        st.link_button(f"🚀 Trade {away_team} @ {home_team} on Kalshi", build_kalshi_totals_url(away_team, home_team), use_container_width=True)
     else:
         st.markdown(f"<div style='color:#666;padding:10px'>⚪ No thresholds with +{MIN_CUSHION} cushion</div>", unsafe_allow_html=True)
 
 st.divider()
 
-# ========== PACE SCANNER ==========
 st.subheader("🔥 PACE SCANNER")
 pace_data = []
 for gk, g in games.items():
     mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
     if mins >= 6:
         pace = round(g['total'] / mins, 2)
-        proj = round(pace * 48)
-        pace_data.append({"game": gk, "pace": pace, "proj": proj, "total": g['total'], "mins": mins, "period": g['period'], "clock": g['clock'], "final": g['status_type'] == "STATUS_FINAL"})
+        pace_data.append({"game": gk, "pace": pace, "proj": round(pace * 48), "total": g['total'], "mins": mins, "period": g['period'], "clock": g['clock'], "final": g['status_type'] == "STATUS_FINAL"})
 pace_data.sort(key=lambda x: x['pace'])
-if pace_data:
-    for p in pace_data:
-        if p['pace'] < 4.5:
-            lbl, clr = "🟢 SLOW", "#00ff00"
-        elif p['pace'] < 4.8:
-            lbl, clr = "🟡 AVG", "#ffff00"
-        elif p['pace'] < 5.2:
-            lbl, clr = "🟠 FAST", "#ff8800"
-        else:
-            lbl, clr = "🔴 SHOOTOUT", "#ff0000"
-        status = "FINAL" if p['final'] else f"Q{p['period']} {p['clock']}"
-        st.markdown(f"**{p['game'].replace('@', ' @ ')}** — {p['total']} pts in {p['mins']:.0f} min — **{p['pace']}/min** <span style='color:{clr}'>**{lbl}**</span> — Proj: **{p['proj']}** — {status}", unsafe_allow_html=True)
-else:
-    st.info("No games with 6+ minutes played yet")
+for p in pace_data:
+    if p['pace'] < 4.5: lbl, clr = "🟢 SLOW", "#00ff00"
+    elif p['pace'] < 4.8: lbl, clr = "🟡 AVG", "#ffff00"
+    elif p['pace'] < 5.2: lbl, clr = "🟠 FAST", "#ff8800"
+    else: lbl, clr = "🔴 SHOOTOUT", "#ff0000"
+    st.markdown(f"**{p['game'].replace('@', ' @ ')}** — {p['total']} pts / {p['mins']:.0f} min — **{p['pace']}/min** <span style='color:{clr}'>**{lbl}**</span> — Proj: **{p['proj']}** — {'FINAL' if p['final'] else f\"Q{p['period']} {p['clock']}\"}", unsafe_allow_html=True)
+if not pace_data:
+    st.info("No games with 6+ minutes played")
 
 st.divider()
 
-# ========== ALL GAMES ==========
 st.subheader("📺 ALL GAMES")
 if games:
     cols = st.columns(4)
@@ -1120,8 +863,7 @@ if games:
         with cols[i % 4]:
             st.write(f"**{g['away_team']}** {g['away_score']}")
             st.write(f"**{g['home_team']}** {g['home_score']}")
-            status = "FINAL" if g['status_type'] == "STATUS_FINAL" else f"Q{g['period']} {g['clock']}"
-            st.caption(f"{status} | {g['total']} pts")
+            st.caption(f"{'FINAL' if g['status_type'] == 'STATUS_FINAL' else f\"Q{g['period']} {g['clock']}\"} | {g['total']} pts")
 else:
     st.info("No games today")
 
