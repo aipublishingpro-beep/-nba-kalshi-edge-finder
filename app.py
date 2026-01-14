@@ -161,6 +161,9 @@ with st.sidebar:
     st.subheader("🎯 ML Signal Tiers")
     st.markdown("🟢 **STRONG BUY** → 8.0+\n🔵 **BUY** → 6.5-7.9\n⚪ Below 6.5 → Skip")
     st.divider()
+    st.subheader("📊 Totals Signal Tiers")
+    st.markdown("🟢 **STRONG** → 7.5+\n🔵 **BUY** → 6.5-7.4\n⚪ Below 6.5 → Skip")
+    st.divider()
     st.subheader("⭐ Star Injury Impact")
     st.markdown("🏥 **Star OUT** → +1.0 to opponent\n🏥 **Star GTD** → +0.6 to opponent")
     st.divider()
@@ -599,95 +602,130 @@ def get_signal_tier(score):
 
 def calc_projected_total(home_team, away_team, yesterday_teams):
     home, away = TEAM_STATS.get(home_team, {}), TEAM_STATS.get(away_team, {})
-    base = 225
-    pace_adj = ((home.get('pace', 100) + away.get('pace', 100)) / 2 - 100) * 2
-    def_adj = ((home.get('def_rank', 15) + away.get('def_rank', 15)) / 2 - 15) * 0.8
-    home_b2b, away_b2b = home_team in yesterday_teams, away_team in yesterday_teams
-    fatigue_adj = -6 if home_b2b and away_b2b else (-3 if home_b2b or away_b2b else 0)
-    altitude_adj = -4 if home_team == "Denver" else 0
-    return round(base + pace_adj + def_adj + fatigue_adj + altitude_adj)
+    home_ppg = home.get('ppg', 112)
+    away_ppg = away.get('ppg', 112)
+    base = home_ppg + away_ppg
+    home_def = home.get('def_rank', 15)
+    away_def = away.get('def_rank', 15)
+    home_off_adj = (away_def - 15) * 0.4
+    away_off_adj = (home_def - 15) * 0.4
+    def_adj = home_off_adj + away_off_adj
+    home_pace = home.get('pace', 100)
+    away_pace = away.get('pace', 100)
+    pace_factor = ((home_pace + away_pace) / 2 - 100) * 0.5
+    home_b2b = home_team in yesterday_teams
+    away_b2b = away_team in yesterday_teams
+    fatigue_adj = -4 if home_b2b and away_b2b else (-2 if home_b2b or away_b2b else 0)
+    altitude_adj = -3 if home_team == "Denver" else 0
+    projected = base + def_adj + pace_factor + fatigue_adj + altitude_adj
+    return round(projected)
 
 def calc_totals_score(home_team, away_team, yesterday_teams, injuries):
     home, away = TEAM_STATS.get(home_team, {}), TEAM_STATS.get(away_team, {})
     score_under, score_over, reasons_under, reasons_over = 0, 0, [], []
-    avg_pace = (home.get('pace', 100) + away.get('pace', 100)) / 2
-    if avg_pace < 98.5:
+    home_ppg = home.get('ppg', 112)
+    away_ppg = away.get('ppg', 112)
+    combined_ppg = home_ppg + away_ppg
+    if combined_ppg >= 235:
+        score_over += 1.5
+        reasons_over.append(f"🔥 High PPG {combined_ppg:.0f}")
+    elif combined_ppg >= 228:
+        score_over += 0.75
+        reasons_over.append(f"🔥 PPG {combined_ppg:.0f}")
+    elif combined_ppg <= 215:
         score_under += 1.5
-        reasons_under.append(f"🐢 Slow {avg_pace:.1f}")
-    elif avg_pace < 99.5:
-        score_under += 1.0
-        reasons_under.append(f"🐢 Pace {avg_pace:.1f}")
-    elif avg_pace > 101:
+        reasons_under.append(f"🐢 Low PPG {combined_ppg:.0f}")
+    elif combined_ppg <= 222:
+        score_under += 0.75
+        reasons_under.append(f"🐢 PPG {combined_ppg:.0f}")
+    avg_pace = (home.get('pace', 100) + away.get('pace', 100)) / 2
+    if avg_pace >= 101.5:
         score_over += 1.5
         reasons_over.append(f"🔥 Fast {avg_pace:.1f}")
-    elif avg_pace > 100:
+    elif avg_pace >= 100.5:
         score_over += 1.0
         reasons_over.append(f"🔥 Pace {avg_pace:.1f}")
-    avg_def = (home.get('def_rank', 15) + away.get('def_rank', 15)) / 2
-    if avg_def <= 8:
+    elif avg_pace <= 97.5:
         score_under += 1.5
-        reasons_under.append(f"🛡️ DEF #{int(avg_def)}")
-    elif avg_def <= 12:
+        reasons_under.append(f"🐢 Slow {avg_pace:.1f}")
+    elif avg_pace <= 98.5:
         score_under += 1.0
+        reasons_under.append(f"🐢 Pace {avg_pace:.1f}")
+    avg_def = (home.get('def_rank', 15) + away.get('def_rank', 15)) / 2
+    if avg_def <= 6:
+        score_under += 1.25
+        reasons_under.append(f"🛡️ Elite DEF #{int(avg_def)}")
+    elif avg_def <= 10:
+        score_under += 0.75
         reasons_under.append(f"🛡️ DEF #{int(avg_def)}")
-    elif avg_def >= 22:
-        score_over += 1.5
-        reasons_over.append(f"💥 DEF #{int(avg_def)}")
-    elif avg_def >= 18:
-        score_over += 1.0
+    elif avg_def >= 24:
+        score_over += 1.25
+        reasons_over.append(f"💥 Weak DEF #{int(avg_def)}")
+    elif avg_def >= 20:
+        score_over += 0.75
         reasons_over.append(f"💥 DEF #{int(avg_def)}")
     home_b2b, away_b2b = home_team in yesterday_teams, away_team in yesterday_teams
     if home_b2b and away_b2b:
-        score_under += 1.5
+        score_under += 1.0
         reasons_under.append("🛏️ Both B2B")
     elif home_b2b or away_b2b:
-        score_under += 0.75
+        score_under += 0.5
         reasons_under.append(f"🛏️ {(home_team if home_b2b else away_team)[:3]} B2B")
     avg_3pt = (home.get('three_pct', 36) + away.get('three_pct', 36)) / 2
-    if avg_3pt < 35.5:
-        score_under += 1.0
-        reasons_under.append(f"🎯 Low 3PT {avg_3pt:.1f}%")
-    elif avg_3pt > 37.5:
+    if avg_3pt >= 37.5:
         score_over += 1.0
         reasons_over.append(f"🎯 High 3PT {avg_3pt:.1f}%")
+    elif avg_3pt <= 35:
+        score_under += 0.75
+        reasons_under.append(f"🎯 Low 3PT {avg_3pt:.1f}%")
     _, home_out, _ = get_injury_score(home_team, injuries)
     _, away_out, _ = get_injury_score(away_team, injuries)
     if home_out or away_out:
-        score_under += 1.0
+        score_under += 0.75
         reasons_under.append(f"🏥 {', '.join([n[:8] for n in (home_out + away_out)[:2]])} OUT")
-    net_diff = abs(home.get('net_rating', 0) - away.get('net_rating', 0))
-    if net_diff > 10:
+    home_net = home.get('net_rating', 0)
+    away_net = away.get('net_rating', 0)
+    net_diff = abs(home_net - away_net)
+    if net_diff >= 12:
         score_over += 0.75
-        reasons_over.append("💥 Blowout risk")
-    elif net_diff < 3:
+        reasons_over.append("💥 Mismatch")
+    elif net_diff <= 2:
         score_under += 0.5
         reasons_under.append("⚔️ Close game")
     if home_team == "Denver":
-        score_under += 0.75
-        reasons_under.append("🏔️ Denver altitude")
+        score_under += 0.5
+        reasons_under.append("🏔️ Altitude")
     avg_ft = (home.get('ft_rate', 0.25) + away.get('ft_rate', 0.25)) / 2
-    if avg_ft > 0.27:
+    if avg_ft >= 0.28:
         score_under += 0.5
         reasons_under.append("🎁 High FT rate")
-    elif avg_ft < 0.23:
+    elif avg_ft <= 0.22:
         score_over += 0.5
         reasons_over.append("🏃 Low FT rate")
-    avg_reb = (home.get('reb_rate', 50) + away.get('reb_rate', 50)) / 2
-    if avg_reb > 51.5:
+    if home_net > 8 and away_net > 5:
+        score_over += 0.75
+        reasons_over.append("⭐ Both elite")
+    elif home_net < -5 and away_net < -5:
         score_under += 0.5
-        reasons_under.append("🏀 Control boards")
-    if home.get('home_win_pct', 0.5) > 0.65 and home.get('net_rating', 0) > 5:
-        score_over += 0.5
-        reasons_over.append("🏠 Home scoring")
+        reasons_under.append("📉 Both struggling")
     total = score_under + score_over
-    under_final = round((score_under / total) * 10, 1) if total > 0 else 5.0
-    over_final = round((score_over / total) * 10, 1) if total > 0 else 5.0
-    if under_final >= over_final:
+    if total == 0:
+        return "NO", 5.0, ["No strong signals"]
+    under_pct = score_under / total
+    over_pct = score_over / total
+    max_confidence = 8.5
+    under_final = round(min(max_confidence, 5.0 + (under_pct - 0.5) * 6), 1)
+    over_final = round(min(max_confidence, 5.0 + (over_pct - 0.5) * 6), 1)
+    if under_final > over_final and under_final >= 6.0:
+        return "NO", under_final, reasons_under[:4]
+    elif over_final > under_final and over_final >= 6.0:
+        return "YES", over_final, reasons_over[:4]
+    elif under_final >= over_final:
         return "NO", under_final, reasons_under[:4]
     return "YES", over_final, reasons_over[:4]
 
 def get_totals_signal_tier(score, pick):
-    if score >= 8.0: return f"🟢 STRONG {pick}", "#00ff00"
+    if score >= 7.5: return f"🟢 STRONG {pick}", "#00ff00"
     elif score >= 6.5: return f"🔵 {pick}", "#00aaff"
     return None, None
 
@@ -790,9 +828,9 @@ if game_list:
     all_totals.sort(key=lambda x: x['score'], reverse=True)
     best_no_pick = next((p for p in all_totals if p['pick'] == 'NO'), None)
     best_yes_pick = next((p for p in all_totals if p['pick'] == 'YES'), None)
-    for tier, min_s, max_s, label in [("strong_no", 8.0, 99, "### 🟢 STRONG NO"), ("strong_yes", 8.0, 99, "### 🟢 STRONG YES"), ("no", 6.5, 8.0, "### 🔵 NO"), ("yes", 6.5, 8.0, "### 🔵 YES")]:
+    for tier, min_s, max_s, label in [("strong_no", 7.5, 99, "### 🟢 STRONG NO"), ("strong_yes", 7.5, 99, "### 🟢 STRONG YES"), ("no", 6.5, 7.5, "### 🔵 NO"), ("yes", 6.5, 7.5, "### 🔵 YES")]:
         side = "NO" if "no" in tier else "YES"
-        picks = [p for p in all_totals if p['pick'] == side and ((p['score'] >= 8.0) if "strong" in tier else (6.5 <= p['score'] < 8.0))]
+        picks = [p for p in all_totals if p['pick'] == side and ((p['score'] >= 7.5) if "strong" in tier else (6.5 <= p['score'] < 7.5))]
         if picks:
             st.markdown(label)
             for p in picks:
