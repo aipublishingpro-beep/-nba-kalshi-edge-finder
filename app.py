@@ -868,10 +868,25 @@ else:
 st.divider()
 
 st.subheader("🎯 TOTALS BIG SNAPSHOT")
+# Debug: show game statuses
+game_statuses = {gk: games[gk]['status_type'] for gk in game_list} if game_list else {}
+scheduled_games = [gk for gk, status in game_statuses.items() if status == "STATUS_SCHEDULED"]
+live_games = [gk for gk, status in game_statuses.items() if status == "STATUS_IN_PROGRESS"]
+final_games = [gk for gk, status in game_statuses.items() if status == "STATUS_FINAL"]
+if scheduled_games:
+    st.success(f"📅 **Upcoming today:** {len(scheduled_games)} games")
+if live_games:
+    st.warning(f"🔴 **Live now:** {len(live_games)} games")
+if final_games and not scheduled_games and not live_games:
+    st.info(f"✅ All {len(final_games)} games finished. Check back tomorrow!")
 if game_list:
     all_totals = []
     for game_key in game_list:
         parts = game_key.split("@")
+        # Skip finished games - no point showing recommendations
+        g = games.get(game_key)
+        if g and g['status_type'] == "STATUS_FINAL":
+            continue
         pick, score, reasons = calc_totals_score(parts[1], parts[0], yesterday_teams, injuries)
         if pick is None:
             continue
@@ -882,7 +897,6 @@ if game_list:
             if not kalshi_line:
                 kalshi_line = 232
             best_thresh, best_cushion, best_price = get_best_threshold(parts[0], parts[1], projected, pick)
-            g = games.get(game_key)
             trend_label, trend_color, trend_diff = None, None, None
             if g:
                 trend_label, trend_color, trend_diff = get_score_trend(g, parts[1], parts[0])
@@ -912,7 +926,7 @@ if game_list:
                 if p.get('best_thresh') and p.get('best_cushion'):
                     col3.markdown(f"🎯 <span style='color:#00ff00'><b>BUY {side} {p['best_thresh']}</b></span> (+{p['best_cushion']:.0f} cushion)", unsafe_allow_html=True)
                 else:
-                    col3.markdown(f"⚠️ Market closed", unsafe_allow_html=True)
+                    col3.markdown(f"🎯 <span style='color:#00ff00'><b>BUY {side}</b></span> (check Kalshi for brackets)", unsafe_allow_html=True)
                 
                 btn_label = f"⭐ BUY {side}" if is_best else (f"🚀 BUY {side}" if "strong" in tier else f"🔗 BUY {side}")
                 col4.link_button(btn_label, build_kalshi_totals_url(p['away'], p['home']))
