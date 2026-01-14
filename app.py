@@ -772,11 +772,7 @@ st.divider()
 
 st.subheader("🎯 CUSHION SCANNER")
 
-cush_col1, cush_col2 = st.columns([1, 1])
-with cush_col1:
-    cush_window = st.selectbox("Min Minutes", [6, 9, 12, 18, 24], index=1)
-with cush_col2:
-    cush_side = st.selectbox("Bet Side", ["NO", "YES"])
+cush_side = st.selectbox("Bet Side", ["NO", "YES"])
 
 # Fixed thresholds for grid
 thresholds = [219.5, 225.5, 231.5, 237.5, 243.5, 249.5]
@@ -785,7 +781,7 @@ thresholds = [219.5, 225.5, 231.5, 237.5, 243.5, 249.5]
 cush_data = []
 for gk, g in games.items():
     mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
-    if mins >= cush_window and g['status_type'] != "STATUS_FINAL":
+    if mins > 0 and g['status_type'] != "STATUS_FINAL":
         proj = round((g['total'] / mins) * 48) if mins > 0 else 0
         pace_val = g['total'] / mins if mins > 0 else 0
         cush_data.append({
@@ -799,12 +795,13 @@ for gk, g in games.items():
 
 if cush_data:
     # Header row
-    hcols = st.columns([3, 1, 1] + [1]*len(thresholds))
+    hcols = st.columns([3, 1, 1, 1] + [1]*len(thresholds))
     hcols[0].markdown("**Game**")
-    hcols[1].markdown("**Proj**")
-    hcols[2].markdown("**Pace**")
+    hcols[1].markdown("**Mins**")
+    hcols[2].markdown("**Proj**")
+    hcols[3].markdown("**Pace**")
     for i, t in enumerate(thresholds):
-        hcols[i+3].markdown(f"**{t}**")
+        hcols[i+4].markdown(f"**{t}**")
     
     # Data rows
     for cd in cush_data:
@@ -814,10 +811,11 @@ if cush_data:
         elif cd['pace'] < 5.2: pace_color = "#ff8800"
         else: pace_color = "#ff0000"
         
-        rcols = st.columns([3, 1, 1] + [1]*len(thresholds))
+        rcols = st.columns([3, 1, 1, 1] + [1]*len(thresholds))
         rcols[0].write(cd['game'].replace("@", " @ "))
-        rcols[1].write(f"{cd['proj']}")
-        rcols[2].markdown(f"<span style='color:{pace_color}'>{cd['pace']:.2f}</span>", unsafe_allow_html=True)
+        rcols[1].write(f"{cd['mins']:.0f}")
+        rcols[2].write(f"{cd['proj']}")
+        rcols[3].markdown(f"<span style='color:{pace_color}'>{cd['pace']:.2f}</span>", unsafe_allow_html=True)
         
         # Find best value threshold for this game
         best_thresh = None
@@ -842,24 +840,14 @@ if cush_data:
             
             is_best = (t == best_thresh)
             
-            if cushion >= 20:
-                rcols[i+3].markdown(f"<span style='color:#00ff00'>**+{cushion:.0f}** 🟢</span>", unsafe_allow_html=True)
-            elif cushion >= 12:
-                if is_best:
-                    rcols[i+3].markdown(f"<span style='color:#ff8800'>**⭐+{cushion:.0f}**</span>", unsafe_allow_html=True)
-                else:
-                    rcols[i+3].markdown(f"<span style='color:#00aaff'>**+{cushion:.0f}** 🔵</span>", unsafe_allow_html=True)
-            elif cushion >= 6:
-                if is_best:
-                    rcols[i+3].markdown(f"<span style='color:#ff8800'>**⭐+{cushion:.0f}**</span>", unsafe_allow_html=True)
-                else:
-                    rcols[i+3].markdown(f"<span style='color:#ffff00'>+{cushion:.0f}</span>", unsafe_allow_html=True)
-            elif cushion >= 0:
-                rcols[i+3].markdown(f"<span style='color:#ff4444'>{cushion:.0f}</span>", unsafe_allow_html=True)
+            if is_best:
+                rcols[i+4].markdown(f"<span style='color:#ff8800'>**⭐+{cushion:.0f}**</span>", unsafe_allow_html=True)
+            elif cushion > 0:
+                rcols[i+4].markdown(f"<span style='color:#00ff00'>**+{cushion:.0f}**</span>", unsafe_allow_html=True)
             else:
-                rcols[i+3].markdown(f"<span style='color:#666'>—</span>", unsafe_allow_html=True)
+                rcols[i+4].markdown(f"<span style='color:#ff4444'>{cushion:.0f}</span>", unsafe_allow_html=True)
 else:
-    st.info(f"No games with {cush_window}+ minutes played")
+    st.info("No live games right now")
 
 st.divider()
 
