@@ -341,7 +341,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v15.0")
+    st.caption("v15.1")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -489,17 +489,98 @@ def fetch_espn_injuries():
         url = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
         resp = requests.get(url, timeout=10)
         data = resp.json()
-        for team_data in data.get("injuries", []):
+        
+        # Handle different ESPN response structures
+        injury_list = data.get("injuries", data.get("teams", []))
+        
+        for team_data in injury_list:
+            # Try different paths to team name
             team_name = team_data.get("team", {}).get("displayName", "")
+            if not team_name:
+                team_name = team_data.get("team", {}).get("name", "")
+            if not team_name:
+                team_name = team_data.get("displayName", "")
+            
             team_key = TEAM_ABBREVS.get(team_name, team_name)
+            if not team_key:
+                continue
+                
             injuries[team_key] = []
-            for player in team_data.get("injuries", []):
+            
+            # Get player injuries - try different keys
+            player_list = team_data.get("injuries", team_data.get("athletes", []))
+            
+            for player in player_list:
+                # Try different paths to player name
                 name = player.get("athlete", {}).get("displayName", "")
+                if not name:
+                    name = player.get("displayName", "")
+                if not name:
+                    name = player.get("name", "")
+                
+                # Try different paths to status
                 status = player.get("status", "")
-                injuries[team_key].append({"name": name, "status": status})
+                if not status:
+                    status = player.get("type", {}).get("description", "")
+                
+                if name:
+                    injuries[team_key].append({"name": name, "status": status})
+    except Exception as e:
+        pass
+    return injuries
+
+def fetch_rotowire_injuries():
+    """Backup injury source from RotoWire"""
+    injuries = {}
+    try:
+        url = "https://www.rotowire.com/basketball/tables/injury-report.php?team=ALL&pos=ALL"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            team_map = {
+                'ATL': 'Atlanta', 'BOS': 'Boston', 'BKN': 'Brooklyn', 'CHA': 'Charlotte',
+                'CHI': 'Chicago', 'CLE': 'Cleveland', 'DAL': 'Dallas', 'DEN': 'Denver',
+                'DET': 'Detroit', 'GSW': 'Golden State', 'HOU': 'Houston', 'IND': 'Indiana',
+                'LAC': 'LA Clippers', 'LAL': 'LA Lakers', 'MEM': 'Memphis', 'MIA': 'Miami',
+                'MIL': 'Milwaukee', 'MIN': 'Minnesota', 'NOP': 'New Orleans', 'NYK': 'New York',
+                'OKC': 'Oklahoma City', 'ORL': 'Orlando', 'PHI': 'Philadelphia', 'PHX': 'Phoenix',
+                'POR': 'Portland', 'SAC': 'Sacramento', 'SAS': 'San Antonio', 'TOR': 'Toronto',
+                'UTA': 'Utah', 'WAS': 'Washington'
+            }
+            for player in data:
+                team_abbr = player.get('team', '')
+                team_key = team_map.get(team_abbr, team_abbr)
+                if team_key not in injuries:
+                    injuries[team_key] = []
+                name = player.get('player', '')
+                status = player.get('status', '').upper()
+                if name:
+                    injuries[team_key].append({"name": name, "status": status})
     except:
         pass
     return injuries
+
+def merge_injuries(espn_inj, roto_inj):
+    """Merge injuries from both sources, preferring ESPN"""
+    merged = {}
+    all_teams = set(list(espn_inj.keys()) + list(roto_inj.keys()))
+    for team in all_teams:
+        merged[team] = []
+        seen_players = set()
+        # Add ESPN injuries first
+        for inj in espn_inj.get(team, []):
+            name_lower = inj['name'].lower()
+            if name_lower not in seen_players:
+                merged[team].append(inj)
+                seen_players.add(name_lower)
+        # Add RotoWire injuries if not already seen
+        for inj in roto_inj.get(team, []):
+            name_lower = inj['name'].lower()
+            if name_lower not in seen_players:
+                merged[team].append(inj)
+                seen_players.add(name_lower)
+    return merged
 
 def get_star_tier(player_name, team):
     """Get star tier for a player: 3=Superstar, 2=All-Star, 1=Rotation"""
@@ -938,8 +1019,16 @@ def get_totals_signal_tier(score, pick):
 games = fetch_espn_scores()
 game_list = sorted(list(games.keys()))
 yesterday_teams_raw = fetch_yesterday_teams()
-injuries = fetch_espn_injuries()
+
+# Fetch injuries from both sources and merge
+espn_injuries = fetch_espn_injuries()
+roto_injuries = fetch_rotowire_injuries()
+injuries = merge_injuries(espn_injuries, roto_injuries)
+
 now = datetime.now(pytz.timezone('US/Eastern'))
+
+# Debug info for injury sources
+injury_source_info = f"ESPN: {sum(len(v) for v in espn_injuries.values())} | RotoWire: {sum(len(v) for v in roto_injuries.values())} | Merged: {sum(len(v) for v in injuries.values())}"
 
 today_teams = set()
 for game_key in games.keys():
@@ -951,12 +1040,18 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.0")
+st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.1")
 
 # ========== 🏥 INJURY REPORT SECTION ==========
 st.subheader("🏥 INJURY REPORT - TODAY'S GAMES")
 
-if game_list and injuries:
+# Show data source info
+st.caption(f"📡 Data Sources: {injury_source_info}")
+
+# Check if we have any injury data
+total_injuries_loaded = sum(len(v) for v in injuries.values())
+
+if game_list and total_injuries_loaded > 0:
     # Get all teams playing today
     teams_playing = set()
     for game_key in game_list:
@@ -1039,7 +1134,42 @@ if game_list and injuries:
     total_injuries = len(star_injuries) + len(allstar_injuries) + len(rotation_injuries)
     st.caption(f"📊 {len(star_injuries)} Superstars | {len(allstar_injuries)} All-Stars | {len(rotation_injuries)} Rotation | {total_injuries} Total | 🔥=Offense 🛡️=Defense ⚔️=Both")
 else:
-    st.info("No injury data available or no games today")
+    if not game_list:
+        st.info("No games scheduled today")
+    elif total_injuries_loaded == 0:
+        st.warning("⚠️ No injury data loaded from ESPN or RotoWire. APIs may be temporarily unavailable.")
+        # Debug expander
+        with st.expander("🔧 Debug Info"):
+            st.write("**ESPN Response Test:**")
+            try:
+                test_resp = requests.get("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries", timeout=10)
+                st.write(f"Status: {test_resp.status_code}")
+                if test_resp.status_code == 200:
+                    test_data = test_resp.json()
+                    st.write(f"Keys: {list(test_data.keys())}")
+                    if 'injuries' in test_data:
+                        st.write(f"Teams with injuries: {len(test_data.get('injuries', []))}")
+                    else:
+                        st.json(test_data)
+            except Exception as e:
+                st.write(f"Error: {e}")
+            
+            st.write("**RotoWire Response Test:**")
+            try:
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                roto_resp = requests.get("https://www.rotowire.com/basketball/tables/injury-report.php?team=ALL&pos=ALL", headers=headers, timeout=10)
+                st.write(f"Status: {roto_resp.status_code}")
+                st.write(f"Content type: {roto_resp.headers.get('content-type', 'unknown')}")
+                if roto_resp.status_code == 200:
+                    try:
+                        roto_data = roto_resp.json()
+                        st.write(f"Players found: {len(roto_data)}")
+                    except:
+                        st.write(f"Not JSON. First 500 chars: {roto_resp.text[:500]}")
+            except Exception as e:
+                st.write(f"Error: {e}")
+    else:
+        st.info("No injuries found for today's teams")
 
 st.divider()
 
