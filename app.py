@@ -16,7 +16,16 @@ except ImportError:
 
 st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
 
-# ========== NO AUTO-REFRESH ==========
+# ========== AUTO-REFRESH SETUP ==========
+if 'auto_refresh' not in st.session_state:
+    st.session_state.auto_refresh = False
+
+if st.session_state.auto_refresh:
+    st.markdown('<meta http-equiv="refresh" content="30">', unsafe_allow_html=True)
+    auto_status = "🔄 Auto-refresh ON (30s)"
+else:
+    auto_status = "⏸️ Auto-refresh OFF"
+
 st.markdown("""
 <style>
 .stLinkButton > a {
@@ -30,7 +39,6 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
-auto_status = "⏸️ Auto-refresh OFF"
 
 # ============================================================
 # KALSHI TRADING API
@@ -285,7 +293,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v15.7")
+    st.caption("v15.9")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -851,9 +859,15 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-hdr1, hdr2 = st.columns([4, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.7")
-if hdr2.button("🔄 Refresh", use_container_width=True):
+hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.9")
+
+# Auto-refresh toggle
+if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
+    st.session_state.auto_refresh = not st.session_state.auto_refresh
+    st.rerun()
+
+if hdr3.button("🔄 Refresh", use_container_width=True):
     st.rerun()
 
 # ========== 🏥 INJURY REPORT SECTION ==========
@@ -1255,12 +1269,10 @@ st.subheader("🎯 CUSHION SCANNER")
 
 THRESHOLDS = [210.5, 215.5, 220.5, 225.5, 230.5, 235.5, 240.5, 245.5, 250.5, 255.5]
 
-cs1, cs2 = st.columns([1, 1])
-cush_min = cs1.selectbox("Min minutes", [6, 9, 12, 15, 18, 21], index=0, key="cush_min")
-cush_side = cs2.selectbox("Side", ["NO", "YES"], key="cush_side")
+cush_side = st.selectbox("Side", ["NO", "YES"], key="cush_side")
 
 live_count = sum(1 for g in games.values() if g['status_type'] not in ["STATUS_FINAL", "STATUS_SCHEDULED"])
-st.caption(f"📊 {len(games)} games | {live_count} live")
+st.caption(f"📊 {len(games)} games | {live_count} live | Auto-shows all games with 6+ minutes")
 
 cush_results = []
 
@@ -1268,7 +1280,7 @@ for gk, g in games.items():
     mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
     total = g['total']
     if g['status_type'] == "STATUS_FINAL": continue
-    if mins < cush_min: continue
+    if mins < 6: continue
     if mins <= 0: continue
     pace = total / mins
     remaining_min = max(48 - mins, 1)
@@ -1322,7 +1334,7 @@ if cush_results:
     for r in cush_results:
         rcols = st.columns([2.5, 1, 1, 1, 1.5, 1.5, 1.5])
         rcols[0].write(r['game'].replace("@", " @ "))
-        rcols[1].write(f"Q{r['period']} {r['clock']}")
+        rcols[1].write(f"Q{r['period']} {r['clock']} ({r['mins']:.0f}m)")
         rcols[2].write(f"{r['total']} pts")
         rcols[3].write(f"{r['projected']}")
         rcols[4].markdown(f"<span style='background:#ff8800;color:#000;padding:4px 8px;border-radius:4px;font-weight:bold'>{cush_side} {r['safe_line']}</span>", unsafe_allow_html=True)
@@ -1334,7 +1346,7 @@ if cush_results:
     if cush_side == "NO": st.caption(f"📊 {len(cush_results)} NO opportunities | Safe line = tight line + 5 pts (higher = safer for under)")
     else: st.caption(f"📊 {len(cush_results)} YES opportunities | Safe line = tight line - 5 pts (lower = safer for over)")
 else:
-    st.info(f"⚪ No {cush_side} opportunities with +6 cushion and {cush_min}+ minutes")
+    st.info(f"⚪ No {cush_side} opportunities with +6 cushion yet — games appear automatically at 6+ minutes")
 
 st.divider()
 
@@ -1379,4 +1391,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.7")
+st.caption("v15.9")
