@@ -1579,7 +1579,7 @@ st.subheader("🎯 CUSHION SCANNER")
 REFERENCE_THRESHOLD = 235.5  # Single reference line (can be replaced with live Kalshi line later)
 
 cs1, cs2, cs3 = st.columns([1, 1, 1])
-cush_min = cs1.selectbox("Min minutes", [6, 12, 18, 24, 30], index=2, key="cush_min")
+cush_min = cs1.selectbox("Min minutes", [6, 9, 12, 15, 18], index=1, key="cush_min")
 cush_side = cs2.selectbox("Side", ["NO", "YES"], key="cush_side")
 cs3.markdown(f"**Line: {REFERENCE_THRESHOLD}**")
 
