@@ -323,7 +323,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v15.2")
+    st.caption("v15.4")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -993,7 +993,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 st.title("🎯 NBA EDGE FINDER")
 
 hdr1, hdr2 = st.columns([4, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.2")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.4")
 if hdr2.button("🔄 Refresh", use_container_width=True):
     st.rerun()
 
@@ -1356,8 +1356,7 @@ with st.form("add_position_form"):
     price_paid = p2.number_input("💵 Price (¢)", min_value=1, max_value=99, value=50, step=1)
     contracts = p3.number_input("📄 Contracts", min_value=1, max_value=1000, value=st.session_state.default_contracts, step=1)
     
-    threshold_select = st.number_input("🎯 Threshold (Totals only)", min_value=180.0, max_value=280.0, value=225.5, step=3.0, 
-                                       disabled=(market_type == "Moneyline (Winner)"))
+    threshold_select = st.number_input("🎯 Threshold (Totals only)", min_value=180.0, max_value=280.0, value=225.5, step=0.5)
     
     add_btn = st.form_submit_button("✅ ADD POSITION", use_container_width=True)
     
@@ -1637,8 +1636,13 @@ if cush_data:
                     pace_score = -1 if cush_side == "NO" else 2
                     pace_label = "🔴 SHOT"
             
-            mid_cushion = (235.5 - cd['proj']) if cush_side == "NO" else (cd['proj'] - 235.5)
-            cushion_score = 3 if mid_cushion >= 20 else (2 if mid_cushion >= 10 else (1 if mid_cushion >= 5 else 0))
+            # Calculate best cushion across all thresholds
+            best_cushion = 0
+            for t in thresholds:
+                c = (t - cd['proj']) if cush_side == "NO" else (cd['proj'] - t)
+                if c > best_cushion:
+                    best_cushion = c
+            cushion_score = 3 if best_cushion >= 20 else (2 if best_cushion >= 10 else (1 if best_cushion >= 5 else 0))
             
             total_score = max(0, min(10, fatigue_score + pace_score + cushion_score))
             cd['edge_score'] = total_score
@@ -1734,4 +1738,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.2")
+st.caption("v15.4")
