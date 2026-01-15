@@ -323,7 +323,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v15.4")
+    st.caption("v15.5")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -993,7 +993,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 st.title("🎯 NBA EDGE FINDER")
 
 hdr1, hdr2 = st.columns([4, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.4")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.5")
 if hdr2.button("🔄 Refresh", use_container_width=True):
     st.rerun()
 
@@ -1601,39 +1601,19 @@ if cush_data:
         if has_edge:
             gk = cd['game']
             g = games.get(gk, {})
-            away_team = g.get('away_team', '')
-            home_team = g.get('home_team', '')
-            
-            away_b2b = away_team in yesterday_teams
-            home_b2b = home_team in yesterday_teams
-            
-            fatigue_score = 0
-            if away_b2b:
-                fatigue_score += 2
-            if home_b2b and away_b2b:
-                fatigue_score += 1
-            if home_team == "Denver":
-                fatigue_score += 1
-            if away_b2b and not home_b2b and cush_side == "NO":
-                fatigue_score -= 2
             
             mins = get_minutes_played(g.get('period', 0), g.get('clock', ''), g.get('status_type', ''))
-            pace_score = 0
             pace_val = 0
             pace_label = ""
             if mins >= 6:
                 pace_val = g.get('total', 0) / mins
                 if pace_val < 4.5:
-                    pace_score = 2 if cush_side == "NO" else -1
                     pace_label = "🟢 SLOW"
                 elif pace_val < 4.8:
-                    pace_score = 1 if cush_side == "NO" else 0
                     pace_label = "🟡 AVG"
                 elif pace_val < 5.2:
-                    pace_score = 0 if cush_side == "NO" else 1
                     pace_label = "🟠 FAST"
                 else:
-                    pace_score = -1 if cush_side == "NO" else 2
                     pace_label = "🔴 SHOT"
             
             # Calculate best cushion across all thresholds
@@ -1642,9 +1622,50 @@ if cush_data:
                 c = (t - cd['proj']) if cush_side == "NO" else (cd['proj'] - t)
                 if c > best_cushion:
                     best_cushion = c
-            cushion_score = 3 if best_cushion >= 20 else (2 if best_cushion >= 10 else (1 if best_cushion >= 5 else 0))
             
-            total_score = max(0, min(10, fatigue_score + pace_score + cushion_score))
+            # CUSHION SCORE (0-5 points) - main factor
+            if best_cushion >= 20:
+                cushion_pts = 5
+            elif best_cushion >= 15:
+                cushion_pts = 4
+            elif best_cushion >= 10:
+                cushion_pts = 3
+            elif best_cushion >= 5:
+                cushion_pts = 2
+            else:
+                cushion_pts = 1
+            
+            # PACE ALIGNMENT (0-3 points)
+            if cush_side == "NO":
+                if pace_val < 4.5:
+                    pace_pts = 3  # SLOW great for NO
+                elif pace_val < 4.8:
+                    pace_pts = 2
+                elif pace_val < 5.2:
+                    pace_pts = 1
+                else:
+                    pace_pts = 0  # SHOOTOUT bad for NO
+            else:  # YES
+                if pace_val >= 5.2:
+                    pace_pts = 3  # SHOOTOUT great for YES
+                elif pace_val >= 4.8:
+                    pace_pts = 2  # FAST good for YES
+                elif pace_val >= 4.5:
+                    pace_pts = 1
+                else:
+                    pace_pts = 0  # SLOW bad for YES
+            
+            # TIME RELIABILITY (0-2 points)
+            if mins >= 24:
+                time_pts = 2
+            elif mins >= 12:
+                time_pts = 1.5
+            elif mins >= 6:
+                time_pts = 1
+            else:
+                time_pts = 0.5
+            
+            total_score = round(cushion_pts + pace_pts + time_pts, 1)
             cd['edge_score'] = total_score
             cd['pace_val'] = pace_val
             cd['pace_label'] = pace_label
@@ -1738,4 +1759,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.4")
+st.caption("v15.5")
