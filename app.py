@@ -181,6 +181,40 @@ def build_kalshi_ticker(away_team, home_team, threshold):
 if "positions" not in st.session_state:
     st.session_state.positions = []
 
+# ========== STAR PLAYERS DATABASE (Tier, Type: O=Offense, D=Defense, B=Both) ==========
+STAR_PLAYERS_DB = {
+    "Atlanta": {"Trae Young": (3, "O"), "Dejounte Murray": (2, "B"), "Jalen Johnson": (2, "B")},
+    "Boston": {"Jayson Tatum": (3, "B"), "Jaylen Brown": (3, "O"), "Derrick White": (2, "D"), "Kristaps Porzingis": (2, "B")},
+    "Brooklyn": {"Mikal Bridges": (2, "B"), "Cam Thomas": (2, "O"), "Ben Simmons": (1, "D")},
+    "Charlotte": {"LaMelo Ball": (3, "O"), "Brandon Miller": (2, "O"), "Miles Bridges": (2, "B")},
+    "Chicago": {"Zach LaVine": (2, "O"), "DeMar DeRozan": (2, "O"), "Coby White": (2, "O")},
+    "Cleveland": {"Donovan Mitchell": (3, "O"), "Darius Garland": (2, "O"), "Evan Mobley": (2, "D"), "Jarrett Allen": (2, "D")},
+    "Dallas": {"Luka Doncic": (3, "O"), "Kyrie Irving": (3, "O"), "PJ Washington": (2, "D"), "Dereck Lively II": (2, "D")},
+    "Denver": {"Nikola Jokic": (3, "B"), "Jamal Murray": (3, "O"), "Aaron Gordon": (2, "D"), "Michael Porter Jr.": (2, "O")},
+    "Detroit": {"Cade Cunningham": (2, "O"), "Jaden Ivey": (2, "O"), "Jalen Duren": (1, "D")},
+    "Golden State": {"Stephen Curry": (3, "O"), "Draymond Green": (2, "D"), "Andrew Wiggins": (2, "B"), "Klay Thompson": (2, "O")},
+    "Houston": {"Jalen Green": (2, "O"), "Alperen Sengun": (2, "B"), "Fred VanVleet": (2, "O"), "Jabari Smith Jr.": (2, "D")},
+    "Indiana": {"Tyrese Haliburton": (3, "O"), "Pascal Siakam": (2, "B"), "Myles Turner": (2, "D"), "Bennedict Mathurin": (2, "O")},
+    "LA Clippers": {"Kawhi Leonard": (3, "B"), "Paul George": (3, "B"), "James Harden": (3, "O"), "Norman Powell": (2, "O")},
+    "LA Lakers": {"LeBron James": (3, "B"), "Anthony Davis": (3, "B"), "Austin Reaves": (2, "O"), "D'Angelo Russell": (2, "O")},
+    "Memphis": {"Ja Morant": (3, "O"), "Desmond Bane": (2, "O"), "Jaren Jackson Jr.": (2, "D"), "Marcus Smart": (2, "D")},
+    "Miami": {"Jimmy Butler": (3, "B"), "Bam Adebayo": (3, "D"), "Tyler Herro": (2, "O"), "Terry Rozier": (2, "O")},
+    "Milwaukee": {"Giannis Antetokounmpo": (3, "B"), "Damian Lillard": (3, "O"), "Khris Middleton": (2, "O"), "Brook Lopez": (2, "D")},
+    "Minnesota": {"Anthony Edwards": (3, "O"), "Karl-Anthony Towns": (2, "O"), "Rudy Gobert": (3, "D"), "Jaden McDaniels": (2, "D")},
+    "New Orleans": {"Zion Williamson": (3, "O"), "Brandon Ingram": (2, "O"), "CJ McCollum": (2, "O"), "Herb Jones": (2, "D")},
+    "New York": {"Jalen Brunson": (3, "O"), "Julius Randle": (2, "B"), "RJ Barrett": (2, "O"), "Mitchell Robinson": (2, "D")},
+    "Oklahoma City": {"Shai Gilgeous-Alexander": (3, "O"), "Chet Holmgren": (3, "D"), "Jalen Williams": (2, "B"), "Lu Dort": (2, "D")},
+    "Orlando": {"Paolo Banchero": (3, "O"), "Franz Wagner": (2, "B"), "Wendell Carter Jr.": (2, "D"), "Jalen Suggs": (2, "D")},
+    "Philadelphia": {"Joel Embiid": (3, "B"), "Tyrese Maxey": (2, "O"), "Tobias Harris": (2, "O")},
+    "Phoenix": {"Kevin Durant": (3, "O"), "Devin Booker": (3, "O"), "Bradley Beal": (2, "O"), "Jusuf Nurkic": (2, "D")},
+    "Portland": {"Anfernee Simons": (2, "O"), "Scoot Henderson": (2, "O"), "Jerami Grant": (2, "B")},
+    "Sacramento": {"De'Aaron Fox": (3, "O"), "Domantas Sabonis": (3, "B"), "Keegan Murray": (2, "O"), "Malik Monk": (2, "O")},
+    "San Antonio": {"Victor Wembanyama": (3, "B"), "Devin Vassell": (2, "O"), "Keldon Johnson": (2, "O")},
+    "Toronto": {"Scottie Barnes": (2, "B"), "Pascal Siakam": (2, "B"), "RJ Barrett": (2, "O")},
+    "Utah": {"Lauri Markkanen": (2, "O"), "Jordan Clarkson": (2, "O"), "Walker Kessler": (2, "D")},
+    "Washington": {"Jordan Poole": (2, "O"), "Kyle Kuzma": (2, "O"), "Bilal Coulibaly": (1, "D")}
+}
+
 # ========== SIDEBAR LEGEND ==========
 with st.sidebar:
     st.header("📖 LEGEND")
@@ -235,6 +269,16 @@ with st.sidebar:
     🟡 **LEAN NO/YES** → 5.5 - 6.4  
     ⚪ **TOSS-UP** → 4.5 - 5.4  
     🔴 **SKIP** → Below 4.5
+    """)
+    
+    st.divider()
+    
+    st.subheader("⭐ Star Injury Weights")
+    st.markdown("""
+    ⭐⭐⭐ **Superstar** → 3x weight  
+    ⭐⭐ **All-Star** → 2x weight  
+    ⭐ **Rotation** → 1x weight  
+    🔥 Offense | 🛡️ Defense | ⚔️ Both
     """)
     
     st.divider()
@@ -297,7 +341,7 @@ with st.sidebar:
                 st.info("Enter API credentials above")
     
     st.divider()
-    st.caption("v14.9")
+    st.caption("v15.0")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -457,6 +501,34 @@ def fetch_espn_injuries():
         pass
     return injuries
 
+def get_star_tier(player_name, team):
+    """Get star tier for a player: 3=Superstar, 2=All-Star, 1=Rotation"""
+    team_stars = STAR_PLAYERS_DB.get(team, {})
+    for star_name, (tier, player_type) in team_stars.items():
+        if star_name.lower() in player_name.lower() or player_name.lower() in star_name.lower():
+            return tier, player_type
+    return 0, None
+
+def format_star_rating(tier):
+    """Format star rating display"""
+    if tier == 3:
+        return "⭐⭐⭐"
+    elif tier == 2:
+        return "⭐⭐"
+    elif tier == 1:
+        return "⭐"
+    return ""
+
+def format_player_type(player_type):
+    """Format player type emoji"""
+    if player_type == "O":
+        return "🔥"
+    elif player_type == "D":
+        return "🛡️"
+    elif player_type == "B":
+        return "⚔️"
+    return ""
+
 def get_injury_score(team, injuries):
     team_injuries = injuries.get(team, [])
     stars = STAR_PLAYERS.get(team, [])
@@ -473,6 +545,39 @@ def get_injury_score(team, injuries):
         elif "DAY-TO-DAY" in status or "GTD" in status or "QUESTIONABLE" in status:
             score += 2.5 if is_star else 0.5
     return score, out_stars
+
+def get_detailed_injuries(team, injuries):
+    """Get detailed injury report with star ratings for a team"""
+    team_injuries = injuries.get(team, [])
+    detailed = []
+    for inj in team_injuries:
+        name = inj.get("name", "")
+        status = inj.get("status", "").upper()
+        tier, player_type = get_star_tier(name, team)
+        stars = format_star_rating(tier)
+        type_emoji = format_player_type(player_type)
+        
+        # Simplify status
+        if "OUT" in status:
+            simple_status = "OUT"
+        elif "DAY-TO-DAY" in status or "DTD" in status:
+            simple_status = "DTD"
+        elif "QUESTIONABLE" in status or "GTD" in status:
+            simple_status = "GTD"
+        else:
+            simple_status = status[:10]
+        
+        detailed.append({
+            "name": name,
+            "status": simple_status,
+            "tier": tier,
+            "stars": stars,
+            "type_emoji": type_emoji
+        })
+    
+    # Sort by tier (highest first)
+    detailed.sort(key=lambda x: x['tier'], reverse=True)
+    return detailed
 
 def get_minutes_played(period, clock, status_type):
     if status_type == "STATUS_FINAL":
@@ -846,7 +951,97 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v14.9")
+st.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.0")
+
+# ========== 🏥 INJURY REPORT SECTION ==========
+st.subheader("🏥 INJURY REPORT - TODAY'S GAMES")
+
+if game_list and injuries:
+    # Get all teams playing today
+    teams_playing = set()
+    for game_key in game_list:
+        parts = game_key.split("@")
+        teams_playing.add(parts[0])
+        teams_playing.add(parts[1])
+    
+    # Count injuries by severity
+    star_injuries = []  # Tier 3 (Superstars)
+    allstar_injuries = []  # Tier 2 (All-Stars)
+    rotation_injuries = []  # Tier 1 (Rotation)
+    
+    for team in sorted(teams_playing):
+        team_injuries = get_detailed_injuries(team, injuries)
+        for inj in team_injuries:
+            if inj['tier'] == 3:
+                star_injuries.append((team, inj))
+            elif inj['tier'] == 2:
+                allstar_injuries.append((team, inj))
+            elif inj['tier'] == 1:
+                rotation_injuries.append((team, inj))
+    
+    # Display SUPERSTARS first (most impactful)
+    if star_injuries:
+        st.markdown("### ⭐⭐⭐ SUPERSTARS OUT/QUESTIONABLE")
+        cols = st.columns(3)
+        for idx, (team, inj) in enumerate(star_injuries):
+            with cols[idx % 3]:
+                status_color = "#ff0000" if inj['status'] == "OUT" else "#ffaa00"
+                st.markdown(f"""
+                <div style='background:linear-gradient(135deg,#2a1a1a,#1a1a2e);padding:10px;border-radius:8px;border-left:4px solid {status_color};margin-bottom:8px'>
+                    <span style='color:#fff;font-weight:bold'>{inj['stars']} {inj['name']}</span> {inj['type_emoji']}<br>
+                    <span style='color:{status_color};font-size:0.9em'>{inj['status']}</span>
+                    <span style='color:#888;font-size:0.85em'> • {team}</span>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    # Display ALL-STARS
+    if allstar_injuries:
+        st.markdown("### ⭐⭐ ALL-STARS OUT/QUESTIONABLE")
+        cols = st.columns(4)
+        for idx, (team, inj) in enumerate(allstar_injuries):
+            with cols[idx % 4]:
+                status_color = "#ff0000" if inj['status'] == "OUT" else "#ffaa00"
+                st.markdown(f"""
+                <div style='background:#1a1a2e;padding:8px;border-radius:6px;border-left:3px solid {status_color};margin-bottom:6px'>
+                    <span style='color:#ddd;font-size:0.95em'>{inj['stars']} {inj['name']}</span> {inj['type_emoji']}<br>
+                    <span style='color:{status_color};font-size:0.85em'>{inj['status']}</span>
+                    <span style='color:#666;font-size:0.8em'> • {team}</span>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    # Display ROTATION players (collapsed by default)
+    if rotation_injuries:
+        with st.expander(f"⭐ ROTATION PLAYERS ({len(rotation_injuries)} injuries)", expanded=False):
+            cols = st.columns(5)
+            for idx, (team, inj) in enumerate(rotation_injuries):
+                with cols[idx % 5]:
+                    status_color = "#ff4444" if inj['status'] == "OUT" else "#ffaa00"
+                    st.markdown(f"<span style='color:#aaa;font-size:0.85em'>{inj['name']}</span> <span style='color:{status_color};font-size:0.8em'>({inj['status']})</span> <span style='color:#666;font-size:0.75em'>• {team}</span>", unsafe_allow_html=True)
+    
+    # Full team-by-team breakdown
+    with st.expander("📋 FULL INJURY REPORT BY TEAM", expanded=False):
+        cols = st.columns(3)
+        col_idx = 0
+        for team in sorted(teams_playing):
+            team_injuries = get_detailed_injuries(team, injuries)
+            if team_injuries:
+                with cols[col_idx % 3]:
+                    st.markdown(f"**{team}**")
+                    for inj in team_injuries:
+                        status_color = "#ff0000" if inj['status'] == "OUT" else "#ffaa00" if inj['status'] in ["GTD", "DTD"] else "#888"
+                        star_display = f"{inj['stars']} " if inj['stars'] else ""
+                        type_display = f" {inj['type_emoji']}" if inj['type_emoji'] else ""
+                        st.markdown(f"<span style='color:{status_color};font-size:0.9em'>{star_display}{inj['name']}{type_display} ({inj['status']})</span>", unsafe_allow_html=True)
+                    st.markdown("---")
+                col_idx += 1
+    
+    # Summary stats
+    total_injuries = len(star_injuries) + len(allstar_injuries) + len(rotation_injuries)
+    st.caption(f"📊 {len(star_injuries)} Superstars | {len(allstar_injuries)} All-Stars | {len(rotation_injuries)} Rotation | {total_injuries} Total | 🔥=Offense 🛡️=Defense ⚔️=Both")
+else:
+    st.info("No injury data available or no games today")
+
+st.divider()
 
 # ========== 🎯 BIG SNAPSHOT - ML PICKS ==========
 st.subheader("🎯 BIG SNAPSHOT - TODAY'S ML PICKS")
