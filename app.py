@@ -895,13 +895,10 @@ p1, p2, p3 = st.columns(3)
 if market_type == "Totals (Over/Under)":
     with p1:
         st.caption("📊 Side")
-        yes_no = st.radio("", ["NO (Under)", "YES (Over)"], horizontal=True, disabled=game_started, key="totals_side_radio")
+        yes_no = st.radio("", ["NO (Under)", "YES (Over)"], horizontal=True, key="totals_side_radio")
         st.session_state.selected_side = "NO" if yes_no.startswith("NO") else "YES"
     
-    st.session_state.selected_threshold = st.number_input("🎯 Threshold", min_value=180.0, max_value=280.0, value=st.session_state.selected_threshold, step=0.5, disabled=game_started)
-    
-    if game_started:
-        st.warning("🔒 Game has started — side & threshold locked")
+    st.session_state.selected_threshold = st.number_input("🎯 Threshold", min_value=180.0, max_value=280.0, value=st.session_state.selected_threshold, step=0.5)
 else:
     with p1:
         if selected_game != "Select a game...":
