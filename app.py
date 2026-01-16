@@ -1189,6 +1189,105 @@ else:
 
 st.divider()
 
+# ========== CUSHION SCANNER ==========
+st.subheader("🎯 CUSHION SCANNER")
+
+THRESHOLDS = [210.5, 215.5, 220.5, 225.5, 230.5, 235.5, 240.5, 245.5, 250.5, 255.5]
+
+cush_col1, cush_col2 = st.columns(2)
+min_minutes = cush_col1.selectbox("Min Minutes", [6, 9, 12, 15, 18], index=0, key="cush_min_select")
+cush_side = cush_col2.selectbox("Side", ["NO (Under)", "YES (Over)"], key="cush_side_select")
+is_no_side = "NO" in cush_side
+
+cushion_data = []
+for gk, g in games.items():
+    mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
+    if mins < min_minutes:
+        continue
+    if g['status_type'] == "STATUS_FINAL":
+        continue
+    
+    total = g['total']
+    pace = total / mins if mins > 0 else 0
+    proj = round(pace * 48)
+    
+    # Find recommended bet line
+    if is_no_side:
+        # NO: find first threshold ABOVE projection, then go one higher
+        candidates = [t for t in THRESHOLDS if t > proj]
+        if len(candidates) >= 2:
+            bet_line = candidates[1]  # One level higher (safer)
+        elif len(candidates) == 1:
+            bet_line = candidates[0]
+        else:
+            continue
+        cushion = bet_line - proj
+    else:
+        # YES: find first threshold BELOW projection, then go one lower
+        candidates = [t for t in THRESHOLDS if t < proj]
+        if len(candidates) >= 2:
+            bet_line = candidates[-2]  # One level lower (safer)
+        elif len(candidates) == 1:
+            bet_line = candidates[-1]
+        else:
+            continue
+        cushion = proj - bet_line
+    
+    if cushion < 6:
+        continue
+    
+    # Pace alignment check
+    if is_no_side:
+        if pace < 4.5: pace_status = "✅ SLOW"
+        elif pace < 4.8: pace_status = "⚠️ AVG"
+        else: pace_status = "❌ FAST"
+    else:
+        if pace > 5.0: pace_status = "✅ FAST"
+        elif pace > 4.7: pace_status = "⚠️ AVG"
+        else: pace_status = "❌ SLOW"
+    
+    cushion_data.append({
+        "game": gk,
+        "status": f"Q{g['period']} {g['clock']}",
+        "total": total,
+        "proj": proj,
+        "bet_line": bet_line,
+        "cushion": cushion,
+        "pace": pace,
+        "pace_status": pace_status,
+        "mins": mins
+    })
+
+cushion_data.sort(key=lambda x: x['cushion'], reverse=True)
+
+if cushion_data:
+    for c in cushion_data:
+        side_label = "NO" if is_no_side else "YES"
+        st.markdown(
+            f"""
+            <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:12px 16px;margin-bottom:8px;border-radius:10px;border-left:4px solid #00ff00">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <span style="color:#fff;font-weight:bold;font-size:1.1em">{c['game'].replace('@', ' @ ')}</span>
+                        <span style="color:#888;margin-left:10px">{c['status']}</span>
+                    </div>
+                    <span style="color:#00ff00;font-weight:bold;font-size:1.2em">+{c['cushion']:.0f} cushion</span>
+                </div>
+                <div style="margin-top:8px;display:flex;gap:25px;flex-wrap:wrap">
+                    <span style="color:#aaa">📊 Total: <b style="color:#fff">{c['total']}</b></span>
+                    <span style="color:#aaa">📈 Proj: <b style="color:#fff">{c['proj']}</b></span>
+                    <span style="color:#ff8800;font-weight:bold">🎯 {side_label} {c['bet_line']}</span>
+                    <span style="color:#aaa">🔥 {c['pace']:.2f}/min {c['pace_status']}</span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+else:
+    st.info(f"No games with {min_minutes}+ minutes and 6+ cushion found")
+
+st.divider()
+
 # ========== ALL GAMES ==========
 st.subheader("📺 ALL GAMES")
 if games:
