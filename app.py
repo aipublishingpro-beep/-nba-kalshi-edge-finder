@@ -201,14 +201,23 @@ def kalshi_place_order(ticker: str, side: str, yes_no: str, price: int, contract
         return False, f"Exception: {str(e)}"
 
 def get_kalshi_ticker(away_team, home_team, market_type="totals"):
-    away_code = KALSHI_CODES.get(away_team, "xxx")
-    home_code = KALSHI_CODES.get(home_team, "xxx")
+    away_code = KALSHI_CODES.get(away_team, "xxx").upper()
+    home_code = KALSHI_CODES.get(home_team, "xxx").upper()
+    today = datetime.now(pytz.timezone('US/Eastern'))
+    date_str = today.strftime("%y%b%d").upper()
+    if market_type == "totals":
+        return f"KXNBATOTAL-{date_str}{away_code}{home_code}"
+    else:
+        return f"KXNBAGAME-{date_str}{away_code}{home_code}"
+
+def get_kalshi_ml_ticker(team):
+    """Get ML ticker for a specific team win market"""
+    team_code = KALSHI_CODES.get(team)
+    if not team_code:
+        return None
     today = datetime.now(pytz.timezone('US/Eastern'))
     date_str = today.strftime("%y%b%d").lower()
-    if market_type == "totals":
-        return f"kxnbatotal-{date_str}{away_code}{home_code}"
-    else:
-        return f"kxnbagame-{date_str}{away_code}{home_code}"
+    return f"kxnbagame-{date_str}-{team_code}-win"
 
 # ========== SESSION STATE INIT ==========
 # Prevent phantom rerenders by setting defaults first
@@ -266,20 +275,20 @@ KALSHI_CODES = {
 }
 
 def build_kalshi_totals_url(away_team, home_team):
-    away_code = KALSHI_CODES.get(away_team, "xxx")
-    home_code = KALSHI_CODES.get(home_team, "xxx")
+    away_code = KALSHI_CODES.get(away_team, "xxx").upper()
+    home_code = KALSHI_CODES.get(home_team, "xxx").upper()
     today = datetime.now(pytz.timezone('US/Eastern'))
-    date_str = today.strftime("%y%b%d").lower()
-    ticker = f"kxnbatotal-{date_str}{away_code}{home_code}"
-    return f"https://kalshi.com/markets/kxnbatotal/pro-basketball-total-points/{ticker}"
+    date_str = today.strftime("%y%b%d").upper()
+    ticker = f"KXNBATOTAL-{date_str}{away_code}{home_code}"
+    return f"https://kalshi.com/markets/KXNBATOTAL/{ticker}"
 
 def build_kalshi_ml_url(away_team, home_team):
-    away_code = KALSHI_CODES.get(away_team, "xxx")
-    home_code = KALSHI_CODES.get(home_team, "xxx")
+    away_code = KALSHI_CODES.get(away_team, "xxx").upper()
+    home_code = KALSHI_CODES.get(home_team, "xxx").upper()
     today = datetime.now(pytz.timezone('US/Eastern'))
-    date_str = today.strftime("%y%b%d").lower()
-    ticker = f"kxnbagame-{date_str}{away_code}{home_code}"
-    return f"https://kalshi.com/markets/kxnbagame/pro-basketball-moneyline/{ticker}"
+    date_str = today.strftime("%y%b%d").upper()
+    ticker = f"KXNBAGAME-{date_str}{away_code}{home_code}"
+    return f"https://kalshi.com/markets/KXNBAGAME/{ticker}"
 
 # ========== STAR PLAYERS DATABASE ==========
 STAR_PLAYERS_DB = {
@@ -350,7 +359,7 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.22")
+    st.caption("v15.24")
     st.caption("💾 Positions persist")
     if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
         st.caption("🔐 Trading ENABLED")
@@ -839,7 +848,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.22")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.24")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -1114,17 +1123,19 @@ if st.button(btn_label, use_container_width=True, type=btn_type):
                 st.error("Pick a team first!")
             else:
                 if is_live_trade:
-                    ticker = get_kalshi_ticker(away_t, home_t, "ml")
-                    yes_no_side = "yes" if st.session_state.selected_ml_pick == home_t else "no"
-                    st.warning(f"🔄 Placing order: {ticker} | {yes_no_side.upper()} @ {price_paid}¢ x {contracts}")
-                    success, result = kalshi_place_order(ticker, "buy", yes_no_side, price_paid, contracts)
-                    if success:
-                        st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_ml_pick} @ {price_paid}¢")
-                        st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
-                        save_positions(st.session_state.positions)
-                        st.balloons()
+                    ticker = get_kalshi_ml_ticker(st.session_state.selected_ml_pick)
+                    if not ticker:
+                        st.error("❌ Invalid team — Kalshi code not found")
                     else:
-                        st.error(f"❌ Order failed: {result}")
+                        st.warning(f"🔄 Placing order: {ticker} | YES @ {price_paid}¢ x {contracts}")
+                        success, result = kalshi_place_order(ticker, "buy", "yes", price_paid, contracts)
+                        if success:
+                            st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_ml_pick} @ {price_paid}¢")
+                            st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
+                            save_positions(st.session_state.positions)
+                            st.balloons()
+                        else:
+                            st.error(f"❌ Order failed: {result}")
                     # NO rerun - let user see the result
                 else:
                     st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2)})
@@ -1133,7 +1144,7 @@ if st.button(btn_label, use_container_width=True, type=btn_type):
         else:
             if is_live_trade:
                 ticker = get_kalshi_ticker(away_t, home_t, "totals")
-                ticker_with_threshold = f"{ticker}-t{int(st.session_state.selected_threshold)}"
+                ticker_with_threshold = f"{ticker}-T{int(st.session_state.selected_threshold)}"
                 st.warning(f"🔄 Placing order: {ticker_with_threshold} | {st.session_state.selected_side} @ {price_paid}¢ x {contracts}")
                 success, result = kalshi_place_order(ticker_with_threshold, "buy", st.session_state.selected_side.lower(), price_paid, contracts)
                 if success:
@@ -1395,4 +1406,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.22 - Kalshi API endpoint update")
+st.caption("v15.24 - ML ticker format fix (team-win)")
