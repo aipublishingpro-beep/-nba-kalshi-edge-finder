@@ -446,7 +446,7 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.29")
+    st.caption("v15.30")
     st.caption("💾 Positions persist")
     st.caption("🔗 Trade via Kalshi UI")
 
@@ -934,7 +934,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.29")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.30")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -1079,6 +1079,35 @@ for label, rows in tiers.items():
             """,
             unsafe_allow_html=True
         )
+
+# Auto-add all strong picks button
+strong_picks = [r for r in ml_results if r["score"] >= 6.5]  # STRONG BUY + BUY
+if strong_picks:
+    st.markdown("")
+    col_add, col_price = st.columns([2, 1])
+    default_price = col_price.number_input("Default price ¢", min_value=1, max_value=99, value=50, key="auto_add_price")
+    if col_add.button(f"➕ Add All {len(strong_picks)} Picks to Tracker", use_container_width=True):
+        added = 0
+        for r in strong_picks:
+            game_key = f"{r['away']}@{r['home']}"
+            # Skip if already tracked
+            already_tracked = any(p.get('game') == game_key and p.get('type') == 'ml' and p.get('pick') == r['pick'] for p in st.session_state.positions)
+            if not already_tracked:
+                st.session_state.positions.append({
+                    "game": game_key,
+                    "type": "ml",
+                    "pick": r['pick'],
+                    "price": default_price,
+                    "contracts": 1,
+                    "cost": round(default_price / 100, 2)
+                })
+                added += 1
+        if added > 0:
+            save_positions(st.session_state.positions)
+            st.success(f"✅ Added {added} picks to tracker")
+            st.rerun()
+        else:
+            st.info("All picks already in tracker")
 
 st.divider()
 
