@@ -868,6 +868,99 @@ else:
 
 st.divider()
 
+# ========== BIG SNAPSHOT – TODAY'S ML PICKS ==========
+st.subheader("🎯 BIG SNAPSHOT – TODAY'S ML PICKS")
+
+ml_results = []
+
+for game_key, g in games.items():
+    away = g["away_team"]
+    home = g["home_team"]
+
+    try:
+        pick, score, edge, reasons, home_stars, away_stars = calc_ml_score(
+            home, away, yesterday_teams, injuries
+        )
+
+        tier, color = get_signal_tier(score)
+
+        ml_results.append({
+            "game": f"{away} vs {home}",
+            "pick": pick,
+            "score": score,
+            "edge": edge,
+            "tier": tier,
+            "color": color,
+            "reasons": reasons,
+            "away": away,
+            "home": home
+        })
+    except:
+        continue
+
+# Sort by score descending
+ml_results.sort(key=lambda x: x["score"], reverse=True)
+
+# Bucket by tier
+tiers = {
+    "🟢 STRONG BUY": [],
+    "🔵 BUY": [],
+    "🟡 LEAN": [],
+    "⚪ TOSS-UP": []
+}
+
+for r in ml_results:
+    if r["score"] >= 8.0:
+        tiers["🟢 STRONG BUY"].append(r)
+    elif r["score"] >= 6.5:
+        tiers["🔵 BUY"].append(r)
+    elif r["score"] >= 5.5:
+        tiers["🟡 LEAN"].append(r)
+    else:
+        tiers["⚪ TOSS-UP"].append(r)
+
+for label, rows in tiers.items():
+    if not rows:
+        continue
+
+    st.markdown(f"### {label}")
+
+    for r in rows:
+        kalshi_url = build_kalshi_ml_url(r["away"], r["home"])
+
+        reasons = " • ".join(r["reasons"])
+        edge_txt = f"+{int(r['edge'])}%"
+
+        st.markdown(
+            f"""
+            <div style="display:flex;align-items:center;justify-content:space-between;
+                        background:linear-gradient(135deg,#0f172a,#020617);
+                        padding:14px 16px;margin-bottom:8px;border-radius:10px;
+                        border-left:4px solid {r['color']}">
+                <div>
+                    <div style="color:#fff;font-size:1.05em;font-weight:700">
+                        {r['pick']} vs {r['away'] if r['pick']==r['home'] else r['home']}
+                    </div>
+                    <div style="color:#38bdf8;font-weight:700">
+                        {r['score']}/10 | {edge_txt}
+                    </div>
+                    <div style="color:#9ca3af;font-size:0.9em">
+                        {reasons}
+                    </div>
+                </div>
+                <a href="{kalshi_url}" target="_blank"
+                   style="background:#16a34a;color:#fff;
+                          padding:10px 16px;border-radius:8px;
+                          text-decoration:none;font-weight:700">
+                   🚀 BUY {r['pick']}
+                </a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+st.divider()
+
 # ========== ADD NEW POSITION ==========
 st.subheader("➕ ADD NEW POSITION")
 
