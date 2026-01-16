@@ -11,6 +11,9 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
 
+# ========== DAILY DATE KEY (INVALIDATION GATE) ==========
+today_str = datetime.now(pytz.timezone("US/Eastern")).strftime("%Y-%m-%d")
+
 # Fixed CSS - works with current Streamlit DOM structure
 st.markdown("""
 <style>
@@ -229,6 +232,15 @@ if "kalshi_api_key" not in st.session_state:
 if "kalshi_private_key" not in st.session_state:
     st.session_state.kalshi_private_key = ""
 
+# ========== DATE INVALIDATION GUARD ==========
+# Wipe stale snapshot/scores when date changes (midnight reset)
+if "snapshot_date" not in st.session_state or st.session_state["snapshot_date"] != today_str:
+    st.session_state["snapshot_date"] = today_str
+    st.session_state.pop("big_snapshot", None)
+    st.session_state.pop("ml_picks", None)
+    st.session_state.pop("cached_games", None)
+    st.session_state.pop("cached_injuries", None)
+
 if st.session_state.auto_refresh:
     st.markdown('<meta http-equiv="refresh" content="30">', unsafe_allow_html=True)
     auto_status = "🔄 Auto-refresh ON (30s)"
@@ -332,7 +344,7 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.14")
+    st.caption("v15.15")
     st.caption("💾 Positions persist")
     if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
         st.caption("🔐 Trading ENABLED")
@@ -425,7 +437,8 @@ def calc_distance(loc1, loc2):
     a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
     return 3959 * 2 * atan2(sqrt(a), sqrt(1-a))
 
-def fetch_espn_scores():
+def fetch_espn_scores(date_key=None):
+    """Fetch scores - date_key forces cache invalidation daily"""
     url = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
     try:
         resp = requests.get(url, timeout=10)
@@ -800,8 +813,8 @@ def get_totals_signal_tier(score, pick):
     elif score >= 4.5: return "⚪ TOSS-UP", "#888888"
     else: return "🔴 SKIP", "#ff0000"
 
-# ========== FETCH DATA ==========
-games = fetch_espn_scores()
+# ========== FETCH DATA (with date_key for cache invalidation) ==========
+games = fetch_espn_scores(date_key=today_str)
 game_list = sorted(list(games.keys()))
 yesterday_teams_raw = fetch_yesterday_teams()
 injuries = fetch_espn_injuries()
@@ -817,7 +830,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.14")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.15")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -870,7 +883,9 @@ st.divider()
 
 # ========== BIG SNAPSHOT – TODAY'S ML PICKS ==========
 st.subheader("🎯 BIG SNAPSHOT – TODAY'S ML PICKS")
+st.caption(f"📅 Snapshot date: {st.session_state.get('snapshot_date', 'N/A')}")
 
+# Compute ML results fresh (no caching across days)
 ml_results = []
 
 for game_key, g in games.items():
@@ -897,6 +912,9 @@ for game_key, g in games.items():
         })
     except:
         continue
+
+# Store in session state for this date
+st.session_state["big_snapshot"] = ml_results
 
 # Sort by score descending
 ml_results.sort(key=lambda x: x["score"], reverse=True)
@@ -1303,4 +1321,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.14 - RSA auth from Streamlit Secrets")
+st.caption("v15.15 - Daily snapshot reset fix")
