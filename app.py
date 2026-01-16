@@ -260,17 +260,21 @@ STAR_PLAYERS_DB = {
 
 # ========== SIDEBAR LEGEND ==========
 with st.sidebar:
-    # ========== KALSHI TRADING (AUTO-CONNECT) ==========
+    # ========== KALSHI TRADING (AUTO-CONNECT VIA SECRETS) ==========
     st.header("🔐 KALSHI")
     
-    # Auto-connect on load if not already connected
+    # Auto-load from Streamlit Secrets
     if not st.session_state.trading_enabled or not st.session_state.kalshi_token:
-        creds = load_credentials()
-        if creds and creds.get("email") and creds.get("password"):
-            token, member_id = kalshi_login(creds["email"], creds["password"])
-            if token:
-                st.session_state.kalshi_token = token
-                st.session_state.trading_enabled = True
+        try:
+            api_email = st.secrets.get("KALSHI_EMAIL", "")
+            api_password = st.secrets.get("KALSHI_PASSWORD", "")
+            if api_email and api_password:
+                token, member_id = kalshi_login(api_email, api_password)
+                if token:
+                    st.session_state.kalshi_token = token
+                    st.session_state.trading_enabled = True
+        except:
+            pass
     
     # Show status
     if st.session_state.trading_enabled and st.session_state.kalshi_token:
@@ -284,6 +288,7 @@ with st.sidebar:
             st.session_state.kalshi_token = None
     else:
         st.error("❌ Not connected")
+        st.caption("Add KALSHI_EMAIL and KALSHI_PASSWORD to Streamlit Secrets")
     
     st.divider()
     
