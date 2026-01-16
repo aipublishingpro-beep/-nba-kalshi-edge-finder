@@ -151,6 +151,9 @@ def kalshi_place_order(ticker: str, side: str, yes_no: str, price: int, contract
         api_key = st.session_state.kalshi_api_key
         private_key_pem = st.session_state.kalshi_private_key
         
+        if not api_key or not private_key_pem:
+            return False, "API keys not configured"
+        
         # Load private key
         private_key = serialization.load_pem_private_key(
             private_key_pem.encode() if isinstance(private_key_pem, str) else private_key_pem,
@@ -158,7 +161,7 @@ def kalshi_place_order(ticker: str, side: str, yes_no: str, price: int, contract
             backend=default_backend()
         )
         
-        # Create signature
+        # Create signature - Kalshi uses RSA-PSS, not PKCS1v15
         timestamp = str(int(time.time() * 1000))
         method = "POST"
         path = "/trade-api/v2/portfolio/orders"
@@ -166,7 +169,10 @@ def kalshi_place_order(ticker: str, side: str, yes_no: str, price: int, contract
         
         signature = private_key.sign(
             message.encode(),
-            padding.PKCS1v15(),
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
             hashes.SHA256()
         )
         sig_b64 = base64.b64encode(signature).decode()
@@ -190,9 +196,9 @@ def kalshi_place_order(ticker: str, side: str, yes_no: str, price: int, contract
         resp = requests.post(f"{KALSHI_API_BASE}/portfolio/orders", headers=headers, json=order_data, timeout=10)
         if resp.status_code in [200, 201]:
             return True, resp.json()
-        return False, resp.text
+        return False, f"Status {resp.status_code}: {resp.text}"
     except Exception as e:
-        return False, str(e)
+        return False, f"Exception: {str(e)}"
 
 def get_kalshi_ticker(away_team, home_team, market_type="totals"):
     away_code = KALSHI_CODES.get(away_team, "xxx")
@@ -833,7 +839,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.19")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.20")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -1110,6 +1116,7 @@ if st.button(btn_label, use_container_width=True, type=btn_type):
                 if is_live_trade:
                     ticker = get_kalshi_ticker(away_t, home_t, "ml")
                     yes_no_side = "yes" if st.session_state.selected_ml_pick == home_t else "no"
+                    st.info(f"🔄 Placing order: {ticker} | {yes_no_side.upper()} @ {price_paid}¢ x {contracts}")
                     success, result = kalshi_place_order(ticker, "buy", yes_no_side, price_paid, contracts)
                     if success:
                         st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_ml_pick} @ {price_paid}¢")
@@ -1125,6 +1132,7 @@ if st.button(btn_label, use_container_width=True, type=btn_type):
             if is_live_trade:
                 ticker = get_kalshi_ticker(away_t, home_t, "totals")
                 ticker_with_threshold = f"{ticker}-t{int(st.session_state.selected_threshold)}"
+                st.info(f"🔄 Placing order: {ticker_with_threshold} | {st.session_state.selected_side} @ {price_paid}¢ x {contracts}")
                 success, result = kalshi_place_order(ticker_with_threshold, "buy", st.session_state.selected_side.lower(), price_paid, contracts)
                 if success:
                     st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_side} {st.session_state.selected_threshold} @ {price_paid}¢")
