@@ -344,7 +344,7 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.17")
+    st.caption("v15.19")
     st.caption("💾 Positions persist")
     if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
         st.caption("🔐 Trading ENABLED")
@@ -833,7 +833,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.17")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.19")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -901,6 +901,11 @@ for game_key, g in games.items():
         )
 
         tier, color = get_signal_tier(score)
+        
+        # Check if blowout risk (tired away @ fresh home)
+        away_b2b = away in yesterday_teams
+        home_b2b = home in yesterday_teams
+        is_blowout_risk = away_b2b and not home_b2b and pick == home
 
         ml_results.append({
             "game": f"{away} vs {home}",
@@ -911,7 +916,8 @@ for game_key, g in games.items():
             "color": color,
             "reasons": reasons,
             "away": away,
-            "home": home
+            "home": home,
+            "blowout": is_blowout_risk
         })
     except:
         continue
@@ -950,6 +956,7 @@ for label, rows in tiers.items():
         kalshi_url = build_kalshi_ml_url(r["away"], r["home"])
         reasons = " • ".join(r["reasons"])
         edge_txt = f"+{int(r['edge'])}%"
+        blowout_badge = "🔥 " if r.get("blowout") else ""
 
         st.markdown(
             f"""
@@ -958,7 +965,7 @@ for label, rows in tiers.items():
                         padding:6px 12px;margin-bottom:4px;border-radius:6px;
                         border-left:3px solid {r['color']}">
                 <div style="flex:1;min-width:0">
-                    <span style="color:#fff;font-size:0.9em;font-weight:600">{r['pick']}</span>
+                    <span style="color:#fff;font-size:0.9em;font-weight:600">{blowout_badge}{r['pick']}</span>
                     <span style="color:#666;font-size:0.85em"> vs {r['away'] if r['pick']==r['home'] else r['home']}</span>
                     <span style="color:#38bdf8;font-weight:600;font-size:0.85em;margin-left:8px">{r['score']}/10 | {edge_txt}</span>
                     <span style="color:#777;font-size:0.75em;margin-left:8px">{reasons}</span>
@@ -973,6 +980,64 @@ for label, rows in tiers.items():
             """,
             unsafe_allow_html=True
         )
+
+st.divider()
+
+# ========== BLOWOUT RISK - TIRED AWAY @ FRESH HOME ==========
+st.subheader("🔥 BLOWOUT RISK — Tired Away @ Fresh Home")
+
+blowout_games = []
+for game_key, g in games.items():
+    away = g["away_team"]
+    home = g["home_team"]
+    away_b2b = away in yesterday_teams
+    home_b2b = home in yesterday_teams
+    
+    if away_b2b and not home_b2b:
+        home_stats = TEAM_STATS.get(home, {})
+        away_stats = TEAM_STATS.get(away, {})
+        home_net = home_stats.get('net_rating', 0)
+        away_net = away_stats.get('net_rating', 0)
+        net_edge = home_net - away_net
+        
+        blowout_games.append({
+            "game": game_key,
+            "home": home,
+            "away": away,
+            "net_edge": net_edge,
+            "home_net": home_net,
+            "away_net": away_net
+        })
+
+blowout_games.sort(key=lambda x: x['net_edge'], reverse=True)
+
+if blowout_games:
+    for bg in blowout_games:
+        kalshi_url = build_kalshi_ml_url(bg["away"], bg["home"])
+        edge_color = "#00ff00" if bg['net_edge'] > 5 else "#ffff00" if bg['net_edge'] > 0 else "#ff8800"
+        st.markdown(
+            f"""
+            <div style="display:flex;align-items:center;justify-content:space-between;
+                        background:linear-gradient(135deg,#2a1a0a,#1a0a0a);
+                        padding:8px 12px;margin-bottom:4px;border-radius:6px;
+                        border-left:3px solid #ff6600">
+                <div style="flex:1">
+                    <span style="color:#ff6600;font-weight:700">🔥 {bg['home']}</span>
+                    <span style="color:#888"> vs tired {bg['away']}</span>
+                    <span style="color:{edge_color};font-size:0.85em;margin-left:10px">Net: {bg['net_edge']:+.1f}</span>
+                </div>
+                <a href="{kalshi_url}" target="_blank"
+                   style="background:#ff6600;color:#fff;
+                          padding:4px 10px;border-radius:5px;font-size:0.8em;
+                          text-decoration:none;font-weight:600">
+                   ML {bg['home'][:3].upper()}
+                </a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+else:
+    st.info("No blowout setups today — no tired away teams @ fresh home teams")
 
 st.divider()
 
@@ -1318,4 +1383,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.17 - Compact snapshot view")
+st.caption("v15.19 - Blowout badge in Big Snapshot")
