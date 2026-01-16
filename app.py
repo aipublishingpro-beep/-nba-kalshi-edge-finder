@@ -260,44 +260,30 @@ STAR_PLAYERS_DB = {
 
 # ========== SIDEBAR LEGEND ==========
 with st.sidebar:
-    # ========== KALSHI TRADING ==========
+    # ========== KALSHI TRADING (AUTO-CONNECT) ==========
     st.header("🔐 KALSHI")
     
-    creds = load_credentials()
+    # Auto-connect on load if not already connected
+    if not st.session_state.trading_enabled or not st.session_state.kalshi_token:
+        creds = load_credentials()
+        if creds and creds.get("email") and creds.get("password"):
+            token, member_id = kalshi_login(creds["email"], creds["password"])
+            if token:
+                st.session_state.kalshi_token = token
+                st.session_state.trading_enabled = True
     
+    # Show status
     if st.session_state.trading_enabled and st.session_state.kalshi_token:
         balance = kalshi_get_balance(st.session_state.kalshi_token)
         if balance is not None:
             st.session_state.kalshi_balance = balance
             st.success(f"✅ **${balance:.2f}**")
         else:
-            st.warning("⚠️ Expired")
+            st.warning("⚠️ Session expired")
             st.session_state.trading_enabled = False
             st.session_state.kalshi_token = None
-        
-        if st.button("🔓 Disconnect", use_container_width=True):
-            st.session_state.trading_enabled = False
-            st.session_state.kalshi_token = None
-            st.session_state.kalshi_balance = None
-            st.rerun()
     else:
-        unlock_key = st.text_input("🔑 Encryption Key", type="password", key="enc_key")
-        if st.button("🔐 Connect", use_container_width=True, type="primary"):
-            if unlock_key and creds:
-                email = decrypt_api_key(creds.get("email", ""), unlock_key)
-                password = decrypt_api_key(creds.get("password", ""), unlock_key)
-                if email and password:
-                    token, member_id = kalshi_login(email, password)
-                    if token:
-                        st.session_state.kalshi_token = token
-                        st.session_state.trading_enabled = True
-                        st.rerun()
-                    else:
-                        st.error("❌ Login failed")
-                else:
-                    st.error("❌ Wrong key")
-            else:
-                st.error("❌ Enter key")
+        st.error("❌ Not connected")
     
     st.divider()
     
