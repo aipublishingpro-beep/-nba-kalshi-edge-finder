@@ -344,7 +344,7 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.15")
+    st.caption("v15.16")
     st.caption("💾 Positions persist")
     if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
         st.caption("🔐 Trading ENABLED")
@@ -439,7 +439,10 @@ def calc_distance(loc1, loc2):
 
 def fetch_espn_scores(date_key=None):
     """Fetch scores - date_key forces cache invalidation daily"""
-    url = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
+    # Force TODAY's date explicitly to avoid ESPN returning yesterday's games
+    eastern = pytz.timezone('US/Eastern')
+    today_date = datetime.now(eastern).strftime('%Y%m%d')
+    url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={today_date}"
     try:
         resp = requests.get(url, timeout=10)
         data = resp.json()
@@ -830,7 +833,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.15")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.16")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -1321,4 +1324,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.15 - Daily snapshot reset fix")
+st.caption("v15.16 - Force today's date in ESPN API")
