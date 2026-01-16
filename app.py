@@ -11,21 +11,41 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
 
-# Kalshi-style YES/NO button colors
+# Fixed CSS - works with current Streamlit DOM structure
 st.markdown("""
 <style>
-div[role="radiogroup"] > label:nth-child(1) div {
-    background-color:#102a1a !important;
-    border:2px solid #00ff88 !important;
-    border-radius:8px;
-    padding:6px 14px;
+/* Make radio labels clickable again */
+div[role="radiogroup"] label {
+    cursor: pointer;
 }
-div[role="radiogroup"] > label:nth-child(2) div {
-    background-color:#2a1515 !important;
-    border:2px solid #ff4444 !important;
-    border-radius:8px;
-    padding:6px 14px;
+
+/* YES / NO pill styling */
+div[role="radiogroup"] label span {
+    padding: 8px 18px;
+    border-radius: 10px;
+    display: inline-block;
+    font-weight: 700;
 }
+
+/* Selected state */
+div[role="radiogroup"] input:checked + div span {
+    box-shadow: inset 0 0 0 2px white;
+}
+
+/* NO (first option) - Green */
+div[role="radiogroup"] label:nth-of-type(1) span {
+    background: linear-gradient(135deg, #102a1a, #163a26);
+    border: 2px solid #00ff88;
+    color: #ccffee;
+}
+
+/* YES (second option) - Red */
+div[role="radiogroup"] label:nth-of-type(2) span {
+    background: linear-gradient(135deg, #2a1515, #3a1a1a);
+    border: 2px solid #ff4444;
+    color: #ffcccc;
+}
+
 .stLinkButton > a {
     background-color: #00aa00 !important;
     border-color: #00aa00 !important;
@@ -147,6 +167,10 @@ def get_kalshi_ticker(away_team, home_team, market_type="totals"):
         return f"kxnbagame-{date_str}{away_code}{home_code}"
 
 # ========== SESSION STATE INIT ==========
+# Prevent phantom rerenders by setting defaults first
+st.session_state.setdefault("totals_side_radio", "NO (Under)")
+st.session_state.setdefault("ml_pick_radio", None)
+
 if 'auto_refresh' not in st.session_state:
     st.session_state.auto_refresh = False
 if "positions" not in st.session_state:
@@ -251,7 +275,7 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.11")
+    st.caption("v15.12")
     st.caption("💾 Positions persist")
     if st.session_state.trading_enabled:
         st.caption("🔐 Trading ENABLED")
@@ -736,7 +760,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3, hdr4 = st.columns([2, 1, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.11")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.12")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -908,9 +932,9 @@ p1, p2, p3 = st.columns(3)
 
 if market_type == "Totals (Over/Under)":
     with p1:
-        st.markdown("📊 Side")
+        st.caption("📊 Side")
         yes_no = st.radio("", ["NO (Under)", "YES (Over)"], horizontal=True, disabled=game_started, key="totals_side_radio")
-        st.session_state.selected_side = "NO" if "NO" in yes_no else "YES"
+        st.session_state.selected_side = "NO" if yes_no.startswith("NO") else "YES"
     
     st.session_state.selected_threshold = st.number_input("🎯 Threshold", min_value=180.0, max_value=280.0, value=st.session_state.selected_threshold, step=0.5, disabled=game_started)
     
@@ -920,7 +944,7 @@ else:
     with p1:
         if selected_game != "Select a game...":
             parts = selected_game.replace(" @ ", "@").split("@")
-            st.markdown("📊 Pick Winner")
+            st.caption("📊 Pick Winner")
             st.session_state.selected_ml_pick = st.radio("", [parts[1], parts[0]], horizontal=True, key="ml_pick_radio")
         else:
             st.session_state.selected_ml_pick = None
@@ -1128,4 +1152,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.11 - Live trading with encrypted credentials")
+st.caption("v15.12 - Fixed radio buttons, live trading intact")
