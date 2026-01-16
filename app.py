@@ -350,7 +350,7 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.19")
+    st.caption("v15.21")
     st.caption("💾 Positions persist")
     if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
         st.caption("🔐 Trading ENABLED")
@@ -839,7 +839,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.20")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.21")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -1116,34 +1116,38 @@ if st.button(btn_label, use_container_width=True, type=btn_type):
                 if is_live_trade:
                     ticker = get_kalshi_ticker(away_t, home_t, "ml")
                     yes_no_side = "yes" if st.session_state.selected_ml_pick == home_t else "no"
-                    st.info(f"🔄 Placing order: {ticker} | {yes_no_side.upper()} @ {price_paid}¢ x {contracts}")
+                    st.warning(f"🔄 Placing order: {ticker} | {yes_no_side.upper()} @ {price_paid}¢ x {contracts}")
                     success, result = kalshi_place_order(ticker, "buy", yes_no_side, price_paid, contracts)
                     if success:
                         st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_ml_pick} @ {price_paid}¢")
                         st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
                         save_positions(st.session_state.positions)
+                        st.balloons()
                     else:
                         st.error(f"❌ Order failed: {result}")
+                    # NO rerun - let user see the result
                 else:
                     st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2)})
                     save_positions(st.session_state.positions)
-                st.rerun()
+                    st.rerun()
         else:
             if is_live_trade:
                 ticker = get_kalshi_ticker(away_t, home_t, "totals")
                 ticker_with_threshold = f"{ticker}-t{int(st.session_state.selected_threshold)}"
-                st.info(f"🔄 Placing order: {ticker_with_threshold} | {st.session_state.selected_side} @ {price_paid}¢ x {contracts}")
+                st.warning(f"🔄 Placing order: {ticker_with_threshold} | {st.session_state.selected_side} @ {price_paid}¢ x {contracts}")
                 success, result = kalshi_place_order(ticker_with_threshold, "buy", st.session_state.selected_side.lower(), price_paid, contracts)
                 if success:
                     st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_side} {st.session_state.selected_threshold} @ {price_paid}¢")
                     st.session_state.positions.append({"game": game_key, "type": "totals", "side": st.session_state.selected_side, "threshold": st.session_state.selected_threshold, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
                     save_positions(st.session_state.positions)
+                    st.balloons()
                 else:
                     st.error(f"❌ Order failed: {result}")
+                # NO rerun - let user see the result
             else:
                 st.session_state.positions.append({"game": game_key, "type": "totals", "side": st.session_state.selected_side, "threshold": st.session_state.selected_threshold, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2)})
                 save_positions(st.session_state.positions)
-            st.rerun()
+                st.rerun()
 
 st.divider()
 
@@ -1391,4 +1395,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.19 - Blowout badge in Big Snapshot")
+st.caption("v15.21 - Live trade feedback fix")
