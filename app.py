@@ -4,6 +4,17 @@ from datetime import datetime, timedelta
 import pytz
 import json
 import os
+import uuid
+import base64
+
+# Try to import cryptography for trading
+try:
+    from cryptography.hazmat.primitives import serialization, hashes
+    from cryptography.hazmat.primitives.asymmetric import padding
+    from cryptography.hazmat.backends import default_backend
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    CRYPTO_AVAILABLE = False
 
 st.set_page_config(page_title="NBA Edge Finder (TEST)", page_icon="🎯", layout="wide")
 
@@ -34,6 +45,81 @@ div[role="radiogroup"] > label:nth-child(2) div {
 </style>
 """, unsafe_allow_html=True)
 
+# ========== KALSHI TRADING API ==========
+def init_trading():
+    if 'kalshi_api_key' not in st.session_state:
+        try:
+            st.session_state.kalshi_api_key = st.secrets.get("KALSHI_API_KEY", "")
+        except:
+            st.session_state.kalshi_api_key = ""
+    if 'kalshi_private_key' not in st.session_state:
+        try:
+            st.session_state.kalshi_private_key = st.secrets.get("KALSHI_PRIVATE_KEY", "")
+        except:
+            st.session_state.kalshi_private_key = ""
+    if 'trading_enabled' not in st.session_state:
+        st.session_state.trading_enabled = bool(st.session_state.kalshi_api_key and st.session_state.kalshi_private_key)
+
+def create_kalshi_signature(private_key_pem, timestamp, method, path):
+    if not CRYPTO_AVAILABLE:
+        return None
+    try:
+        private_key = serialization.load_pem_private_key(
+            private_key_pem.encode(), password=None, backend=default_backend()
+        )
+        path_without_query = path.split('?')[0]
+        message = f"{timestamp}{method}{path_without_query}".encode('utf-8')
+        signature = private_key.sign(
+            message,
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.DIGEST_LENGTH),
+            hashes.SHA256()
+        )
+        return base64.b64encode(signature).decode()
+    except:
+        return None
+
+def place_kalshi_order(ticker, side, price_cents, count, api_key, private_key_pem):
+    if not CRYPTO_AVAILABLE:
+        return False, "cryptography library not installed"
+    try:
+        path = '/trade-api/v2/portfolio/orders'
+        timestamp = str(int(datetime.now().timestamp() * 1000))
+        signature = create_kalshi_signature(private_key_pem, timestamp, "POST", path)
+        if not signature:
+            return False, "Failed to create signature"
+        headers = {
+            'KALSHI-ACCESS-KEY': api_key,
+            'KALSHI-ACCESS-SIGNATURE': signature,
+            'KALSHI-ACCESS-TIMESTAMP': timestamp,
+            'Content-Type': 'application/json'
+        }
+        order_data = {
+            "ticker": ticker,
+            "action": "buy",
+            "side": side.lower(),
+            "count": count,
+            "type": "limit",
+            "client_order_id": str(uuid.uuid4())
+        }
+        if side.lower() == "no":
+            order_data["no_price"] = price_cents
+        else:
+            order_data["yes_price"] = price_cents
+        response = requests.post(
+            f"https://api.elections.kalshi.com{path}",
+            headers=headers,
+            json=order_data,
+            timeout=10
+        )
+        if response.status_code == 201:
+            order = response.json().get('order', {})
+            return True, f"✅ Order placed! ID: {order.get('order_id', 'N/A')[:8]}"
+        else:
+            error_msg = response.json().get('error', {}).get('message', response.text)
+            return False, f"❌ {error_msg}"
+    except Exception as e:
+        return False, f"❌ Error: {str(e)}"
+
 # ========== PERSISTENT STORAGE ==========
 POSITIONS_FILE = "nba_positions.json"
 
@@ -54,6 +140,8 @@ def save_positions(positions):
         st.warning(f"Could not save positions: {e}")
 
 # ========== SESSION STATE INIT ==========
+init_trading()
+
 if 'auto_refresh' not in st.session_state:
     st.session_state.auto_refresh = False
 if "positions" not in st.session_state:
@@ -100,6 +188,16 @@ def build_kalshi_ml_url(away_team, home_team):
     date_str = today.strftime("%y%b%d").lower()
     ticker = f"kxnbagame-{date_str}{away_code}{home_code}"
     return f"https://kalshi.com/markets/kxnbagame/pro-basketball-moneyline/{ticker}"
+
+def build_kalshi_ticker(away_team, home_team, threshold, market_type="totals"):
+    away_code = KALSHI_CODES.get(away_team, "xxx")
+    home_code = KALSHI_CODES.get(home_team, "xxx")
+    today = datetime.now(pytz.timezone('US/Eastern'))
+    date_str = today.strftime("%y%b%d").lower()
+    if market_type == "totals":
+        return f"KXNBATOTAL-{date_str.upper()}{away_code.upper()}{home_code.upper()}-T{int(threshold)}"
+    else:
+        return f"KXNBAGAME-{date_str.upper()}{away_code.upper()}{home_code.upper()}"
 
 # ========== STAR PLAYERS DATABASE ==========
 STAR_PLAYERS_DB = {
@@ -150,8 +248,27 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
+    
+    # ========== TRADING SECTION ==========
+    st.subheader("🚀 TRADING")
+    if not CRYPTO_AVAILABLE:
+        st.warning("Add `cryptography` to requirements.txt")
+    else:
+        if st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
+            st.success("✅ API Keys loaded")
+            st.session_state.trading_enabled = True
+        else:
+            st.warning("⚠️ No API keys found")
+            st.caption("Add to Streamlit Secrets:")
+            st.code("KALSHI_API_KEY = \"...\"\nKALSHI_PRIVATE_KEY = \"...\"")
+            st.session_state.trading_enabled = False
+        
+        st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, max_value=500, value=st.session_state.default_contracts)
+    
+    st.divider()
     st.caption("TEST v15.11")
     st.caption("💾 Positions persist")
+    st.caption("🚀 Trading enabled" if st.session_state.trading_enabled else "⏸️ Trading disabled")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -783,6 +900,63 @@ if st.button("✅ ADD POSITION", use_container_width=True, type="primary"):
             save_positions(st.session_state.positions)
             st.rerun()
 
+# ========== ONE-CLICK TRADING ==========
+if st.session_state.trading_enabled and selected_game != "Select a game...":
+    st.divider()
+    st.subheader("🚀 ONE-CLICK TRADE")
+    
+    game_key = selected_game.replace(" @ ", "@")
+    parts = game_key.split("@")
+    away_t, home_t = parts[0], parts[1]
+    
+    tc1, tc2 = st.columns(2)
+    
+    if market_type == "Totals (Over/Under)":
+        ticker = build_kalshi_ticker(away_t, home_t, st.session_state.selected_threshold, "totals")
+        side = st.session_state.selected_side
+        
+        with tc1:
+            st.markdown(f"**Ticker:** `{ticker}`")
+            st.markdown(f"**Side:** {side} | **Price:** {price_paid}¢ | **Qty:** {contracts}")
+        
+        with tc2:
+            if st.button(f"🚀 BUY {side} @ {price_paid}¢", use_container_width=True, type="primary"):
+                with st.spinner("Placing order..."):
+                    success, msg = place_kalshi_order(
+                        ticker, side, price_paid, contracts,
+                        st.session_state.kalshi_api_key,
+                        st.session_state.kalshi_private_key
+                    )
+                if success:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+    else:
+        if st.session_state.selected_ml_pick:
+            ticker = build_kalshi_ticker(away_t, home_t, 0, "ml")
+            # For ML, YES = home team wins, NO = away team wins
+            if st.session_state.selected_ml_pick == home_t:
+                side = "YES"
+            else:
+                side = "NO"
+            
+            with tc1:
+                st.markdown(f"**Ticker:** `{ticker}`")
+                st.markdown(f"**Pick:** {st.session_state.selected_ml_pick} ({side}) | **Price:** {price_paid}¢ | **Qty:** {contracts}")
+            
+            with tc2:
+                if st.button(f"🚀 BUY {st.session_state.selected_ml_pick} @ {price_paid}¢", use_container_width=True, type="primary"):
+                    with st.spinner("Placing order..."):
+                        success, msg = place_kalshi_order(
+                            ticker, side, price_paid, contracts,
+                            st.session_state.kalshi_api_key,
+                            st.session_state.kalshi_private_key
+                        )
+                    if success:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+
 st.divider()
 
 # ========== ACTIVE POSITIONS ==========
@@ -928,4 +1102,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("TEST v15.11 - State persistence fix applied")
+st.caption("TEST v15.11 - Trading enabled")
