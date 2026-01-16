@@ -189,8 +189,6 @@ if "kalshi_balance" not in st.session_state:
     st.session_state.kalshi_balance = None
 if "trading_enabled" not in st.session_state:
     st.session_state.trading_enabled = False
-if "show_api_settings" not in st.session_state:
-    st.session_state.show_api_settings = False
 
 if st.session_state.auto_refresh:
     st.markdown('<meta http-equiv="refresh" content="30">', unsafe_allow_html=True)
@@ -262,6 +260,92 @@ STAR_PLAYERS_DB = {
 
 # ========== SIDEBAR LEGEND ==========
 with st.sidebar:
+    # ========== KALSHI TRADING LOGIN ==========
+    st.header("🔐 KALSHI TRADING")
+    
+    creds = load_credentials()
+    
+    if st.session_state.trading_enabled and st.session_state.kalshi_token:
+        balance = kalshi_get_balance(st.session_state.kalshi_token)
+        if balance is not None:
+            st.session_state.kalshi_balance = balance
+            st.success(f"✅ Connected\n\n**${balance:.2f}**")
+        else:
+            st.warning("⚠️ Session expired")
+            st.session_state.trading_enabled = False
+            st.session_state.kalshi_token = None
+        
+        if st.button("🔓 Disconnect", use_container_width=True, key="sidebar_disconnect"):
+            st.session_state.trading_enabled = False
+            st.session_state.kalshi_token = None
+            st.session_state.kalshi_balance = None
+            st.rerun()
+    else:
+        if creds:
+            st.info("💾 Saved credentials found")
+            unlock_key = st.text_input("🔑 Encryption Key", type="password", key="sidebar_unlock")
+            if st.button("🔓 Unlock & Connect", use_container_width=True, key="sidebar_unlock_btn"):
+                if unlock_key:
+                    email = decrypt_api_key(creds.get("email", ""), unlock_key)
+                    password = decrypt_api_key(creds.get("password", ""), unlock_key)
+                    if email and password:
+                        token, member_id = kalshi_login(email, password)
+                        if token:
+                            st.session_state.kalshi_token = token
+                            st.session_state.trading_enabled = True
+                            st.success("✅ Connected!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Login failed")
+                    else:
+                        st.error("❌ Wrong key")
+            
+            with st.expander("➕ New Login"):
+                new_email = st.text_input("Email", key="sidebar_new_email")
+                new_pwd = st.text_input("Password", type="password", key="sidebar_new_pwd")
+                new_enc = st.text_input("Encryption Key", type="password", key="sidebar_new_enc")
+                if st.button("💾 Save & Connect", use_container_width=True, key="sidebar_save"):
+                    if new_email and new_pwd and new_enc:
+                        encrypted_email = encrypt_api_key(new_email, new_enc)
+                        encrypted_pwd = encrypt_api_key(new_pwd, new_enc)
+                        save_credentials({"email": encrypted_email, "password": encrypted_pwd})
+                        token, member_id = kalshi_login(new_email, new_pwd)
+                        if token:
+                            st.session_state.kalshi_token = token
+                            st.session_state.trading_enabled = True
+                            st.success("✅ Saved & Connected!")
+                            st.rerun()
+        else:
+            st.caption("No saved credentials")
+            email = st.text_input("📧 Kalshi Email", key="sidebar_email")
+            password = st.text_input("🔒 Password", type="password", key="sidebar_pwd")
+            enc_key = st.text_input("🔑 Encryption Key (to save)", type="password", key="sidebar_enc")
+            
+            c1, c2 = st.columns(2)
+            if c1.button("🔐 Login", use_container_width=True, key="sidebar_login"):
+                if email and password:
+                    token, member_id = kalshi_login(email, password)
+                    if token:
+                        st.session_state.kalshi_token = token
+                        st.session_state.trading_enabled = True
+                        st.success("✅ Connected!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed")
+            if c2.button("💾 Save", use_container_width=True, key="sidebar_save_new"):
+                if email and password and enc_key:
+                    encrypted_email = encrypt_api_key(email, enc_key)
+                    encrypted_pwd = encrypt_api_key(password, enc_key)
+                    save_credentials({"email": encrypted_email, "password": encrypted_pwd})
+                    token, member_id = kalshi_login(email, password)
+                    if token:
+                        st.session_state.kalshi_token = token
+                        st.session_state.trading_enabled = True
+                        st.rerun()
+    
+    st.divider()
+    
+    # ========== LEGEND ==========
     st.header("📖 LEGEND")
     st.subheader("🎯 ML Signal Tiers")
     st.markdown("🟢 **STRONG BUY** → 8.0+ score\n\n🔵 **BUY** → 6.5 - 7.9 score\n\n🟡 **LEAN** → 5.5 - 6.4 score\n\n⚪ **TOSS-UP** → 4.5 - 5.4 score\n\n🔴 **SKIP** → Below 4.5")
@@ -275,7 +359,7 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.12")
+    st.caption("v15.13")
     st.caption("💾 Positions persist")
     if st.session_state.trading_enabled:
         st.caption("🔐 Trading ENABLED")
@@ -759,8 +843,8 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
-hdr1, hdr2, hdr3, hdr4 = st.columns([2, 1, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.12")
+hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.13")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -768,101 +852,6 @@ if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Sto
 
 if hdr3.button("🔄 Refresh", use_container_width=True):
     st.rerun()
-
-if hdr4.button("🔐 API Keys", use_container_width=True):
-    st.session_state.show_api_settings = not st.session_state.show_api_settings
-    st.rerun()
-
-# ========== API SETTINGS PANEL ==========
-if st.session_state.show_api_settings:
-    st.subheader("🔐 KALSHI API CONFIGURATION")
-    
-    creds = load_credentials()
-    
-    if st.session_state.trading_enabled and st.session_state.kalshi_token:
-        balance = kalshi_get_balance(st.session_state.kalshi_token)
-        if balance is not None:
-            st.session_state.kalshi_balance = balance
-            st.success(f"✅ Connected to Kalshi | Balance: **${balance:.2f}**")
-        else:
-            st.warning("⚠️ Session expired - please re-authenticate")
-            st.session_state.trading_enabled = False
-            st.session_state.kalshi_token = None
-        
-        if st.button("🔓 Disconnect", use_container_width=True):
-            st.session_state.trading_enabled = False
-            st.session_state.kalshi_token = None
-            st.session_state.kalshi_balance = None
-            st.rerun()
-    else:
-        tab1, tab2 = st.tabs(["🔑 Quick Login", "💾 Saved Credentials"])
-        
-        with tab1:
-            email = st.text_input("Kalshi Email", key="kalshi_email")
-            password = st.text_input("Kalshi Password", type="password", key="kalshi_pwd")
-            
-            c1, c2 = st.columns(2)
-            if c1.button("🔐 Connect", use_container_width=True, type="primary"):
-                if email and password:
-                    with st.spinner("Authenticating..."):
-                        token, member_id = kalshi_login(email, password)
-                        if token:
-                            st.session_state.kalshi_token = token
-                            st.session_state.trading_enabled = True
-                            balance = kalshi_get_balance(token)
-                            if balance: st.session_state.kalshi_balance = balance
-                            st.success(f"✅ Connected! Balance: ${balance:.2f}")
-                            st.rerun()
-                        else:
-                            st.error("❌ Login failed - check credentials")
-                else:
-                    st.warning("Enter email and password")
-            
-            save_key = st.text_input("Encryption Key (to save credentials)", type="password", key="save_enc_key")
-            if c2.button("💾 Save & Connect", use_container_width=True):
-                if email and password and save_key:
-                    encrypted_email = encrypt_api_key(email, save_key)
-                    encrypted_pwd = encrypt_api_key(password, save_key)
-                    save_credentials({"email": encrypted_email, "password": encrypted_pwd})
-                    
-                    token, member_id = kalshi_login(email, password)
-                    if token:
-                        st.session_state.kalshi_token = token
-                        st.session_state.trading_enabled = True
-                        st.success("✅ Credentials saved & connected!")
-                        st.rerun()
-                else:
-                    st.warning("Fill all fields")
-        
-        with tab2:
-            if creds:
-                st.info("💾 Encrypted credentials found")
-                unlock_key = st.text_input("Enter encryption key to unlock", type="password", key="unlock_key")
-                if st.button("🔓 Unlock & Connect", use_container_width=True):
-                    if unlock_key:
-                        email = decrypt_api_key(creds.get("email", ""), unlock_key)
-                        password = decrypt_api_key(creds.get("password", ""), unlock_key)
-                        if email and password:
-                            token, member_id = kalshi_login(email, password)
-                            if token:
-                                st.session_state.kalshi_token = token
-                                st.session_state.trading_enabled = True
-                                st.success("✅ Connected!")
-                                st.rerun()
-                            else:
-                                st.error("❌ Login failed")
-                        else:
-                            st.error("❌ Wrong encryption key")
-                
-                if st.button("🗑️ Delete Saved Credentials", use_container_width=True):
-                    if os.path.exists(CREDENTIALS_FILE):
-                        os.remove(CREDENTIALS_FILE)
-                        st.success("Credentials deleted")
-                        st.rerun()
-            else:
-                st.info("No saved credentials. Use Quick Login to save.")
-    
-    st.divider()
 
 # ========== TRADING STATUS BANNER ==========
 if st.session_state.trading_enabled:
@@ -1152,4 +1141,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.12 - Fixed radio buttons, live trading intact")
+st.caption("v15.13 - Trading in sidebar, fixed radio buttons")
