@@ -16,7 +16,7 @@ try:
 except ImportError:
     CRYPTO_AVAILABLE = False
 
-st.set_page_config(page_title="NBA Edge Finder (TEST)", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
 
 # Kalshi-style YES/NO button colors
 st.markdown("""
@@ -266,7 +266,7 @@ with st.sidebar:
         st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, max_value=500, value=st.session_state.default_contracts)
     
     st.divider()
-    st.caption("TEST v15.11")
+    st.caption("v15.11")
     st.caption("💾 Positions persist")
     st.caption("🚀 Trading enabled" if st.session_state.trading_enabled else "⏸️ Trading disabled")
 
@@ -748,9 +748,9 @@ for game_key in games.keys():
 yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 
 # ========== HEADER ==========
-st.title("🎯 NBA EDGE FINDER (TEST)")
+st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | TEST v15.11")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.11")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -1102,4 +1102,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("TEST v15.11 - Trading enabled")
+st.caption("v15.11 - Trading enabled")
