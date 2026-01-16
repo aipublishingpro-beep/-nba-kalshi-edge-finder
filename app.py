@@ -446,7 +446,7 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.28")
+    st.caption("v15.29")
     st.caption("💾 Positions persist")
     st.caption("🔗 Trade via Kalshi UI")
 
@@ -934,7 +934,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.28")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.29")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -943,9 +943,7 @@ if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Sto
 if hdr3.button("🔄 Refresh", use_container_width=True):
     st.rerun()
 
-# ========== API STATUS BANNER ==========
-if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
-    st.markdown(f"<div style='background:linear-gradient(135deg,#1a2a0a,#2a3a1a);padding:10px 15px;border-radius:8px;border:2px solid #aaaa00;margin-bottom:15px'><span style='color:#aaaa00;font-weight:bold'>🔗 NBA API NOT SUPPORTED</span> — Track positions here, execute on Kalshi web</div>", unsafe_allow_html=True)
+
 
 # ========== INJURY REPORT ==========
 st.subheader("🏥 INJURY REPORT - TODAY'S GAMES")
@@ -1186,13 +1184,7 @@ else:
 price_paid = p2.number_input("💵 Price (¢)", min_value=1, max_value=99, value=50, step=1)
 contracts = p3.number_input("📄 Contracts", min_value=1, value=st.session_state.default_contracts, step=1)
 
-# Trading mode toggle - NBA not supported via API
-if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
-    st.info("⚠️ **NBA markets require Kalshi web UI** — API trading not yet supported. Use Paper Track + link out.")
-    trade_mode = "📝 Paper Track"
-    is_live_trade = False
-else:
-    is_live_trade = False
+is_live_trade = False
 
 btn_label = "✅ ADD POSITION"
 btn_type = "primary"
