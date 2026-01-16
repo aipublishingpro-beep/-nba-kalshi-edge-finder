@@ -414,9 +414,9 @@ STAR_PLAYERS_DB = {
 # ========== SIDEBAR LEGEND ==========
 with st.sidebar:
     # ========== KALSHI TRADING (AUTO-CONNECT VIA SECRETS) ==========
-    st.header("🔐 KALSHI")
+    st.header("🔗 KALSHI")
     
-    # Auto-load API keys from Streamlit Secrets
+    # Auto-load API keys from Streamlit Secrets (for future API support)
     try:
         kalshi_api_key = st.secrets.get("KALSHI_API_KEY", "")
         kalshi_private_key = st.secrets.get("KALSHI_PRIVATE_KEY", "")
@@ -424,11 +424,11 @@ with st.sidebar:
             st.session_state.trading_enabled = True
             st.session_state.kalshi_api_key = kalshi_api_key
             st.session_state.kalshi_private_key = kalshi_private_key
-            st.success("✅ **Ready to Trade**")
-        else:
-            st.error("❌ Keys not found")
-    except Exception as e:
-        st.error("❌ Keys not found")
+    except:
+        pass
+    
+    st.caption("⚠️ NBA not on trade API yet")
+    st.caption("Track here → Execute on web")
     
     st.divider()
     
@@ -446,10 +446,9 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.27")
+    st.caption("v15.28")
     st.caption("💾 Positions persist")
-    if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
-        st.caption("🔐 Trading ENABLED")
+    st.caption("🔗 Trade via Kalshi UI")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -935,7 +934,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.27")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.28")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -944,9 +943,9 @@ if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Sto
 if hdr3.button("🔄 Refresh", use_container_width=True):
     st.rerun()
 
-# ========== TRADING STATUS BANNER ==========
+# ========== API STATUS BANNER ==========
 if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
-    st.markdown(f"<div style='background:linear-gradient(135deg,#0a2a0a,#1a3a1a);padding:10px 15px;border-radius:8px;border:2px solid #00ff00;margin-bottom:15px'><span style='color:#00ff00;font-weight:bold'>🔐 LIVE TRADING ENABLED</span></div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='background:linear-gradient(135deg,#1a2a0a,#2a3a1a);padding:10px 15px;border-radius:8px;border:2px solid #aaaa00;margin-bottom:15px'><span style='color:#aaaa00;font-weight:bold'>🔗 NBA API NOT SUPPORTED</span> — Track positions here, execute on Kalshi web</div>", unsafe_allow_html=True)
 
 # ========== INJURY REPORT ==========
 st.subheader("🏥 INJURY REPORT - TODAY'S GAMES")
@@ -1187,14 +1186,15 @@ else:
 price_paid = p2.number_input("💵 Price (¢)", min_value=1, max_value=99, value=50, step=1)
 contracts = p3.number_input("📄 Contracts", min_value=1, value=st.session_state.default_contracts, step=1)
 
-# Trading mode toggle
+# Trading mode toggle - NBA not supported via API
 if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
-    trade_mode = st.radio("🎯 Mode", ["📝 Paper Track", "💰 LIVE TRADE"], horizontal=True, key="trade_mode")
-    is_live_trade = "LIVE" in trade_mode
+    st.info("⚠️ **NBA markets require Kalshi web UI** — API trading not yet supported. Use Paper Track + link out.")
+    trade_mode = "📝 Paper Track"
+    is_live_trade = False
 else:
     is_live_trade = False
 
-btn_label = "💰 PLACE LIVE ORDER" if is_live_trade else "✅ ADD POSITION"
+btn_label = "✅ ADD POSITION"
 btn_type = "primary"
 
 if st.button(btn_label, use_container_width=True, type=btn_type):
@@ -1209,53 +1209,15 @@ if st.button(btn_label, use_container_width=True, type=btn_type):
             if st.session_state.selected_ml_pick is None:
                 st.error("Pick a team first!")
             else:
-                if is_live_trade:
-                    ticker = get_kalshi_ml_ticker(st.session_state.selected_ml_pick)
-                    if not ticker:
-                        st.error("❌ Invalid team — Kalshi code not found")
-                    else:
-                        st.info(f"🔍 Looking up market: {ticker}")
-                        market_id, err = resolve_kalshi_market_id(ticker)
-                        if not market_id:
-                            st.error(f"❌ Market not available for trading: {err}")
-                        else:
-                            st.warning(f"🔄 Placing order: {market_id} | YES @ {price_paid}¢ x {contracts}")
-                            success, result = kalshi_place_order_by_id(market_id, "buy", "yes", price_paid, contracts)
-                            if success:
-                                st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_ml_pick} @ {price_paid}¢")
-                                st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
-                                save_positions(st.session_state.positions)
-                                st.balloons()
-                            else:
-                                st.error(f"❌ Order failed: {result}")
-                    # NO rerun - let user see the result
-                else:
-                    st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2)})
-                    save_positions(st.session_state.positions)
-                    st.rerun()
-        else:
-            if is_live_trade:
-                ticker = get_kalshi_ticker(away_t, home_t, "totals")
-                ticker_with_threshold = f"{ticker}-T{int(st.session_state.selected_threshold)}"
-                st.info(f"🔍 Looking up market: {ticker_with_threshold}")
-                market_id, err = resolve_kalshi_market_id(ticker_with_threshold)
-                if not market_id:
-                    st.error(f"❌ Market not available for trading: {err}")
-                else:
-                    st.warning(f"🔄 Placing order: {market_id} | {st.session_state.selected_side} @ {price_paid}¢ x {contracts}")
-                    success, result = kalshi_place_order_by_id(market_id, "buy", st.session_state.selected_side.lower(), price_paid, contracts)
-                    if success:
-                        st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_side} {st.session_state.selected_threshold} @ {price_paid}¢")
-                        st.session_state.positions.append({"game": game_key, "type": "totals", "side": st.session_state.selected_side, "threshold": st.session_state.selected_threshold, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
-                        save_positions(st.session_state.positions)
-                        st.balloons()
-                    else:
-                        st.error(f"❌ Order failed: {result}")
-                # NO rerun - let user see the result
-            else:
-                st.session_state.positions.append({"game": game_key, "type": "totals", "side": st.session_state.selected_side, "threshold": st.session_state.selected_threshold, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2)})
+                st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2)})
                 save_positions(st.session_state.positions)
+                st.success(f"✅ Position added: {st.session_state.selected_ml_pick} ML @ {price_paid}¢")
                 st.rerun()
+        else:
+            st.session_state.positions.append({"game": game_key, "type": "totals", "side": st.session_state.selected_side, "threshold": st.session_state.selected_threshold, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2)})
+            save_positions(st.session_state.positions)
+            st.success(f"✅ Position added: {st.session_state.selected_side} {st.session_state.selected_threshold} @ {price_paid}¢")
+            st.rerun()
 
 st.divider()
 
@@ -1503,4 +1465,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.27 - Resolve market_id before order")
+st.caption("v15.28 - Paper track + link out (NBA API not supported)")
