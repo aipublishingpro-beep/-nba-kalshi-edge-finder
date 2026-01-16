@@ -216,7 +216,7 @@ def get_kalshi_ml_ticker(team):
     if not team_code:
         return None
     today = datetime.now(pytz.timezone('US/Eastern'))
-    date_str = today.strftime("%y%b%d").lower()
+    date_str = today.strftime("%Y%m%d")  # YYYYMMDD format for NBA
     return f"kxnbagame-{date_str}-{team_code}"
 
 # ========== SESSION STATE INIT ==========
@@ -359,7 +359,7 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.25")
+    st.caption("v15.26")
     st.caption("💾 Positions persist")
     if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
         st.caption("🔐 Trading ENABLED")
@@ -848,7 +848,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.25")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.26")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -1127,15 +1127,20 @@ if st.button(btn_label, use_container_width=True, type=btn_type):
                     if not ticker:
                         st.error("❌ Invalid team — Kalshi code not found")
                     else:
-                        st.warning(f"🔄 Placing order: {ticker} | YES @ {price_paid}¢ x {contracts}")
-                        success, result = kalshi_place_order(ticker, "buy", "yes", price_paid, contracts)
-                        if success:
-                            st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_ml_pick} @ {price_paid}¢")
-                            st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
-                            save_positions(st.session_state.positions)
-                            st.balloons()
+                        # Check if market exists first
+                        check_resp = requests.get(f"{KALSHI_API_BASE}/markets/{ticker}", timeout=5)
+                        if check_resp.status_code != 200:
+                            st.error(f"❌ Market not open yet: {ticker}")
                         else:
-                            st.error(f"❌ Order failed: {result}")
+                            st.warning(f"🔄 Placing order: {ticker} | YES @ {price_paid}¢ x {contracts}")
+                            success, result = kalshi_place_order(ticker, "buy", "yes", price_paid, contracts)
+                            if success:
+                                st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_ml_pick} @ {price_paid}¢")
+                                st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
+                                save_positions(st.session_state.positions)
+                                st.balloons()
+                            else:
+                                st.error(f"❌ Order failed: {result}")
                     # NO rerun - let user see the result
                 else:
                     st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2)})
@@ -1406,4 +1411,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.25 - Removed -win suffix from ML ticker")
+st.caption("v15.26 - YYYYMMDD date format + market check")
