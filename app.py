@@ -141,6 +141,93 @@ def kalshi_get_balance(token: str):
     except:
         return None
 
+def resolve_kalshi_market_id(ticker):
+    """Resolve ticker slug to numeric market_id"""
+    try:
+        resp = requests.get(
+            f"{KALSHI_API_BASE}/markets",
+            params={"ticker": ticker, "status": "open"},
+            timeout=10
+        )
+        if resp.status_code != 200:
+            return None, f"API error: {resp.status_code}"
+        markets = resp.json().get("markets", [])
+        for m in markets:
+            if m.get("ticker") == ticker:
+                return m.get("id"), None  # Return numeric ID
+        # Try search if exact match fails
+        resp2 = requests.get(
+            f"{KALSHI_API_BASE}/markets",
+            params={"search": ticker, "status": "open"},
+            timeout=10
+        )
+        if resp2.status_code == 200:
+            markets2 = resp2.json().get("markets", [])
+            for m in markets2:
+                if ticker.lower() in m.get("ticker", "").lower():
+                    return m.get("id"), None
+        return None, "Market not found in open markets"
+    except Exception as e:
+        return None, str(e)
+
+def kalshi_place_order_by_id(market_id: str, side: str, yes_no: str, price: int, contracts: int):
+    """Place order using market_id instead of ticker"""
+    try:
+        from cryptography.hazmat.primitives import serialization, hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.backends import default_backend
+        import time
+        
+        api_key = st.session_state.kalshi_api_key
+        private_key_pem = st.session_state.kalshi_private_key
+        
+        if not api_key or not private_key_pem:
+            return False, "API keys not configured"
+        
+        private_key = serialization.load_pem_private_key(
+            private_key_pem.encode() if isinstance(private_key_pem, str) else private_key_pem,
+            password=None,
+            backend=default_backend()
+        )
+        
+        timestamp = str(int(time.time() * 1000))
+        method = "POST"
+        path = "/trade-api/v2/portfolio/orders"
+        message = f"{timestamp}{method}{path}"
+        
+        signature = private_key.sign(
+            message.encode(),
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        sig_b64 = base64.b64encode(signature).decode()
+        
+        headers = {
+            "KALSHI-ACCESS-KEY": api_key,
+            "KALSHI-ACCESS-SIGNATURE": sig_b64,
+            "KALSHI-ACCESS-TIMESTAMP": timestamp,
+            "Content-Type": "application/json"
+        }
+        
+        order_data = {
+            "ticker": market_id,  # Kalshi accepts ticker here
+            "action": side,
+            "side": yes_no.lower(),
+            "type": "limit",
+            "count": contracts,
+            "yes_price": price
+        }
+        
+        resp = requests.post(f"{KALSHI_API_BASE}/portfolio/orders", headers=headers, json=order_data, timeout=10)
+        if resp.status_code in [200, 201]:
+            return True, resp.json()
+        return False, f"Status {resp.status_code}: {resp.text}"
+    except Exception as e:
+        return False, f"Exception: {str(e)}"
+
 def kalshi_place_order(ticker: str, side: str, yes_no: str, price: int, contracts: int):
     try:
         from cryptography.hazmat.primitives import serialization, hashes
@@ -359,7 +446,7 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.26")
+    st.caption("v15.27")
     st.caption("💾 Positions persist")
     if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
         st.caption("🔐 Trading ENABLED")
@@ -848,7 +935,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.26")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.27")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -1127,13 +1214,13 @@ if st.button(btn_label, use_container_width=True, type=btn_type):
                     if not ticker:
                         st.error("❌ Invalid team — Kalshi code not found")
                     else:
-                        # Check if market exists first
-                        check_resp = requests.get(f"{KALSHI_API_BASE}/markets/{ticker}", timeout=5)
-                        if check_resp.status_code != 200:
-                            st.error(f"❌ Market not open yet: {ticker}")
+                        st.info(f"🔍 Looking up market: {ticker}")
+                        market_id, err = resolve_kalshi_market_id(ticker)
+                        if not market_id:
+                            st.error(f"❌ Market not available for trading: {err}")
                         else:
-                            st.warning(f"🔄 Placing order: {ticker} | YES @ {price_paid}¢ x {contracts}")
-                            success, result = kalshi_place_order(ticker, "buy", "yes", price_paid, contracts)
+                            st.warning(f"🔄 Placing order: {market_id} | YES @ {price_paid}¢ x {contracts}")
+                            success, result = kalshi_place_order_by_id(market_id, "buy", "yes", price_paid, contracts)
                             if success:
                                 st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_ml_pick} @ {price_paid}¢")
                                 st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
@@ -1150,15 +1237,20 @@ if st.button(btn_label, use_container_width=True, type=btn_type):
             if is_live_trade:
                 ticker = get_kalshi_ticker(away_t, home_t, "totals")
                 ticker_with_threshold = f"{ticker}-T{int(st.session_state.selected_threshold)}"
-                st.warning(f"🔄 Placing order: {ticker_with_threshold} | {st.session_state.selected_side} @ {price_paid}¢ x {contracts}")
-                success, result = kalshi_place_order(ticker_with_threshold, "buy", st.session_state.selected_side.lower(), price_paid, contracts)
-                if success:
-                    st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_side} {st.session_state.selected_threshold} @ {price_paid}¢")
-                    st.session_state.positions.append({"game": game_key, "type": "totals", "side": st.session_state.selected_side, "threshold": st.session_state.selected_threshold, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
-                    save_positions(st.session_state.positions)
-                    st.balloons()
+                st.info(f"🔍 Looking up market: {ticker_with_threshold}")
+                market_id, err = resolve_kalshi_market_id(ticker_with_threshold)
+                if not market_id:
+                    st.error(f"❌ Market not available for trading: {err}")
                 else:
-                    st.error(f"❌ Order failed: {result}")
+                    st.warning(f"🔄 Placing order: {market_id} | {st.session_state.selected_side} @ {price_paid}¢ x {contracts}")
+                    success, result = kalshi_place_order_by_id(market_id, "buy", st.session_state.selected_side.lower(), price_paid, contracts)
+                    if success:
+                        st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_side} {st.session_state.selected_threshold} @ {price_paid}¢")
+                        st.session_state.positions.append({"game": game_key, "type": "totals", "side": st.session_state.selected_side, "threshold": st.session_state.selected_threshold, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
+                        save_positions(st.session_state.positions)
+                        st.balloons()
+                    else:
+                        st.error(f"❌ Order failed: {result}")
                 # NO rerun - let user see the result
             else:
                 st.session_state.positions.append({"game": game_key, "type": "totals", "side": st.session_state.selected_side, "threshold": st.session_state.selected_threshold, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2)})
@@ -1411,4 +1503,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.26 - YYYYMMDD date format + market check")
+st.caption("v15.27 - Resolve market_id before order")
