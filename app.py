@@ -2,19 +2,31 @@ import streamlit as st
 import requests
 from datetime import datetime, timedelta
 import pytz
-import uuid
-import base64
+import json
+import os
 
-# Try to import cryptography for trading (optional)
-try:
-    from cryptography.hazmat.primitives import serialization, hashes
-    from cryptography.hazmat.primitives.asymmetric import padding
-    from cryptography.hazmat.backends import default_backend
-    CRYPTO_AVAILABLE = True
-except ImportError:
-    CRYPTO_AVAILABLE = False
+st.set_page_config(page_title="NBA Edge Finder (TEST)", page_icon="🎯", layout="wide")
 
-st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
+# ========== PERSISTENT STORAGE ==========
+POSITIONS_FILE = "nba_positions.json"
+
+def load_positions():
+    """Load positions from JSON file"""
+    try:
+        if os.path.exists(POSITIONS_FILE):
+            with open(POSITIONS_FILE, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        st.warning(f"Could not load positions: {e}")
+    return []
+
+def save_positions(positions):
+    """Save positions to JSON file"""
+    try:
+        with open(POSITIONS_FILE, 'w') as f:
+            json.dump(positions, f, indent=2)
+    except Exception as e:
+        st.warning(f"Could not save positions: {e}")
 
 # ========== AUTO-REFRESH SETUP ==========
 if 'auto_refresh' not in st.session_state:
@@ -39,96 +51,6 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
-
-# ============================================================
-# KALSHI TRADING API
-# ============================================================
-def init_trading():
-    if 'kalshi_api_key' not in st.session_state:
-        try:
-            st.session_state.kalshi_api_key = st.secrets.get("KALSHI_API_KEY", "")
-        except:
-            st.session_state.kalshi_api_key = ""
-    if 'kalshi_private_key' not in st.session_state:
-        try:
-            st.session_state.kalshi_private_key = st.secrets.get("KALSHI_PRIVATE_KEY", "")
-        except:
-            st.session_state.kalshi_private_key = ""
-    if 'trading_enabled' not in st.session_state:
-        st.session_state.trading_enabled = bool(st.session_state.kalshi_api_key and st.session_state.kalshi_private_key)
-    if 'default_contracts' not in st.session_state:
-        st.session_state.default_contracts = 1
-
-def create_kalshi_signature(private_key_pem, timestamp, method, path):
-    if not CRYPTO_AVAILABLE:
-        return None
-    try:
-        private_key = serialization.load_pem_private_key(
-            private_key_pem.encode(), password=None, backend=default_backend()
-        )
-        path_without_query = path.split('?')[0]
-        message = f"{timestamp}{method}{path_without_query}".encode('utf-8')
-        signature = private_key.sign(
-            message,
-            padding.PSS(
-                mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=padding.PSS.DIGEST_LENGTH
-            ),
-            hashes.SHA256()
-        )
-        return base64.b64encode(signature).decode()
-    except Exception as e:
-        return None
-
-def place_kalshi_order(ticker, side, price_cents, count, api_key, private_key_pem):
-    if not CRYPTO_AVAILABLE:
-        return False, "cryptography library not installed"
-    try:
-        path = '/trade-api/v2/portfolio/orders'
-        timestamp = str(int(datetime.now().timestamp() * 1000))
-        signature = create_kalshi_signature(private_key_pem, timestamp, "POST", path)
-        
-        if not signature:
-            return False, "Failed to create signature - check private key"
-        
-        headers = {
-            'KALSHI-ACCESS-KEY': api_key,
-            'KALSHI-ACCESS-SIGNATURE': signature,
-            'KALSHI-ACCESS-TIMESTAMP': timestamp,
-            'Content-Type': 'application/json'
-        }
-        
-        order_data = {
-            "ticker": ticker,
-            "action": "buy",
-            "side": side.lower(),
-            "count": count,
-            "type": "limit",
-            "client_order_id": str(uuid.uuid4())
-        }
-        
-        if side.lower() == "no":
-            order_data["no_price"] = price_cents
-        else:
-            order_data["yes_price"] = price_cents
-        
-        response = requests.post(
-            f"https://api.elections.kalshi.com{path}",
-            headers=headers,
-            json=order_data,
-            timeout=10
-        )
-        
-        if response.status_code == 201:
-            order = response.json().get('order', {})
-            return True, f"✅ Order placed! {count}x {side} @ {price_cents}¢"
-        else:
-            error_msg = response.json().get('error', {}).get('message', response.text)
-            return False, f"❌ Error: {error_msg}"
-    except Exception as e:
-        return False, f"❌ Error: {str(e)}"
-
-init_trading()
 
 # ========== KALSHI TEAM CODES ==========
 KALSHI_CODES = {
@@ -168,8 +90,12 @@ def build_kalshi_ticker(away_team, home_team, threshold):
         thresh_str += ".5"
     return f"KXNBATOTAL-{date_str}{away_code.upper()}{home_code.upper()}-T{thresh_str}"
 
+# Load positions from file on startup
 if "positions" not in st.session_state:
-    st.session_state.positions = []
+    st.session_state.positions = load_positions()
+
+if 'default_contracts' not in st.session_state:
+    st.session_state.default_contracts = 1
 
 # ========== STAR PLAYERS DATABASE ==========
 STAR_PLAYERS_DB = {
@@ -220,22 +146,6 @@ with st.sidebar:
     
     st.divider()
     
-    st.subheader("📊 10-Factor ML System")
-    st.markdown("""
-    1. Rest Advantage  
-    2. Net Rating Edge  
-    3. Defense Ranking  
-    4. Home Court  
-    5. Injury Impact  
-    6. Travel Fatigue  
-    7. Home/Away Splits  
-    8. Division Rivalry  
-    9. Altitude (Denver)  
-    10. Team Quality
-    """)
-    
-    st.divider()
-    
     st.subheader("🎯 Totals Signal Tiers")
     st.markdown("""
     🟢 **STRONG NO/YES** → 8.0+ score  
@@ -266,34 +176,8 @@ with st.sidebar:
     """)
     
     st.divider()
-    
-    st.subheader("🚀 ONE-CLICK TRADING")
-    
-    if not CRYPTO_AVAILABLE:
-        st.warning("Add `cryptography` to requirements.txt")
-    else:
-        st.session_state.trading_enabled = st.toggle("Enable Trading", value=st.session_state.trading_enabled)
-        
-        if st.session_state.trading_enabled:
-            if st.session_state.kalshi_api_key:
-                st.success("✅ API Key loaded")
-            else:
-                st.session_state.kalshi_api_key = st.text_input("API Key", type="password")
-            
-            if st.session_state.kalshi_private_key:
-                st.success("✅ Private Key loaded")
-            else:
-                st.session_state.kalshi_private_key = st.text_area("Private Key (PEM)", height=100, type="default")
-            
-            st.session_state.default_contracts = st.number_input("Default Contracts", min_value=1, value=st.session_state.default_contracts)
-            
-            if st.session_state.kalshi_api_key and st.session_state.kalshi_private_key:
-                st.success("✅ Ready to trade!")
-            else:
-                st.info("Enter API credentials above")
-    
-    st.divider()
-    st.caption("v15.9")
+    st.caption("TEST v15.10")
+    st.caption("💾 Positions persist")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -858,9 +742,9 @@ for game_key in games.keys():
 yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 
 # ========== HEADER ==========
-st.title("🎯 NBA EDGE FINDER")
+st.title("🎯 NBA EDGE FINDER (TEST)")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.9")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | TEST v15.10")
 
 # Auto-refresh toggle
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
@@ -1168,6 +1052,7 @@ with st.form("add_position_form"):
         else:
             side_clean = "NO" if "NO" in side else "YES"
             st.session_state.positions.append({'game': game_key, 'type': 'totals', 'side': side_clean, 'threshold': threshold_select, 'price': price_paid, 'contracts': contracts, 'cost': round(price_paid * contracts / 100, 2)})
+        save_positions(st.session_state.positions)
         st.rerun()
 
 st.divider()
@@ -1247,6 +1132,7 @@ if st.session_state.positions:
             btn1.link_button(f"🔗 Trade on Kalshi", kalshi_url, use_container_width=True)
             if btn2.button("🗑️ Remove", key=f"del_{idx}"):
                 st.session_state.positions.pop(idx)
+                save_positions(st.session_state.positions)
                 st.rerun()
         else:
             if pos_type == 'ml': display_text = f"ML: {pos.get('pick', '?')}"
@@ -1254,10 +1140,12 @@ if st.session_state.positions:
             st.markdown(f"<div style='background:#1a1a2e;padding:15px;border-radius:10px;border:1px solid #444;margin-bottom:10px'><span style='color:#888'>{game_key.replace('@', ' @ ')} — {display_text} — {contracts}x @ {price}¢</span><span style='color:#666;margin-left:15px'>⏳ Game not started</span></div>", unsafe_allow_html=True)
             if st.button("🗑️ Remove", key=f"del_{idx}"):
                 st.session_state.positions.pop(idx)
+                save_positions(st.session_state.positions)
                 st.rerun()
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🗑️ Clear All Positions", use_container_width=True):
         st.session_state.positions = []
+        save_positions(st.session_state.positions)
         st.rerun()
 else:
     st.info("No positions tracked — use the form above to add your first position")
@@ -1395,5 +1283,27 @@ else:
     st.info("No games today")
 
 st.divider()
+
+# ========== HOW TO USE THIS APP ==========
+st.subheader("📖 HOW TO USE THIS APP")
+st.markdown("""
+**🏥 INJURY REPORT** — Shows all injured players for today's games sorted by star tier (⭐⭐⭐ Superstars, ⭐⭐ All-Stars, ⭐ Rotation). Icons: 🔥 Offense, 🛡️ Defense, ⚔️ Two-way.
+
+**🎯 ML PICKS BIG SNAPSHOT** — Ranks all games by moneyline edge using 10 factors. Tiers: 🟢 STRONG BUY (8+), 🔵 BUY (6.5-7.9), 🟡 LEAN (5.5-6.4), ⚪ TOSS-UP, 🔴 SKIP.
+
+**🎯 TOTALS BIG SNAPSHOT** — Ranks over/under picks using pace, defense, B2B fatigue, and injuries. NO = Under, YES = Over.
+
+**🔥 BLOWOUT RISK** — Highlights games where tired away team (B2B) faces rested home team. These often have the highest ML edge.
+
+**➕ POSITION TRACKER** — Track your bets with live P&L projections as games progress. **💾 Positions now persist across refreshes!**
+
+**🎯 CUSHION SCANNER** — For live games (6+ min played), finds NO/YES opportunities with safe cushion above projected totals. Toggle auto-refresh to monitor.
+
+**🔥 PACE SCANNER** — Quick view of all live game paces. 🟢 SLOW (<4.5/min) favors unders, 🔴 SHOOTOUT (>5.2/min) favors overs.
+
+**📺 ALL GAMES** — Simple scoreboard with live scores for all today's games.
+""")
+
+st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.9")
+st.caption("TEST v15.10 - Positions saved to nba_positions.json")
