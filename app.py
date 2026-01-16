@@ -4,8 +4,12 @@ from datetime import datetime, timedelta
 import pytz
 import json
 import os
+import base64
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-st.set_page_config(page_title="NBA Edge Finder (TEST)", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide")
 
 # Kalshi-style YES/NO button colors
 st.markdown("""
@@ -34,8 +38,29 @@ div[role="radiogroup"] > label:nth-child(2) div {
 </style>
 """, unsafe_allow_html=True)
 
+# ========== ENCRYPTION FUNCTIONS ==========
+SALT = b'nba_edge_finder_2025'
+
+def get_encryption_key(password: str) -> bytes:
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=SALT, iterations=100000)
+    return base64.urlsafe_b64encode(kdf.derive(password.encode()))
+
+def encrypt_api_key(api_key: str, password: str) -> str:
+    key = get_encryption_key(password)
+    f = Fernet(key)
+    return f.encrypt(api_key.encode()).decode()
+
+def decrypt_api_key(encrypted_key: str, password: str) -> str:
+    try:
+        key = get_encryption_key(password)
+        f = Fernet(key)
+        return f.decrypt(encrypted_key.encode()).decode()
+    except:
+        return None
+
 # ========== PERSISTENT STORAGE ==========
 POSITIONS_FILE = "nba_positions.json"
+CREDENTIALS_FILE = "kalshi_creds.json"
 
 def load_positions():
     try:
@@ -53,6 +78,74 @@ def save_positions(positions):
     except Exception as e:
         st.warning(f"Could not save positions: {e}")
 
+def load_credentials():
+    try:
+        if os.path.exists(CREDENTIALS_FILE):
+            with open(CREDENTIALS_FILE, 'r') as f:
+                return json.load(f)
+    except:
+        pass
+    return {}
+
+def save_credentials(creds):
+    try:
+        with open(CREDENTIALS_FILE, 'w') as f:
+            json.dump(creds, f, indent=2)
+    except Exception as e:
+        st.warning(f"Could not save credentials: {e}")
+
+# ========== KALSHI API FUNCTIONS ==========
+KALSHI_API_BASE = "https://trading-api.kalshi.com/trade-api/v2"
+
+def kalshi_login(email: str, password: str):
+    try:
+        resp = requests.post(f"{KALSHI_API_BASE}/login", json={"email": email, "password": password}, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get("token"), data.get("member_id")
+        return None, None
+    except Exception as e:
+        st.error(f"Login failed: {e}")
+        return None, None
+
+def kalshi_get_balance(token: str):
+    try:
+        headers = {"Authorization": f"Bearer {token}"}
+        resp = requests.get(f"{KALSHI_API_BASE}/portfolio/balance", headers=headers, timeout=10)
+        if resp.status_code == 200:
+            return resp.json().get("balance", 0) / 100
+        return None
+    except:
+        return None
+
+def kalshi_place_order(token: str, ticker: str, side: str, yes_no: str, price: int, contracts: int):
+    try:
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        order_data = {
+            "ticker": ticker,
+            "action": side,
+            "side": yes_no.lower(),
+            "type": "limit",
+            "count": contracts,
+            "yes_price" if yes_no.upper() == "YES" else "no_price": price
+        }
+        resp = requests.post(f"{KALSHI_API_BASE}/portfolio/orders", headers=headers, json=order_data, timeout=10)
+        if resp.status_code in [200, 201]:
+            return True, resp.json()
+        return False, resp.text
+    except Exception as e:
+        return False, str(e)
+
+def get_kalshi_ticker(away_team, home_team, market_type="totals"):
+    away_code = KALSHI_CODES.get(away_team, "xxx")
+    home_code = KALSHI_CODES.get(home_team, "xxx")
+    today = datetime.now(pytz.timezone('US/Eastern'))
+    date_str = today.strftime("%y%b%d").lower()
+    if market_type == "totals":
+        return f"kxnbatotal-{date_str}{away_code}{home_code}"
+    else:
+        return f"kxnbagame-{date_str}{away_code}{home_code}"
+
 # ========== SESSION STATE INIT ==========
 if 'auto_refresh' not in st.session_state:
     st.session_state.auto_refresh = False
@@ -66,6 +159,14 @@ if "selected_threshold" not in st.session_state:
     st.session_state.selected_threshold = 225.5
 if "selected_ml_pick" not in st.session_state:
     st.session_state.selected_ml_pick = None
+if "kalshi_token" not in st.session_state:
+    st.session_state.kalshi_token = None
+if "kalshi_balance" not in st.session_state:
+    st.session_state.kalshi_balance = None
+if "trading_enabled" not in st.session_state:
+    st.session_state.trading_enabled = False
+if "show_api_settings" not in st.session_state:
+    st.session_state.show_api_settings = False
 
 if st.session_state.auto_refresh:
     st.markdown('<meta http-equiv="refresh" content="30">', unsafe_allow_html=True)
@@ -150,8 +251,10 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("TEST v15.11")
+    st.caption("v15.11")
     st.caption("💾 Positions persist")
+    if st.session_state.trading_enabled:
+        st.caption("🔐 Trading ENABLED")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -631,9 +734,9 @@ for game_key in games.keys():
 yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 
 # ========== HEADER ==========
-st.title("🎯 NBA EDGE FINDER (TEST)")
-hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | TEST v15.11")
+st.title("🎯 NBA EDGE FINDER")
+hdr1, hdr2, hdr3, hdr4 = st.columns([2, 1, 1, 1])
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.11")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -641,6 +744,105 @@ if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Sto
 
 if hdr3.button("🔄 Refresh", use_container_width=True):
     st.rerun()
+
+if hdr4.button("🔐 API Keys", use_container_width=True):
+    st.session_state.show_api_settings = not st.session_state.show_api_settings
+    st.rerun()
+
+# ========== API SETTINGS PANEL ==========
+if st.session_state.show_api_settings:
+    st.subheader("🔐 KALSHI API CONFIGURATION")
+    
+    creds = load_credentials()
+    
+    if st.session_state.trading_enabled and st.session_state.kalshi_token:
+        balance = kalshi_get_balance(st.session_state.kalshi_token)
+        if balance is not None:
+            st.session_state.kalshi_balance = balance
+            st.success(f"✅ Connected to Kalshi | Balance: **${balance:.2f}**")
+        else:
+            st.warning("⚠️ Session expired - please re-authenticate")
+            st.session_state.trading_enabled = False
+            st.session_state.kalshi_token = None
+        
+        if st.button("🔓 Disconnect", use_container_width=True):
+            st.session_state.trading_enabled = False
+            st.session_state.kalshi_token = None
+            st.session_state.kalshi_balance = None
+            st.rerun()
+    else:
+        tab1, tab2 = st.tabs(["🔑 Quick Login", "💾 Saved Credentials"])
+        
+        with tab1:
+            email = st.text_input("Kalshi Email", key="kalshi_email")
+            password = st.text_input("Kalshi Password", type="password", key="kalshi_pwd")
+            
+            c1, c2 = st.columns(2)
+            if c1.button("🔐 Connect", use_container_width=True, type="primary"):
+                if email and password:
+                    with st.spinner("Authenticating..."):
+                        token, member_id = kalshi_login(email, password)
+                        if token:
+                            st.session_state.kalshi_token = token
+                            st.session_state.trading_enabled = True
+                            balance = kalshi_get_balance(token)
+                            if balance: st.session_state.kalshi_balance = balance
+                            st.success(f"✅ Connected! Balance: ${balance:.2f}")
+                            st.rerun()
+                        else:
+                            st.error("❌ Login failed - check credentials")
+                else:
+                    st.warning("Enter email and password")
+            
+            save_key = st.text_input("Encryption Key (to save credentials)", type="password", key="save_enc_key")
+            if c2.button("💾 Save & Connect", use_container_width=True):
+                if email and password and save_key:
+                    encrypted_email = encrypt_api_key(email, save_key)
+                    encrypted_pwd = encrypt_api_key(password, save_key)
+                    save_credentials({"email": encrypted_email, "password": encrypted_pwd})
+                    
+                    token, member_id = kalshi_login(email, password)
+                    if token:
+                        st.session_state.kalshi_token = token
+                        st.session_state.trading_enabled = True
+                        st.success("✅ Credentials saved & connected!")
+                        st.rerun()
+                else:
+                    st.warning("Fill all fields")
+        
+        with tab2:
+            if creds:
+                st.info("💾 Encrypted credentials found")
+                unlock_key = st.text_input("Enter encryption key to unlock", type="password", key="unlock_key")
+                if st.button("🔓 Unlock & Connect", use_container_width=True):
+                    if unlock_key:
+                        email = decrypt_api_key(creds.get("email", ""), unlock_key)
+                        password = decrypt_api_key(creds.get("password", ""), unlock_key)
+                        if email and password:
+                            token, member_id = kalshi_login(email, password)
+                            if token:
+                                st.session_state.kalshi_token = token
+                                st.session_state.trading_enabled = True
+                                st.success("✅ Connected!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Login failed")
+                        else:
+                            st.error("❌ Wrong encryption key")
+                
+                if st.button("🗑️ Delete Saved Credentials", use_container_width=True):
+                    if os.path.exists(CREDENTIALS_FILE):
+                        os.remove(CREDENTIALS_FILE)
+                        st.success("Credentials deleted")
+                        st.rerun()
+            else:
+                st.info("No saved credentials. Use Quick Login to save.")
+    
+    st.divider()
+
+# ========== TRADING STATUS BANNER ==========
+if st.session_state.trading_enabled:
+    st.markdown(f"<div style='background:linear-gradient(135deg,#0a2a0a,#1a3a1a);padding:10px 15px;border-radius:8px;border:2px solid #00ff00;margin-bottom:15px'><span style='color:#00ff00;font-weight:bold'>🔐 LIVE TRADING ENABLED</span><span style='color:#aaa;margin-left:20px'>Balance: <b style=\"color:#fff\">${st.session_state.kalshi_balance:.2f}</b></span></div>", unsafe_allow_html=True)
 
 # ========== INJURY REPORT ==========
 st.subheader("🏥 INJURY REPORT - TODAY'S GAMES")
@@ -680,8 +882,8 @@ else:
 
 st.divider()
 
-# ========== ADD NEW POSITION (FIXED - NO FORM) ==========
-st.subheader("➕ ADD NEW POSITION (Paper Tracking)")
+# ========== ADD NEW POSITION ==========
+st.subheader("➕ ADD NEW POSITION")
 
 game_options = ["Select a game..."] + [gk.replace("@", " @ ") for gk in game_list]
 selected_game = st.selectbox("🏀 Game", game_options, key="game_select")
@@ -693,10 +895,8 @@ if selected_game != "Select a game...":
     col_ml.link_button(f"🔗 ML on Kalshi", build_kalshi_ml_url(away_t, home_t), use_container_width=True)
     col_tot.link_button(f"🔗 Totals on Kalshi", build_kalshi_totals_url(away_t, home_t), use_container_width=True)
 
-# Market type selection
 market_type = st.radio("📈 Market Type", ["Moneyline (Winner)", "Totals (Over/Under)"], horizontal=True, key="mkt_type")
 
-# Detect if game started
 game_started = False
 if selected_game != "Select a game...":
     gkey = selected_game.replace(" @ ", "@")
@@ -706,27 +906,13 @@ if selected_game != "Select a game...":
 
 p1, p2, p3 = st.columns(3)
 
-# Side selection with state persistence
 if market_type == "Totals (Over/Under)":
     with p1:
         st.markdown("📊 Side")
-        yes_no = st.radio(
-            "",
-            ["NO (Under)", "YES (Over)"],
-            horizontal=True,
-            disabled=game_started,
-            key="totals_side_radio"
-        )
+        yes_no = st.radio("", ["NO (Under)", "YES (Over)"], horizontal=True, disabled=game_started, key="totals_side_radio")
         st.session_state.selected_side = "NO" if "NO" in yes_no else "YES"
     
-    st.session_state.selected_threshold = st.number_input(
-        "🎯 Threshold",
-        min_value=180.0,
-        max_value=280.0,
-        value=st.session_state.selected_threshold,
-        step=0.5,
-        disabled=game_started
-    )
+    st.session_state.selected_threshold = st.number_input("🎯 Threshold", min_value=180.0, max_value=280.0, value=st.session_state.selected_threshold, step=0.5, disabled=game_started)
     
     if game_started:
         st.warning("🔒 Game has started — side & threshold locked")
@@ -735,12 +921,7 @@ else:
         if selected_game != "Select a game...":
             parts = selected_game.replace(" @ ", "@").split("@")
             st.markdown("📊 Pick Winner")
-            st.session_state.selected_ml_pick = st.radio(
-                "",
-                [parts[1], parts[0]],
-                horizontal=True,
-                key="ml_pick_radio"
-            )
+            st.session_state.selected_ml_pick = st.radio("", [parts[1], parts[0]], horizontal=True, key="ml_pick_radio")
         else:
             st.session_state.selected_ml_pick = None
             st.warning("⚠️ Select a game first")
@@ -748,39 +929,56 @@ else:
 price_paid = p2.number_input("💵 Price (¢)", min_value=1, max_value=99, value=50, step=1)
 contracts = p3.number_input("📄 Contracts", min_value=1, value=st.session_state.default_contracts, step=1)
 
-# ADD POSITION button with state persistence
-if st.button("✅ ADD POSITION", use_container_width=True, type="primary"):
+# Trading mode toggle
+if st.session_state.trading_enabled:
+    trade_mode = st.radio("🎯 Mode", ["📝 Paper Track", "💰 LIVE TRADE"], horizontal=True, key="trade_mode")
+    is_live_trade = "LIVE" in trade_mode
+else:
+    is_live_trade = False
+
+btn_label = "💰 PLACE LIVE ORDER" if is_live_trade else "✅ ADD POSITION"
+btn_type = "primary"
+
+if st.button(btn_label, use_container_width=True, type=btn_type):
     if selected_game == "Select a game...":
         st.error("Select a game first!")
     else:
         game_key = selected_game.replace(" @ ", "@")
         parts = game_key.split("@")
-
+        away_t, home_t = parts[0], parts[1]
+        
         if market_type == "Moneyline (Winner)":
             if st.session_state.selected_ml_pick is None:
                 st.error("Pick a team first!")
             else:
-                st.session_state.positions.append({
-                    "game": game_key,
-                    "type": "ml",
-                    "pick": st.session_state.selected_ml_pick,
-                    "price": price_paid,
-                    "contracts": contracts,
-                    "cost": round(price_paid * contracts / 100, 2)
-                })
-                save_positions(st.session_state.positions)
+                if is_live_trade:
+                    ticker = get_kalshi_ticker(away_t, home_t, "ml")
+                    yes_no_side = "yes" if st.session_state.selected_ml_pick == home_t else "no"
+                    success, result = kalshi_place_order(st.session_state.kalshi_token, ticker, "buy", yes_no_side, price_paid, contracts)
+                    if success:
+                        st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_ml_pick} @ {price_paid}¢")
+                        st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
+                        save_positions(st.session_state.positions)
+                    else:
+                        st.error(f"❌ Order failed: {result}")
+                else:
+                    st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2)})
+                    save_positions(st.session_state.positions)
                 st.rerun()
         else:
-            st.session_state.positions.append({
-                "game": game_key,
-                "type": "totals",
-                "side": st.session_state.selected_side,
-                "threshold": st.session_state.selected_threshold,
-                "price": price_paid,
-                "contracts": contracts,
-                "cost": round(price_paid * contracts / 100, 2)
-            })
-            save_positions(st.session_state.positions)
+            if is_live_trade:
+                ticker = get_kalshi_ticker(away_t, home_t, "totals")
+                ticker_with_threshold = f"{ticker}-t{int(st.session_state.selected_threshold)}"
+                success, result = kalshi_place_order(st.session_state.kalshi_token, ticker_with_threshold, "buy", st.session_state.selected_side.lower(), price_paid, contracts)
+                if success:
+                    st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_side} {st.session_state.selected_threshold} @ {price_paid}¢")
+                    st.session_state.positions.append({"game": game_key, "type": "totals", "side": st.session_state.selected_side, "threshold": st.session_state.selected_threshold, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
+                    save_positions(st.session_state.positions)
+                else:
+                    st.error(f"❌ Order failed: {result}")
+            else:
+                st.session_state.positions.append({"game": game_key, "type": "totals", "side": st.session_state.selected_side, "threshold": st.session_state.selected_threshold, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2)})
+                save_positions(st.session_state.positions)
             st.rerun()
 
 st.divider()
@@ -796,8 +994,10 @@ if st.session_state.positions:
         contracts = pos.get('contracts', 1)
         cost = pos.get('cost', round(price * contracts / 100, 2))
         pos_type = pos.get('type', 'totals')
+        is_live = pos.get('live', False)
         potential_win = round((100 - price) * contracts / 100, 2)
         potential_loss = cost
+        live_badge = "💰 LIVE" if is_live else "📝 Paper"
         
         if g:
             total = g['total']
@@ -834,7 +1034,7 @@ if st.session_state.positions:
                     lead = 0
                     pnl_display, pnl_color = f"Win: +${potential_win:.2f}", "#888888"
                 
-                st.markdown(f"<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'><div style='display:flex;justify-content:space-between;align-items:center'><div><span style='color:#fff;font-size:1.2em;font-weight:bold'>{game_key.replace('@', ' @ ')}</span><span style='color:#888;margin-left:10px'>{game_status}</span></div><span style='color:{status_color};font-size:1.3em;font-weight:bold'>{status_label}</span></div><div style='margin-top:10px;display:flex;gap:30px;flex-wrap:wrap'><span style='color:#aaa'>🎯 <b style=\"color:#fff\">ML: {pick}</b></span><span style='color:#aaa'>💵 <b style=\"color:#fff\">{contracts}x @ {price}¢</b> (${cost:.2f})</span><span style='color:#aaa'>📊 Score: <b style=\"color:#fff\">{pick_score}-{opp_score}</b></span><span style='color:#aaa'>📈 Lead: <b style=\"color:{status_color}\">{lead:+d}</b></span><span style='color:{pnl_color}'>{pnl_display}</span></div></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'><div style='display:flex;justify-content:space-between;align-items:center'><div><span style='color:#fff;font-size:1.2em;font-weight:bold'>{game_key.replace('@', ' @ ')}</span><span style='color:#888;margin-left:10px'>{game_status}</span><span style='color:#00aaff;margin-left:10px;font-size:0.85em'>{live_badge}</span></div><span style='color:{status_color};font-size:1.3em;font-weight:bold'>{status_label}</span></div><div style='margin-top:10px;display:flex;gap:30px;flex-wrap:wrap'><span style='color:#aaa'>🎯 <b style=\"color:#fff\">ML: {pick}</b></span><span style='color:#aaa'>💵 <b style=\"color:#fff\">{contracts}x @ {price}¢</b> (${cost:.2f})</span><span style='color:#aaa'>📊 Score: <b style=\"color:#fff\">{pick_score}-{opp_score}</b></span><span style='color:#aaa'>📈 Lead: <b style=\"color:{status_color}\">{lead:+d}</b></span><span style='color:{pnl_color}'>{pnl_display}</span></div></div>", unsafe_allow_html=True)
             else:
                 projected = round((total / mins) * 48) if mins > 0 else None
                 cushion = (pos['threshold'] - projected) if pos.get('side') == "NO" and projected else ((projected - pos['threshold']) if projected else 0)
@@ -858,7 +1058,7 @@ if st.session_state.positions:
                     status_label, status_color = "⏳ WAITING", "#888888"
                     pnl_display, pnl_color = f"Win: +${potential_win:.2f}", "#888888"
                 
-                st.markdown(f"<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'><div style='display:flex;justify-content:space-between;align-items:center'><div><span style='color:#fff;font-size:1.2em;font-weight:bold'>{game_key.replace('@', ' @ ')}</span><span style='color:#888;margin-left:10px'>{game_status}</span></div><span style='color:{status_color};font-size:1.3em;font-weight:bold'>{status_label}</span></div><div style='margin-top:10px;display:flex;gap:30px;flex-wrap:wrap'><span style='color:#aaa'>📊 <b style=\"color:#fff\">{pos.get('side', 'NO')} {pos.get('threshold', 0)}</b></span><span style='color:#aaa'>💵 <b style=\"color:#fff\">{contracts}x @ {price}¢</b> (${cost:.2f})</span><span style='color:#aaa'>📈 Proj: <b style=\"color:#fff\">{projected if projected else '—'}</b></span><span style='color:#aaa'>🎯 Cushion: <b style=\"color:{status_color}\">{cushion:+.0f}</b></span><span style='color:{pnl_color}'>{pnl_display}</span></div></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'><div style='display:flex;justify-content:space-between;align-items:center'><div><span style='color:#fff;font-size:1.2em;font-weight:bold'>{game_key.replace('@', ' @ ')}</span><span style='color:#888;margin-left:10px'>{game_status}</span><span style='color:#00aaff;margin-left:10px;font-size:0.85em'>{live_badge}</span></div><span style='color:{status_color};font-size:1.3em;font-weight:bold'>{status_label}</span></div><div style='margin-top:10px;display:flex;gap:30px;flex-wrap:wrap'><span style='color:#aaa'>📊 <b style=\"color:#fff\">{pos.get('side', 'NO')} {pos.get('threshold', 0)}</b></span><span style='color:#aaa'>💵 <b style=\"color:#fff\">{contracts}x @ {price}¢</b> (${cost:.2f})</span><span style='color:#aaa'>📈 Proj: <b style=\"color:#fff\">{projected if projected else '—'}</b></span><span style='color:#aaa'>🎯 Cushion: <b style=\"color:{status_color}\">{cushion:+.0f}</b></span><span style='color:{pnl_color}'>{pnl_display}</span></div></div>", unsafe_allow_html=True)
             
             btn1, btn2 = st.columns([3, 1])
             parts = game_key.split("@")
@@ -928,4 +1128,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("TEST v15.11 - State persistence fix applied")
+st.caption("v15.11 - Live trading with encrypted credentials")
