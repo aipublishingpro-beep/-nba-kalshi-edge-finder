@@ -138,9 +138,43 @@ def kalshi_get_balance(token: str):
     except:
         return None
 
-def kalshi_place_order(token: str, ticker: str, side: str, yes_no: str, price: int, contracts: int):
+def kalshi_place_order(ticker: str, side: str, yes_no: str, price: int, contracts: int):
     try:
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        from cryptography.hazmat.primitives import serialization, hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.backends import default_backend
+        import time
+        
+        api_key = st.session_state.kalshi_api_key
+        private_key_pem = st.session_state.kalshi_private_key
+        
+        # Load private key
+        private_key = serialization.load_pem_private_key(
+            private_key_pem.encode() if isinstance(private_key_pem, str) else private_key_pem,
+            password=None,
+            backend=default_backend()
+        )
+        
+        # Create signature
+        timestamp = str(int(time.time() * 1000))
+        method = "POST"
+        path = "/trade-api/v2/portfolio/orders"
+        message = f"{timestamp}{method}{path}"
+        
+        signature = private_key.sign(
+            message.encode(),
+            padding.PKCS1v15(),
+            hashes.SHA256()
+        )
+        sig_b64 = base64.b64encode(signature).decode()
+        
+        headers = {
+            "KALSHI-ACCESS-KEY": api_key,
+            "KALSHI-ACCESS-SIGNATURE": sig_b64,
+            "KALSHI-ACCESS-TIMESTAMP": timestamp,
+            "Content-Type": "application/json"
+        }
+        
         order_data = {
             "ticker": ticker,
             "action": side,
@@ -149,6 +183,7 @@ def kalshi_place_order(token: str, ticker: str, side: str, yes_no: str, price: i
             "count": contracts,
             "yes_price" if yes_no.upper() == "YES" else "no_price": price
         }
+        
         resp = requests.post(f"{KALSHI_API_BASE}/portfolio/orders", headers=headers, json=order_data, timeout=10)
         if resp.status_code in [200, 201]:
             return True, resp.json()
@@ -189,6 +224,10 @@ if "kalshi_balance" not in st.session_state:
     st.session_state.kalshi_balance = None
 if "trading_enabled" not in st.session_state:
     st.session_state.trading_enabled = False
+if "kalshi_api_key" not in st.session_state:
+    st.session_state.kalshi_api_key = ""
+if "kalshi_private_key" not in st.session_state:
+    st.session_state.kalshi_private_key = ""
 
 if st.session_state.auto_refresh:
     st.markdown('<meta http-equiv="refresh" content="30">', unsafe_allow_html=True)
@@ -263,32 +302,19 @@ with st.sidebar:
     # ========== KALSHI TRADING (AUTO-CONNECT VIA SECRETS) ==========
     st.header("🔐 KALSHI")
     
-    # Auto-load from Streamlit Secrets
-    if not st.session_state.trading_enabled or not st.session_state.kalshi_token:
-        try:
-            api_email = st.secrets.get("KALSHI_EMAIL", "")
-            api_password = st.secrets.get("KALSHI_PASSWORD", "")
-            if api_email and api_password:
-                token, member_id = kalshi_login(api_email, api_password)
-                if token:
-                    st.session_state.kalshi_token = token
-                    st.session_state.trading_enabled = True
-        except:
-            pass
-    
-    # Show status
-    if st.session_state.trading_enabled and st.session_state.kalshi_token:
-        balance = kalshi_get_balance(st.session_state.kalshi_token)
-        if balance is not None:
-            st.session_state.kalshi_balance = balance
-            st.success(f"✅ **${balance:.2f}**")
+    # Auto-load API keys from Streamlit Secrets
+    try:
+        kalshi_api_key = st.secrets.get("KALSHI_API_KEY", "")
+        kalshi_private_key = st.secrets.get("KALSHI_PRIVATE_KEY", "")
+        if kalshi_api_key and kalshi_private_key:
+            st.session_state.trading_enabled = True
+            st.session_state.kalshi_api_key = kalshi_api_key
+            st.session_state.kalshi_private_key = kalshi_private_key
+            st.success("✅ **Ready to Trade**")
         else:
-            st.warning("⚠️ Session expired")
-            st.session_state.trading_enabled = False
-            st.session_state.kalshi_token = None
-    else:
-        st.error("❌ Not connected")
-        st.caption("Add KALSHI_EMAIL and KALSHI_PASSWORD to Streamlit Secrets")
+            st.error("❌ Keys not found")
+    except Exception as e:
+        st.error("❌ Keys not found")
     
     st.divider()
     
@@ -306,9 +332,9 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.13")
+    st.caption("v15.14")
     st.caption("💾 Positions persist")
-    if st.session_state.trading_enabled:
+    if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
         st.caption("🔐 Trading ENABLED")
 
 # ========== TEAM DATA ==========
@@ -791,7 +817,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.13")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.14")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -801,8 +827,8 @@ if hdr3.button("🔄 Refresh", use_container_width=True):
     st.rerun()
 
 # ========== TRADING STATUS BANNER ==========
-if st.session_state.trading_enabled:
-    st.markdown(f"<div style='background:linear-gradient(135deg,#0a2a0a,#1a3a1a);padding:10px 15px;border-radius:8px;border:2px solid #00ff00;margin-bottom:15px'><span style='color:#00ff00;font-weight:bold'>🔐 LIVE TRADING ENABLED</span><span style='color:#aaa;margin-left:20px'>Balance: <b style=\"color:#fff\">${st.session_state.kalshi_balance:.2f}</b></span></div>", unsafe_allow_html=True)
+if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
+    st.markdown(f"<div style='background:linear-gradient(135deg,#0a2a0a,#1a3a1a);padding:10px 15px;border-radius:8px;border:2px solid #00ff00;margin-bottom:15px'><span style='color:#00ff00;font-weight:bold'>🔐 LIVE TRADING ENABLED</span></div>", unsafe_allow_html=True)
 
 # ========== INJURY REPORT ==========
 st.subheader("🏥 INJURY REPORT - TODAY'S GAMES")
@@ -890,7 +916,7 @@ price_paid = p2.number_input("💵 Price (¢)", min_value=1, max_value=99, value
 contracts = p3.number_input("📄 Contracts", min_value=1, value=st.session_state.default_contracts, step=1)
 
 # Trading mode toggle
-if st.session_state.trading_enabled:
+if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
     trade_mode = st.radio("🎯 Mode", ["📝 Paper Track", "💰 LIVE TRADE"], horizontal=True, key="trade_mode")
     is_live_trade = "LIVE" in trade_mode
 else:
@@ -914,7 +940,7 @@ if st.button(btn_label, use_container_width=True, type=btn_type):
                 if is_live_trade:
                     ticker = get_kalshi_ticker(away_t, home_t, "ml")
                     yes_no_side = "yes" if st.session_state.selected_ml_pick == home_t else "no"
-                    success, result = kalshi_place_order(st.session_state.kalshi_token, ticker, "buy", yes_no_side, price_paid, contracts)
+                    success, result = kalshi_place_order(ticker, "buy", yes_no_side, price_paid, contracts)
                     if success:
                         st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_ml_pick} @ {price_paid}¢")
                         st.session_state.positions.append({"game": game_key, "type": "ml", "pick": st.session_state.selected_ml_pick, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
@@ -929,7 +955,7 @@ if st.button(btn_label, use_container_width=True, type=btn_type):
             if is_live_trade:
                 ticker = get_kalshi_ticker(away_t, home_t, "totals")
                 ticker_with_threshold = f"{ticker}-t{int(st.session_state.selected_threshold)}"
-                success, result = kalshi_place_order(st.session_state.kalshi_token, ticker_with_threshold, "buy", st.session_state.selected_side.lower(), price_paid, contracts)
+                success, result = kalshi_place_order(ticker_with_threshold, "buy", st.session_state.selected_side.lower(), price_paid, contracts)
                 if success:
                     st.success(f"✅ ORDER PLACED: {contracts}x {st.session_state.selected_side} {st.session_state.selected_threshold} @ {price_paid}¢")
                     st.session_state.positions.append({"game": game_key, "type": "totals", "side": st.session_state.selected_side, "threshold": st.session_state.selected_threshold, "price": price_paid, "contracts": contracts, "cost": round(price_paid * contracts / 100, 2), "live": True})
@@ -1088,4 +1114,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.13 - Trading in sidebar, fixed radio buttons")
+st.caption("v15.14 - RSA auth from Streamlit Secrets")
