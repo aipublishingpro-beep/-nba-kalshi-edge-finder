@@ -118,7 +118,7 @@ def save_credentials(creds):
         st.warning(f"Could not save credentials: {e}")
 
 # ========== KALSHI API FUNCTIONS ==========
-KALSHI_API_BASE = "https://trading-api.kalshi.com/trade-api/v2"
+KALSHI_API_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 
 def kalshi_login(email: str, password: str):
     try:
@@ -350,7 +350,7 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.21")
+    st.caption("v15.22")
     st.caption("💾 Positions persist")
     if st.session_state.trading_enabled and st.session_state.kalshi_api_key:
         st.caption("🔐 Trading ENABLED")
@@ -839,7 +839,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.21")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.22")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -1395,4 +1395,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.21 - Live trade feedback fix")
+st.caption("v15.22 - Kalshi API endpoint update")
