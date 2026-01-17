@@ -737,8 +737,12 @@ for r in ml_results:
 strong_picks = [r for r in ml_results if r["score"] >= 6.5]
 if strong_picks:
     col_add, col_price = st.columns([3, 1])
-    default_price = col_price.number_input("Price", min_value=1, max_value=99, value=50, key="auto_price", label_visibility="collapsed")
-    if col_add.button(f"➕ Add {len(strong_picks)} Picks @ {default_price}¢", use_container_width=True):
+    with col_add:
+        st.write("")  # Spacer to align with input
+        add_clicked = st.button(f"➕ Add {len(strong_picks)} Picks", use_container_width=True)
+    with col_price:
+        default_price = st.number_input("Price ¢", min_value=1, max_value=99, value=50, key="auto_price")
+    if add_clicked:
         added = 0
         for r in strong_picks:
             game_key = f"{r['away']}@{r['home']}"
