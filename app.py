@@ -183,10 +183,57 @@ with st.sidebar:
     st.caption("⚠️ NBA not on trade API yet")
     st.caption("Track here → Execute on web")
     st.divider()
-    st.header("📖 LEGEND")
+    
+    st.header("📖 ML LEGEND")
     st.markdown("🟢 **STRONG BUY** → 8.0+\n\n🔵 **BUY** → 6.5-7.9\n\n🟡 **LEAN** → 5.5-6.4\n\n⚪ **TOSS-UP** → 4.5-5.4")
     st.divider()
-    st.caption("v15.38 MAIN")
+    
+    st.header("🎯 ML FACTORS")
+    st.markdown("""
+🛏️ **B2B Fatigue** — Opponent on back-to-back
+
+📊 **Net Rating** — Team quality differential
+
+🛡️ **Defense Rank** — Top 5 DEF bonus
+
+🏠 **Home Court** — Auto +1 home team
+
+🏥 **Injuries** — Star OUT/GTD impact
+
+✈️ **Travel** — 2000+ miles = fatigue
+
+📈 **Home Win %** — Historical home record
+
+🏔️ **Altitude** — Denver home bonus
+""")
+    st.divider()
+    
+    st.header("🎯 CUSHION SCORING")
+    st.markdown("""
+**For NO (Under) bets:**
+
+| Factor | Points |
+|--------|--------|
+| +20 cushion | +3 |
+| +10-19 cushion | +2 |
+| +6-9 cushion | +1 |
+| SLOW pace | ✅ |
+| AVG pace | ⚠️ |
+| FAST pace | ❌ |
+
+**For YES (Over) bets:**
+
+| Factor | Points |
+|--------|--------|
+| +20 cushion | +3 |
+| +10-19 cushion | +2 |
+| +6-9 cushion | +1 |
+| FAST pace | ✅ |
+| AVG pace | ⚠️ |
+| SLOW pace | ❌ |
+""")
+    st.divider()
+    st.caption("v15.39 MAIN")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -522,12 +569,17 @@ for game_key in games.keys():
 yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 
 # ============================================================
-# ========== ACTIVE POSITIONS - FIRST ON PAGE ==========
+# ========== TITLE - TOP OF PAGE ==========
+# ============================================================
+st.title("🎯 NBA EDGE FINDER")
+
+# ============================================================
+# ========== ACTIVE POSITIONS ==========
 # ============================================================
 st.subheader("📈 ACTIVE POSITIONS")
 
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.38 MAIN")
+hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.39 MAIN")
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
     st.rerun()
@@ -671,9 +723,6 @@ else:
     st.info("No positions — add below")
 
 st.divider()
-
-# ========== TITLE ==========
-st.title("🎯 NBA EDGE FINDER")
 
 # ========== INJURY REPORT ==========
 st.subheader("🏥 INJURY REPORT")
@@ -937,4 +986,4 @@ else:
     st.info("No games today")
 
 st.divider()
-st.caption("⚠️ Entertainment only. Not financial advice. v15.38 MAIN")
+st.caption("⚠️ Entertainment only. Not financial advice. v15.39 MAIN")
