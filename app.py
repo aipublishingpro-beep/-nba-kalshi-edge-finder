@@ -736,18 +736,12 @@ for r in ml_results:
 
 strong_picks = [r for r in ml_results if r["score"] >= 6.5]
 if strong_picks:
-    col_add, col_price = st.columns([3, 1])
-    with col_add:
-        st.write("")  # Spacer to align with input
-        add_clicked = st.button(f"➕ Add {len(strong_picks)} Picks", use_container_width=True)
-    with col_price:
-        default_price = st.number_input("Price ¢", min_value=1, max_value=99, value=50, key="auto_price")
-    if add_clicked:
+    if st.button(f"➕ Add {len(strong_picks)} Picks", use_container_width=True):
         added = 0
         for r in strong_picks:
             game_key = f"{r['away']}@{r['home']}"
             if not any(p.get('game') == game_key and p.get('pick') == r['pick'] for p in st.session_state.positions):
-                st.session_state.positions.append({"game": game_key, "type": "ml", "pick": r['pick'], "price": default_price, "contracts": 1, "cost": round(default_price / 100, 2)})
+                st.session_state.positions.append({"game": game_key, "type": "ml", "pick": r['pick'], "price": 50, "contracts": 1, "cost": 0.50})
                 added += 1
         if added:
             save_positions(st.session_state.positions)
