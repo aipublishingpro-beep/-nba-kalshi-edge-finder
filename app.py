@@ -1,11 +1,11 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import requests
 from datetime import datetime, timedelta
 import pytz
 import json
 import os
 import base64
+import time
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -174,7 +174,9 @@ if "snapshot_date" not in st.session_state or st.session_state["snapshot_date"] 
     st.session_state.pop("cached_injuries", None)
 
 if st.session_state.auto_refresh:
-    st.markdown('<meta http-equiv="refresh" content="30">', unsafe_allow_html=True)
+    # Add timestamp to force fresh navigation (resets scroll position)
+    cache_buster = int(time.time()) + 30
+    st.markdown(f'<meta http-equiv="refresh" content="30;url=?r={cache_buster}">', unsafe_allow_html=True)
     auto_status = "🔄 Auto-refresh ON (30s)"
 else:
     auto_status = "⏸️ Auto-refresh OFF"
@@ -266,7 +268,7 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 SLOW <4.5\n\n🟡 AVG 4.5-4.8\n\n🟠 FAST 4.8-5.2\n\n🔴 SHOOTOUT >5.2")
     st.divider()
-    st.caption("v15.32")
+    st.caption("v15.33")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -752,11 +754,13 @@ st.subheader("📈 ACTIVE POSITIONS")
 
 # Header row with refresh buttons
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.32")
+hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.33")
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
     st.rerun()
 if hdr3.button("🔄 Refresh", use_container_width=True):
+    # Use query param to force fresh navigation (resets scroll)
+    st.query_params["r"] = str(int(time.time()))
     st.rerun()
 
 if st.session_state.positions:
@@ -1047,23 +1051,4 @@ else:
     st.info("No games today")
 
 st.divider()
-st.caption("⚠️ Entertainment only. Not financial advice. v15.32")
-
-# ========== FORCE SCROLL TO TOP ON LOAD ==========
-components.html(
-    """
-    <script>
-        // Try multiple methods to scroll to top
-        try {
-            window.parent.document.querySelector('section.main').scrollTop = 0;
-        } catch(e) {}
-        try {
-            window.parent.document.querySelector('[data-testid="stAppViewContainer"]').scrollTop = 0;
-        } catch(e) {}
-        try {
-            window.parent.scrollTo(0, 0);
-        } catch(e) {}
-    </script>
-    """,
-    height=0
-)
+st.caption("⚠️ Entertainment only. Not financial advice. v15.33")
