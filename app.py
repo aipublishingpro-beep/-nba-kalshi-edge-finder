@@ -100,6 +100,8 @@ if "selected_threshold" not in st.session_state:
     st.session_state.selected_threshold = 225.5
 if "selected_ml_pick" not in st.session_state:
     st.session_state.selected_ml_pick = None
+if "editing_position" not in st.session_state:
+    st.session_state.editing_position = None
 
 # ========== DATE INVALIDATION ==========
 if "snapshot_date" not in st.session_state or st.session_state["snapshot_date"] != today_str:
@@ -184,7 +186,7 @@ with st.sidebar:
     st.header("📖 LEGEND")
     st.markdown("🟢 **STRONG BUY** → 8.0+\n\n🔵 **BUY** → 6.5-7.9\n\n🟡 **LEAN** → 5.5-6.4\n\n⚪ **TOSS-UP** → 4.5-5.4")
     st.divider()
-    st.caption("v15.36 MAIN")
+    st.caption("v15.37 MAIN")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -328,42 +330,27 @@ def fetch_yesterday_teams():
         return set()
 
 def fetch_espn_injuries():
-    """FIXED: Updated to match ESPN's new API structure (Jan 2026)"""
     injuries = {}
     try:
         url = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
         resp = requests.get(url, timeout=10)
         data = resp.json()
-        
-        # New structure: data["injuries"] is a list of team objects
         injury_list = data.get("injuries", [])
-        
         for team_data in injury_list:
-            # NEW: Team name is directly on displayName, not team.displayName
             team_name = team_data.get("displayName", "")
             team_key = TEAM_ABBREVS.get(team_name, team_name)
             if not team_key:
                 continue
-            
             injuries[team_key] = []
-            
-            # Player injuries are in team_data["injuries"]
             player_list = team_data.get("injuries", [])
-            
             for player in player_list:
-                # Player name is in athlete.displayName
                 athlete = player.get("athlete", {})
                 name = athlete.get("displayName", "")
-                
-                # Status is directly on player object (e.g., "Out", "Day-To-Day")
                 status = player.get("status", "")
-                
                 if name:
                     injuries[team_key].append({"name": name, "status": status})
-                    
     except Exception as e:
         st.sidebar.error(f"Injury fetch error: {e}")
-    
     return injuries
 
 def get_star_tier(player_name, team):
@@ -410,7 +397,6 @@ def get_detailed_injuries(team, injuries):
         tier, player_type = get_star_tier(name, team)
         stars = format_star_rating(tier)
         type_emoji = format_player_type(player_type)
-        # Handle new status format
         if "OUT" in status:
             simple_status = "OUT"
         elif "DAY-TO-DAY" in status or "DAY TO DAY" in status or "DTD" in status:
@@ -541,7 +527,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 st.subheader("📈 ACTIVE POSITIONS")
 
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.36 MAIN")
+hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.37 MAIN")
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
     st.rerun()
@@ -616,23 +602,69 @@ if st.session_state.positions:
                 
                 st.markdown(f"<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'><div style='display:flex;justify-content:space-between'><div><b style='color:#fff;font-size:1.2em'>{game_key.replace('@', ' @ ')}</b> <span style='color:#888'>{game_status}</span></div><b style='color:{status_color};font-size:1.3em'>{status_label}</b></div><div style='margin-top:10px;color:#aaa'>📊 {pos.get('side', 'NO')} {pos.get('threshold', 0)} | 💵 {contracts}x @ {price}¢ | Proj: <b style='color:#fff'>{projected if projected else '—'}</b> | Cushion: <b style='color:{status_color}'>{cushion:+.0f}</b> | <span style='color:{pnl_color}'>{pnl}</span></div></div>", unsafe_allow_html=True)
             
-            btn1, btn2 = st.columns([3, 1])
+            # Buttons row
+            btn1, btn2, btn3 = st.columns([3, 1, 1])
             parts = game_key.split("@")
             kalshi_url = build_kalshi_ml_url(parts[0], parts[1]) if pos_type == 'ml' else build_kalshi_totals_url(parts[0], parts[1])
             btn1.link_button("🔗 Trade on Kalshi", kalshi_url, use_container_width=True)
-            if btn2.button("🗑️", key=f"del_{idx}"):
+            if btn2.button("✏️", key=f"edit_{idx}"):
+                st.session_state.editing_position = idx if st.session_state.editing_position != idx else None
+                st.rerun()
+            if btn3.button("🗑️", key=f"del_{idx}"):
                 st.session_state.positions.pop(idx)
+                st.session_state.editing_position = None
                 save_positions(st.session_state.positions)
                 st.rerun()
+            
+            # Edit mode panel
+            if st.session_state.editing_position == idx:
+                with st.container():
+                    st.markdown("##### ✏️ Edit Position")
+                    e1, e2, e3 = st.columns(3)
+                    new_price = e1.number_input("Price ¢", min_value=1, max_value=99, value=pos.get('price', 50), key=f"price_{idx}")
+                    new_contracts = e2.number_input("Contracts", min_value=1, value=pos.get('contracts', 1), key=f"contracts_{idx}")
+                    
+                    if pos_type == 'totals':
+                        new_threshold = e3.number_input("Line", min_value=180.0, max_value=280.0, value=float(pos.get('threshold', 225.5)), step=0.5, key=f"threshold_{idx}")
+                        side_options = ["NO", "YES"]
+                        current_side = pos.get('side', 'NO')
+                        new_side = st.radio("Side", side_options, index=side_options.index(current_side), horizontal=True, key=f"side_{idx}")
+                    else:
+                        # ML - allow changing pick
+                        parts = game_key.split("@")
+                        pick_options = [parts[1], parts[0]]  # home, away
+                        current_pick = pos.get('pick', parts[1])
+                        pick_idx = pick_options.index(current_pick) if current_pick in pick_options else 0
+                        new_pick = e3.radio("Pick", pick_options, index=pick_idx, horizontal=True, key=f"pick_{idx}")
+                    
+                    save_col, cancel_col = st.columns(2)
+                    if save_col.button("💾 Save", key=f"save_{idx}", use_container_width=True, type="primary"):
+                        st.session_state.positions[idx]['price'] = new_price
+                        st.session_state.positions[idx]['contracts'] = new_contracts
+                        st.session_state.positions[idx]['cost'] = round(new_price * new_contracts / 100, 2)
+                        if pos_type == 'totals':
+                            st.session_state.positions[idx]['threshold'] = new_threshold
+                            st.session_state.positions[idx]['side'] = new_side
+                        else:
+                            st.session_state.positions[idx]['pick'] = new_pick
+                        st.session_state.editing_position = None
+                        save_positions(st.session_state.positions)
+                        st.rerun()
+                    if cancel_col.button("❌ Cancel", key=f"cancel_{idx}", use_container_width=True):
+                        st.session_state.editing_position = None
+                        st.rerun()
+                    st.divider()
         else:
             st.markdown(f"<div style='background:#1a1a2e;padding:15px;border-radius:10px;border:1px solid #444;margin-bottom:10px;color:#888'>{game_key.replace('@', ' @ ')} — ⏳ Game not started</div>", unsafe_allow_html=True)
-            if st.button("🗑️", key=f"del_{idx}"):
+            btn1, btn2 = st.columns([4, 1])
+            if btn2.button("🗑️", key=f"del_{idx}"):
                 st.session_state.positions.pop(idx)
                 save_positions(st.session_state.positions)
                 st.rerun()
     
     if st.button("🗑️ Clear All", use_container_width=True):
         st.session_state.positions = []
+        st.session_state.editing_position = None
         save_positions(st.session_state.positions)
         st.rerun()
 else:
@@ -646,7 +678,6 @@ st.title("🎯 NBA EDGE FINDER")
 # ========== INJURY REPORT ==========
 st.subheader("🏥 INJURY REPORT")
 
-# Debug: Show injury count in sidebar
 with st.sidebar:
     total_injuries = sum(len(v) for v in injuries.values())
     st.caption(f"📊 {total_injuries} injuries loaded")
@@ -804,4 +835,4 @@ else:
     st.info("No games today")
 
 st.divider()
-st.caption("⚠️ Entertainment only. Not financial advice. v15.36 MAIN")
+st.caption("⚠️ Entertainment only. Not financial advice. v15.37 MAIN")
