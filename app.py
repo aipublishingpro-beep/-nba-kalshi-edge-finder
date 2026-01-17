@@ -230,7 +230,7 @@ with st.sidebar:
 | SLOW pace | ❌ |
 """)
     st.divider()
-    st.caption("v15.41 MAIN")
+    st.caption("v15.42 MAIN")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -400,7 +400,6 @@ def fetch_espn_injuries():
 def fetch_team_record(team_name):
     """Fetch team's last 5 games record from ESPN"""
     try:
-        # Get team ID mapping
         team_ids = {
             "Atlanta": "1", "Boston": "2", "Brooklyn": "17", "Charlotte": "30",
             "Chicago": "4", "Cleveland": "5", "Dallas": "6", "Denver": "7",
@@ -418,7 +417,6 @@ def fetch_team_record(team_name):
         record = data.get("team", {}).get("record", {}).get("items", [{}])[0]
         stats = record.get("stats", [])
         
-        # Find streak and last 5
         streak_val = 0
         for stat in stats:
             if stat.get("name") == "streak":
@@ -432,7 +430,6 @@ def fetch_team_record(team_name):
     except:
         return {"streak": 0}
 
-# Head-to-head advantages (historical matchup edges)
 H2H_EDGES = {
     ("Boston", "Philadelphia"): 0.5,
     ("Boston", "New York"): 0.5,
@@ -530,7 +527,6 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     score_home, score_away = 0, 0
     reasons_home, reasons_away = [], []
     
-    # 1. B2B FATIGUE (+1.0)
     home_b2b = home_team in yesterday_teams
     away_b2b = away_team in yesterday_teams
     if away_b2b and not home_b2b:
@@ -540,7 +536,6 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
         score_away += 1.0
         reasons_away.append("🛏️ Opp B2B")
     
-    # 2. NET RATING (+1.0)
     home_net = home.get('net_rating', 0)
     away_net = away.get('net_rating', 0)
     net_diff = home_net - away_net
@@ -551,7 +546,6 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
         score_away += 1.0
         reasons_away.append(f"📊 Net +{away_net:.1f}")
     
-    # 3. DEFENSE RANK (+1.0)
     home_def = home.get('def_rank', 15)
     away_def = away.get('def_rank', 15)
     if home_def <= 5:
@@ -561,37 +555,31 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
         score_away += 1.0
         reasons_away.append(f"🛡️ #{away_def} DEF")
     
-    # 4. HOME COURT (+1.0)
     score_home += 1.0
     
-    # 5. STAR INJURIES (+2.0) - BOOSTED!
     home_inj, home_stars = get_injury_score(home_team, injuries)
     away_inj, away_stars = get_injury_score(away_team, injuries)
     inj_diff = away_inj - home_inj
     if inj_diff > 3:
-        score_home += 2.0  # Boosted from 1.0
+        score_home += 2.0
         if away_stars: reasons_home.append(f"🏥 {away_stars[0][:10]} OUT")
     elif inj_diff < -3:
-        score_away += 2.0  # Boosted from 1.0
+        score_away += 2.0
         if home_stars: reasons_away.append(f"🏥 {home_stars[0][:10]} OUT")
     
-    # 6. TRAVEL DISTANCE (+1.0)
     travel_miles = calc_distance(away_loc, home_loc)
     if travel_miles > 2000:
         score_home += 1.0
         reasons_home.append(f"✈️ {int(travel_miles)}mi")
     
-    # 7. HOME WIN % (+0.8)
     home_hw = home.get('home_win_pct', 0.5)
     reasons_home.append(f"🏠 {int(home_hw*100)}%")
     if home_hw > 0.65: score_home += 0.8
     
-    # 8. ALTITUDE (+1.0)
     if home_team == "Denver":
         score_home += 1.0
         reasons_home.append("🏔️ Altitude")
     
-    # 9. RECENT FORM / STREAK (+1.0) - NEW!
     home_record = fetch_team_record(home_team)
     away_record = fetch_team_record(away_team)
     home_streak = home_record.get('streak', 0)
@@ -610,7 +598,6 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
         score_away += 0.5
         reasons_away.append(f"🔥 W{away_streak}")
     
-    # 10. HEAD-TO-HEAD (+0.5) - NEW!
     h2h_edge = H2H_EDGES.get((home_team, away_team), 0)
     if h2h_edge > 0:
         score_home += h2h_edge
@@ -664,7 +651,7 @@ st.title("🎯 NBA EDGE FINDER")
 st.subheader("📈 ACTIVE POSITIONS")
 
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.41 MAIN")
+hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.42 MAIN")
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
     st.rerun()
@@ -715,7 +702,6 @@ if st.session_state.positions:
                     lead = 0
                     pnl, pnl_color = f"Win: +${potential_win:.2f}", "#888"
                 
-                # Build tracking info line
                 tracking_line = ""
                 if pos.get('added_at'):
                     tracking_line = f"<div style='margin-top:5px;color:#666;font-size:0.85em'>⏰ Added: {pos.get('added_at')} | Score: {pos.get('score', 'N/A')}/10"
@@ -749,7 +735,6 @@ if st.session_state.positions:
                 
                 st.markdown(f"<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'><div style='display:flex;justify-content:space-between'><div><b style='color:#fff;font-size:1.2em'>{game_key.replace('@', ' @ ')}</b> <span style='color:#888'>{game_status}</span></div><b style='color:{status_color};font-size:1.3em'>{status_label}</b></div><div style='margin-top:10px;color:#aaa'>📊 {pos.get('side', 'NO')} {pos.get('threshold', 0)} | 💵 {contracts}x @ {price}¢ | Proj: <b style='color:#fff'>{projected if projected else '—'}</b> | Cushion: <b style='color:{status_color}'>{cushion:+.0f}</b> | <span style='color:{pnl_color}'>{pnl}</span></div></div>", unsafe_allow_html=True)
             
-            # Buttons row
             btn1, btn2, btn3 = st.columns([3, 1, 1])
             parts = game_key.split("@")
             kalshi_url = build_kalshi_ml_url(parts[0], parts[1]) if pos_type == 'ml' else build_kalshi_totals_url(parts[0], parts[1])
@@ -763,7 +748,6 @@ if st.session_state.positions:
                 save_positions(st.session_state.positions)
                 st.rerun()
             
-            # Edit mode panel
             if st.session_state.editing_position == idx:
                 with st.container():
                     st.markdown("##### ✏️ Edit Position")
@@ -778,9 +762,8 @@ if st.session_state.positions:
                         current_side = pos.get('side', 'NO')
                         new_side = st.radio("Side", side_options, index=side_options.index(current_side), horizontal=True, key=f"side_{idx}")
                     else:
-                        # ML - allow changing pick
                         parts = game_key.split("@")
-                        pick_options = [parts[1], parts[0]]  # home, away
+                        pick_options = [parts[1], parts[0]]
                         current_pick = pos.get('pick', parts[1])
                         pick_idx = pick_options.index(current_pick) if current_pick in pick_options else 0
                         new_pick = e4.radio("Pick", pick_options, index=pick_idx, horizontal=True, key=f"pick_{idx}")
@@ -878,7 +861,8 @@ for r in ml_results:
     if r["score"] < 5.5: continue
     kalshi_url = build_kalshi_ml_url(r["away"], r["home"])
     reasons = " • ".join(r["reasons"])
-    st.markdown(f"""<div style="display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#0f172a,#020617);padding:6px 12px;margin-bottom:4px;border-radius:6px;border-left:3px solid {r['color']}"><div><b style="color:#fff">{r['pick']}</b> <span style="color:#666">vs {r['away'] if r['pick']==r['home'] else r['home']}</span> <span style="color:#38bdf8">{r['score']}/10</span> <span style="color:#777;font-size:0.8em">{reasons}</span></div><a href="{kalshi_url}" target="_blank" style="background:#16a34a;color:#fff;padding:4px 10px;border-radius:5px;font-size:0.8em;text-decoration:none;font-weight:600">BUY</a></div>""", unsafe_allow_html=True)
+    # FIXED: BUY button now shows team name
+    st.markdown(f"""<div style="display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#0f172a,#020617);padding:6px 12px;margin-bottom:4px;border-radius:6px;border-left:3px solid {r['color']}"><div><b style="color:#fff">{r['pick']}</b> <span style="color:#666">vs {r['away'] if r['pick']==r['home'] else r['home']}</span> <span style="color:#38bdf8">{r['score']}/10</span> <span style="color:#777;font-size:0.8em">{reasons}</span></div><a href="{kalshi_url}" target="_blank" style="background:#16a34a;color:#fff;padding:4px 10px;border-radius:5px;font-size:0.8em;text-decoration:none;font-weight:600">BUY {r['pick']}</a></div>""", unsafe_allow_html=True)
 
 strong_picks = [r for r in ml_results if r["score"] >= 6.5]
 if strong_picks:
@@ -1083,4 +1067,4 @@ else:
     st.info("No games today")
 
 st.divider()
-st.caption("⚠️ Entertainment only. Not financial advice. v15.41 MAIN")
+st.caption("⚠️ Entertainment only. Not financial advice. v15.42 MAIN")
