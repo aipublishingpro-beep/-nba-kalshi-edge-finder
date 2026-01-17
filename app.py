@@ -230,7 +230,7 @@ with st.sidebar:
 | SLOW pace | ❌ |
 """)
     st.divider()
-    st.caption("v15.39 MAIN")
+    st.caption("v15.41 MAIN")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -664,7 +664,7 @@ st.title("🎯 NBA EDGE FINDER")
 st.subheader("📈 ACTIVE POSITIONS")
 
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.39 MAIN")
+hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.41 MAIN")
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
     st.rerun()
@@ -715,7 +715,17 @@ if st.session_state.positions:
                     lead = 0
                     pnl, pnl_color = f"Win: +${potential_win:.2f}", "#888"
                 
-                st.markdown(f"<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'><div style='display:flex;justify-content:space-between'><div><b style='color:#fff;font-size:1.2em'>{game_key.replace('@', ' @ ')}</b> <span style='color:#888'>{game_status}</span></div><b style='color:{status_color};font-size:1.3em'>{status_label}</b></div><div style='margin-top:10px;color:#aaa'>🎯 ML: <b style='color:#fff'>{pick}</b> | 💵 {contracts}x @ {price}¢ (${cost:.2f}) | 📊 {pick_score}-{opp_score} | Lead: <b style='color:{status_color}'>{lead:+d}</b> | <span style='color:{pnl_color}'>{pnl}</span></div></div>", unsafe_allow_html=True)
+                # Build tracking info line
+                tracking_line = ""
+                if pos.get('added_at'):
+                    tracking_line = f"<div style='margin-top:5px;color:#666;font-size:0.85em'>⏰ Added: {pos.get('added_at')} | Score: {pos.get('score', 'N/A')}/10"
+                    if pos.get('morning_price'):
+                        move = pos['morning_price'] - price
+                        move_color = "#00ff00" if move > 0 else "#ff0000"
+                        tracking_line += f" | 🌅 AM: <span style='color:{move_color}'>{pos['morning_price']}¢ ({'+' if move > 0 else ''}{move}¢)</span>"
+                    tracking_line += "</div>"
+                
+                st.markdown(f"<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'><div style='display:flex;justify-content:space-between'><div><b style='color:#fff;font-size:1.2em'>{game_key.replace('@', ' @ ')}</b> <span style='color:#888'>{game_status}</span></div><b style='color:{status_color};font-size:1.3em'>{status_label}</b></div><div style='margin-top:10px;color:#aaa'>🎯 ML: <b style='color:#fff'>{pick}</b> | 💵 {contracts}x @ {price}¢ (${cost:.2f}) | 📊 {pick_score}-{opp_score} | Lead: <b style='color:{status_color}'>{lead:+d}</b> | <span style='color:{pnl_color}'>{pnl}</span></div>{tracking_line}</div>", unsafe_allow_html=True)
             else:
                 projected = round((total / mins) * 48) if mins > 0 else None
                 cushion = (pos['threshold'] - projected) if pos.get('side') == "NO" and projected else ((projected - pos['threshold']) if projected else 0)
@@ -757,12 +767,13 @@ if st.session_state.positions:
             if st.session_state.editing_position == idx:
                 with st.container():
                     st.markdown("##### ✏️ Edit Position")
-                    e1, e2, e3 = st.columns(3)
-                    new_price = e1.number_input("Price ¢", min_value=1, max_value=99, value=pos.get('price', 50), key=f"price_{idx}")
+                    e1, e2, e3, e4 = st.columns(4)
+                    new_price = e1.number_input("Entry ¢", min_value=1, max_value=99, value=pos.get('price', 50), key=f"price_{idx}")
                     new_contracts = e2.number_input("Contracts", min_value=1, value=pos.get('contracts', 1), key=f"contracts_{idx}")
+                    new_morning = e3.number_input("🌅 AM ¢", min_value=0, max_value=99, value=pos.get('morning_price') or 0, key=f"morning_{idx}", help="Enter morning price to track move")
                     
                     if pos_type == 'totals':
-                        new_threshold = e3.number_input("Line", min_value=180.0, max_value=280.0, value=float(pos.get('threshold', 225.5)), step=0.5, key=f"threshold_{idx}")
+                        new_threshold = e4.number_input("Line", min_value=180.0, max_value=280.0, value=float(pos.get('threshold', 225.5)), step=0.5, key=f"threshold_{idx}")
                         side_options = ["NO", "YES"]
                         current_side = pos.get('side', 'NO')
                         new_side = st.radio("Side", side_options, index=side_options.index(current_side), horizontal=True, key=f"side_{idx}")
@@ -772,13 +783,14 @@ if st.session_state.positions:
                         pick_options = [parts[1], parts[0]]  # home, away
                         current_pick = pos.get('pick', parts[1])
                         pick_idx = pick_options.index(current_pick) if current_pick in pick_options else 0
-                        new_pick = e3.radio("Pick", pick_options, index=pick_idx, horizontal=True, key=f"pick_{idx}")
+                        new_pick = e4.radio("Pick", pick_options, index=pick_idx, horizontal=True, key=f"pick_{idx}")
                     
                     save_col, cancel_col = st.columns(2)
                     if save_col.button("💾 Save", key=f"save_{idx}", use_container_width=True, type="primary"):
                         st.session_state.positions[idx]['price'] = new_price
                         st.session_state.positions[idx]['contracts'] = new_contracts
                         st.session_state.positions[idx]['cost'] = round(new_price * new_contracts / 100, 2)
+                        st.session_state.positions[idx]['morning_price'] = new_morning if new_morning > 0 else None
                         if pos_type == 'totals':
                             st.session_state.positions[idx]['threshold'] = new_threshold
                             st.session_state.positions[idx]['side'] = new_side
@@ -1071,4 +1083,4 @@ else:
     st.info("No games today")
 
 st.divider()
-st.caption("⚠️ Entertainment only. Not financial advice. v15.39 MAIN")
+st.caption("⚠️ Entertainment only. Not financial advice. v15.41 MAIN")
