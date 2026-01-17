@@ -188,23 +188,20 @@ with st.sidebar:
     st.markdown("🟢 **STRONG BUY** → 8.0+\n\n🔵 **BUY** → 6.5-7.9\n\n🟡 **LEAN** → 5.5-6.4\n\n⚪ **TOSS-UP** → 4.5-5.4")
     st.divider()
     
-    st.header("🎯 ML FACTORS")
+    st.header("🎯 10 ML FACTORS")
     st.markdown("""
-🛏️ **B2B Fatigue** — Opponent on back-to-back
-
-📊 **Net Rating** — Team quality differential
-
-🛡️ **Defense Rank** — Top 5 DEF bonus
-
-🏠 **Home Court** — Auto +1 home team
-
-🏥 **Injuries** — Star OUT/GTD impact
-
-✈️ **Travel** — 2000+ miles = fatigue
-
-📈 **Home Win %** — Historical home record
-
-🏔️ **Altitude** — Denver home bonus
+| # | Factor | Max Pts |
+|---|--------|---------|
+| 1 | 🛏️ **Opp B2B** | +1.0 |
+| 2 | 📊 **Net Rating** | +1.0 |
+| 3 | 🛡️ **Top 5 DEF** | +1.0 |
+| 4 | 🏠 **Home Court** | +1.0 |
+| 5 | 🏥 **Star OUT** | +2.0 |
+| 6 | ✈️ **Travel 2K+mi** | +1.0 |
+| 7 | 📈 **Home Win %** | +0.8 |
+| 8 | 🏔️ **Altitude** | +1.0 |
+| 9 | 🔥 **Hot Streak** | +1.0 |
+| 10 | 🆚 **H2H Edge** | +0.5 |
 """)
     st.divider()
     
@@ -400,6 +397,57 @@ def fetch_espn_injuries():
         st.sidebar.error(f"Injury fetch error: {e}")
     return injuries
 
+def fetch_team_record(team_name):
+    """Fetch team's last 5 games record from ESPN"""
+    try:
+        # Get team ID mapping
+        team_ids = {
+            "Atlanta": "1", "Boston": "2", "Brooklyn": "17", "Charlotte": "30",
+            "Chicago": "4", "Cleveland": "5", "Dallas": "6", "Denver": "7",
+            "Detroit": "8", "Golden State": "9", "Houston": "10", "Indiana": "11",
+            "LA Clippers": "12", "LA Lakers": "13", "Memphis": "29", "Miami": "14",
+            "Milwaukee": "15", "Minnesota": "16", "New Orleans": "3", "New York": "18",
+            "Oklahoma City": "25", "Orlando": "19", "Philadelphia": "20", "Phoenix": "21",
+            "Portland": "22", "Sacramento": "23", "San Antonio": "24", "Toronto": "28",
+            "Utah": "26", "Washington": "27"
+        }
+        team_id = team_ids.get(team_name, "1")
+        url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{team_id}"
+        resp = requests.get(url, timeout=5)
+        data = resp.json()
+        record = data.get("team", {}).get("record", {}).get("items", [{}])[0]
+        stats = record.get("stats", [])
+        
+        # Find streak and last 5
+        streak_val = 0
+        for stat in stats:
+            if stat.get("name") == "streak":
+                streak_str = stat.get("displayValue", "W0")
+                if streak_str.startswith("W"):
+                    streak_val = int(streak_str[1:]) if len(streak_str) > 1 else 0
+                elif streak_str.startswith("L"):
+                    streak_val = -int(streak_str[1:]) if len(streak_str) > 1 else 0
+        
+        return {"streak": streak_val}
+    except:
+        return {"streak": 0}
+
+# Head-to-head advantages (historical matchup edges)
+H2H_EDGES = {
+    ("Boston", "Philadelphia"): 0.5,
+    ("Boston", "New York"): 0.5,
+    ("Milwaukee", "Chicago"): 0.5,
+    ("Cleveland", "Detroit"): 0.5,
+    ("Oklahoma City", "Utah"): 0.5,
+    ("Denver", "Minnesota"): 0.5,
+    ("LA Lakers", "LA Clippers"): 0.3,
+    ("Golden State", "Sacramento"): 0.5,
+    ("Phoenix", "Portland"): 0.5,
+    ("Miami", "Orlando"): 0.5,
+    ("Dallas", "San Antonio"): 0.5,
+    ("Memphis", "New Orleans"): 0.3,
+}
+
 def get_star_tier(player_name, team):
     team_stars = STAR_PLAYERS_DB.get(team, {})
     for star_name, (tier, player_type) in team_stars.items():
@@ -482,6 +530,7 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
     score_home, score_away = 0, 0
     reasons_home, reasons_away = [], []
     
+    # 1. B2B FATIGUE (+1.0)
     home_b2b = home_team in yesterday_teams
     away_b2b = away_team in yesterday_teams
     if away_b2b and not home_b2b:
@@ -491,6 +540,7 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
         score_away += 1.0
         reasons_away.append("🛏️ Opp B2B")
     
+    # 2. NET RATING (+1.0)
     home_net = home.get('net_rating', 0)
     away_net = away.get('net_rating', 0)
     net_diff = home_net - away_net
@@ -501,6 +551,7 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
         score_away += 1.0
         reasons_away.append(f"📊 Net +{away_net:.1f}")
     
+    # 3. DEFENSE RANK (+1.0)
     home_def = home.get('def_rank', 15)
     away_def = away.get('def_rank', 15)
     if home_def <= 5:
@@ -510,30 +561,64 @@ def calc_ml_score(home_team, away_team, yesterday_teams, injuries):
         score_away += 1.0
         reasons_away.append(f"🛡️ #{away_def} DEF")
     
-    score_home += 1.0  # Home court
+    # 4. HOME COURT (+1.0)
+    score_home += 1.0
     
+    # 5. STAR INJURIES (+2.0) - BOOSTED!
     home_inj, home_stars = get_injury_score(home_team, injuries)
     away_inj, away_stars = get_injury_score(away_team, injuries)
     inj_diff = away_inj - home_inj
     if inj_diff > 3:
-        score_home += 1.0
+        score_home += 2.0  # Boosted from 1.0
         if away_stars: reasons_home.append(f"🏥 {away_stars[0][:10]} OUT")
     elif inj_diff < -3:
-        score_away += 1.0
+        score_away += 2.0  # Boosted from 1.0
         if home_stars: reasons_away.append(f"🏥 {home_stars[0][:10]} OUT")
     
+    # 6. TRAVEL DISTANCE (+1.0)
     travel_miles = calc_distance(away_loc, home_loc)
     if travel_miles > 2000:
         score_home += 1.0
         reasons_home.append(f"✈️ {int(travel_miles)}mi")
     
+    # 7. HOME WIN % (+0.8)
     home_hw = home.get('home_win_pct', 0.5)
     reasons_home.append(f"🏠 {int(home_hw*100)}%")
     if home_hw > 0.65: score_home += 0.8
     
+    # 8. ALTITUDE (+1.0)
     if home_team == "Denver":
         score_home += 1.0
         reasons_home.append("🏔️ Altitude")
+    
+    # 9. RECENT FORM / STREAK (+1.0) - NEW!
+    home_record = fetch_team_record(home_team)
+    away_record = fetch_team_record(away_team)
+    home_streak = home_record.get('streak', 0)
+    away_streak = away_record.get('streak', 0)
+    
+    if home_streak >= 3 and away_streak <= -2:
+        score_home += 1.0
+        reasons_home.append(f"🔥 W{home_streak}")
+    elif away_streak >= 3 and home_streak <= -2:
+        score_away += 1.0
+        reasons_away.append(f"🔥 W{away_streak}")
+    elif home_streak >= 4:
+        score_home += 0.5
+        reasons_home.append(f"🔥 W{home_streak}")
+    elif away_streak >= 4:
+        score_away += 0.5
+        reasons_away.append(f"🔥 W{away_streak}")
+    
+    # 10. HEAD-TO-HEAD (+0.5) - NEW!
+    h2h_edge = H2H_EDGES.get((home_team, away_team), 0)
+    if h2h_edge > 0:
+        score_home += h2h_edge
+        reasons_home.append("🆚 H2H")
+    h2h_edge_rev = H2H_EDGES.get((away_team, home_team), 0)
+    if h2h_edge_rev > 0:
+        score_away += h2h_edge_rev
+        reasons_away.append("🆚 H2H")
     
     total = score_home + score_away
     if total > 0:
