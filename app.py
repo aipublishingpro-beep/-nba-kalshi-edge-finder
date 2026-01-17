@@ -184,7 +184,7 @@ with st.sidebar:
     st.header("📖 LEGEND")
     st.markdown("🟢 **STRONG BUY** → 8.0+\n\n🔵 **BUY** → 6.5-7.9\n\n🟡 **LEAN** → 5.5-6.4\n\n⚪ **TOSS-UP** → 4.5-5.4")
     st.divider()
-    st.caption("v15.35 MAIN")
+    st.caption("v15.36 MAIN")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -328,27 +328,42 @@ def fetch_yesterday_teams():
         return set()
 
 def fetch_espn_injuries():
+    """FIXED: Updated to match ESPN's new API structure (Jan 2026)"""
     injuries = {}
     try:
         url = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries"
         resp = requests.get(url, timeout=10)
         data = resp.json()
-        injury_list = data.get("injuries", data.get("teams", []))
+        
+        # New structure: data["injuries"] is a list of team objects
+        injury_list = data.get("injuries", [])
+        
         for team_data in injury_list:
-            team_name = team_data.get("team", {}).get("displayName", "")
-            if not team_name: team_name = team_data.get("team", {}).get("name", "")
+            # NEW: Team name is directly on displayName, not team.displayName
+            team_name = team_data.get("displayName", "")
             team_key = TEAM_ABBREVS.get(team_name, team_name)
-            if not team_key: continue
+            if not team_key:
+                continue
+            
             injuries[team_key] = []
-            player_list = team_data.get("injuries", team_data.get("athletes", []))
+            
+            # Player injuries are in team_data["injuries"]
+            player_list = team_data.get("injuries", [])
+            
             for player in player_list:
-                name = player.get("athlete", {}).get("displayName", "")
-                if not name: name = player.get("displayName", "")
+                # Player name is in athlete.displayName
+                athlete = player.get("athlete", {})
+                name = athlete.get("displayName", "")
+                
+                # Status is directly on player object (e.g., "Out", "Day-To-Day")
                 status = player.get("status", "")
-                if not status: status = player.get("type", {}).get("description", "")
-                if name: injuries[team_key].append({"name": name, "status": status})
-    except:
-        pass
+                
+                if name:
+                    injuries[team_key].append({"name": name, "status": status})
+                    
+    except Exception as e:
+        st.sidebar.error(f"Injury fetch error: {e}")
+    
     return injuries
 
 def get_star_tier(player_name, team):
@@ -395,10 +410,15 @@ def get_detailed_injuries(team, injuries):
         tier, player_type = get_star_tier(name, team)
         stars = format_star_rating(tier)
         type_emoji = format_player_type(player_type)
-        if "OUT" in status: simple_status = "OUT"
-        elif "DAY-TO-DAY" in status or "DTD" in status: simple_status = "DTD"
-        elif "QUESTIONABLE" in status or "GTD" in status: simple_status = "GTD"
-        else: simple_status = status[:10]
+        # Handle new status format
+        if "OUT" in status:
+            simple_status = "OUT"
+        elif "DAY-TO-DAY" in status or "DAY TO DAY" in status or "DTD" in status:
+            simple_status = "DTD"
+        elif "QUESTIONABLE" in status or "GTD" in status:
+            simple_status = "GTD"
+        else:
+            simple_status = status[:10] if status else "UNK"
         detailed.append({"name": name, "status": simple_status, "tier": tier, "stars": stars, "type_emoji": type_emoji})
     detailed.sort(key=lambda x: x['tier'], reverse=True)
     return detailed
@@ -521,7 +541,7 @@ yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 st.subheader("📈 ACTIVE POSITIONS")
 
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.35 MAIN")
+hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.36 MAIN")
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
     st.rerun()
@@ -626,6 +646,11 @@ st.title("🎯 NBA EDGE FINDER")
 # ========== INJURY REPORT ==========
 st.subheader("🏥 INJURY REPORT")
 
+# Debug: Show injury count in sidebar
+with st.sidebar:
+    total_injuries = sum(len(v) for v in injuries.values())
+    st.caption(f"📊 {total_injuries} injuries loaded")
+
 if game_list:
     teams_playing = set()
     for game_key in game_list:
@@ -647,7 +672,9 @@ if game_list:
                 status_color = "#ff0000" if inj['status'] == "OUT" else "#ffaa00"
                 st.markdown(f"<div style='background:linear-gradient(135deg,#2a1a1a,#1a1a2e);padding:10px;border-radius:8px;border-left:4px solid {status_color};margin-bottom:8px'><b style='color:#fff'>{inj['stars']} {inj['name']}</b> {inj['type_emoji']}<br><span style='color:{status_color}'>{inj['status']}</span> • {team}</div>", unsafe_allow_html=True)
     else:
-        st.info("✅ No key injuries")
+        st.info("✅ No key star injuries for today's games")
+else:
+    st.info("No games scheduled")
 
 if yesterday_teams:
     st.info(f"📅 **B2B**: {', '.join(sorted(yesterday_teams))}")
@@ -777,4 +804,4 @@ else:
     st.info("No games today")
 
 st.divider()
-st.caption("⚠️ Entertainment only. Not financial advice. v15.35 MAIN")
+st.caption("⚠️ Entertainment only. Not financial advice. v15.36 MAIN")
