@@ -14,7 +14,7 @@ st.set_page_config(page_title="NBA Edge Finder", page_icon="🎯", layout="wide"
 # ========== DAILY DATE KEY (INVALIDATION GATE) ==========
 today_str = datetime.now(pytz.timezone("US/Eastern")).strftime("%Y-%m-%d")
 
-# Fixed CSS - works with current Streamlit DOM structure
+# Fixed CSS + Auto-scroll JavaScript
 st.markdown("""
 <style>
 /* Make radio labels clickable again */
@@ -59,6 +59,18 @@ div[role="radiogroup"] label:nth-of-type(2) span {
     border-color: #00cc00 !important;
 }
 </style>
+
+<script>
+// Auto-scroll to positions section on page load
+window.addEventListener('load', function() {
+    setTimeout(function() {
+        const el = document.getElementById('positions-anchor');
+        if (el) {
+            el.scrollIntoView({ behavior: 'instant', block: 'start' });
+        }
+    }, 100);
+});
+</script>
 """, unsafe_allow_html=True)
 
 # ========== ENCRYPTION FUNCTIONS ==========
@@ -154,8 +166,7 @@ def resolve_kalshi_market_id(ticker):
         markets = resp.json().get("markets", [])
         for m in markets:
             if m.get("ticker") == ticker:
-                return m.get("id"), None  # Return numeric ID
-        # Try search if exact match fails
+                return m.get("id"), None
         resp2 = requests.get(
             f"{KALSHI_API_BASE}/markets",
             params={"search": ticker, "status": "open"},
@@ -213,7 +224,7 @@ def kalshi_place_order_by_id(market_id: str, side: str, yes_no: str, price: int,
         }
         
         order_data = {
-            "ticker": market_id,  # Kalshi accepts ticker here
+            "ticker": market_id,
             "action": side,
             "side": yes_no.lower(),
             "type": "limit",
@@ -241,14 +252,12 @@ def kalshi_place_order(ticker: str, side: str, yes_no: str, price: int, contract
         if not api_key or not private_key_pem:
             return False, "API keys not configured"
         
-        # Load private key
         private_key = serialization.load_pem_private_key(
             private_key_pem.encode() if isinstance(private_key_pem, str) else private_key_pem,
             password=None,
             backend=default_backend()
         )
         
-        # Create signature - Kalshi uses RSA-PSS, not PKCS1v15
         timestamp = str(int(time.time() * 1000))
         method = "POST"
         path = "/trade-api/v2/portfolio/orders"
@@ -303,11 +312,10 @@ def get_kalshi_ml_ticker(team):
     if not team_code:
         return None
     today = datetime.now(pytz.timezone('US/Eastern'))
-    date_str = today.strftime("%Y%m%d")  # YYYYMMDD format for NBA
+    date_str = today.strftime("%Y%m%d")
     return f"kxnbagame-{date_str}-{team_code}"
 
 # ========== SESSION STATE INIT ==========
-# Prevent phantom rerenders by setting defaults first
 st.session_state.setdefault("totals_side_radio", "NO (Under)")
 st.session_state.setdefault("ml_pick_radio", None)
 
@@ -335,7 +343,6 @@ if "kalshi_private_key" not in st.session_state:
     st.session_state.kalshi_private_key = ""
 
 # ========== DATE INVALIDATION GUARD ==========
-# Wipe stale snapshot/scores when date changes (midnight reset)
 if "snapshot_date" not in st.session_state or st.session_state["snapshot_date"] != today_str:
     st.session_state["snapshot_date"] = today_str
     st.session_state.pop("big_snapshot", None)
@@ -413,10 +420,8 @@ STAR_PLAYERS_DB = {
 
 # ========== SIDEBAR LEGEND ==========
 with st.sidebar:
-    # ========== KALSHI TRADING (AUTO-CONNECT VIA SECRETS) ==========
     st.header("🔗 KALSHI")
     
-    # Auto-load API keys from Streamlit Secrets (for future API support)
     try:
         kalshi_api_key = st.secrets.get("KALSHI_API_KEY", "")
         kalshi_private_key = st.secrets.get("KALSHI_PRIVATE_KEY", "")
@@ -432,7 +437,6 @@ with st.sidebar:
     
     st.divider()
     
-    # ========== LEGEND ==========
     st.header("📖 LEGEND")
     st.subheader("🎯 ML Signal Tiers")
     st.markdown("🟢 **STRONG BUY** → 8.0+ score\n\n🔵 **BUY** → 6.5 - 7.9 score\n\n🟡 **LEAN** → 5.5 - 6.4 score\n\n⚪ **TOSS-UP** → 4.5 - 5.4 score\n\n🔴 **SKIP** → Below 4.5")
@@ -446,7 +450,7 @@ with st.sidebar:
     st.subheader("🔥 Pace Labels")
     st.markdown("🟢 **SLOW** → Under 4.5/min\n\n🟡 **AVG** → 4.5 - 4.8/min\n\n🟠 **FAST** → 4.8 - 5.2/min\n\n🔴 **SHOOTOUT** → Over 5.2/min")
     st.divider()
-    st.caption("v15.30")
+    st.caption("v15.31")
     st.caption("💾 Positions persist")
     st.caption("🔗 Trade via Kalshi UI")
 
@@ -539,8 +543,6 @@ def calc_distance(loc1, loc2):
     return 3959 * 2 * atan2(sqrt(a), sqrt(1-a))
 
 def fetch_espn_scores(date_key=None):
-    """Fetch scores - date_key forces cache invalidation daily"""
-    # Force TODAY's date explicitly to avoid ESPN returning yesterday's games
     eastern = pytz.timezone('US/Eastern')
     today_date = datetime.now(eastern).strftime('%Y%m%d')
     url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={today_date}"
@@ -917,7 +919,7 @@ def get_totals_signal_tier(score, pick):
     elif score >= 4.5: return "⚪ TOSS-UP", "#888888"
     else: return "🔴 SKIP", "#ff0000"
 
-# ========== FETCH DATA (with date_key for cache invalidation) ==========
+# ========== FETCH DATA ==========
 games = fetch_espn_scores(date_key=today_str)
 game_list = sorted(list(games.keys()))
 yesterday_teams_raw = fetch_yesterday_teams()
@@ -931,10 +933,115 @@ for game_key in games.keys():
     today_teams.add(parts[1])
 yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 
+# ========== ACTIVE POSITIONS FIRST (with anchor) ==========
+st.markdown('<div id="positions-anchor"></div>', unsafe_allow_html=True)
+st.subheader("📈 ACTIVE POSITIONS")
+
+if st.session_state.positions:
+    for idx, pos in enumerate(st.session_state.positions):
+        game_key = pos['game']
+        g = games.get(game_key)
+        price = pos.get('price', 50)
+        contracts = pos.get('contracts', 1)
+        cost = pos.get('cost', round(price * contracts / 100, 2))
+        pos_type = pos.get('type', 'totals')
+        is_live = pos.get('live', False)
+        potential_win = round((100 - price) * contracts / 100, 2)
+        potential_loss = cost
+        live_badge = "💰 LIVE" if is_live else "📝 Paper"
+        
+        if g:
+            total = g['total']
+            mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
+            is_final = g['status_type'] == "STATUS_FINAL"
+            game_status = "FINAL" if is_final else f"Q{g['period']} {g['clock']}"
+            
+            if pos_type == 'ml':
+                pick = pos.get('pick', '')
+                parts = game_key.split("@")
+                away_team, home_team = parts[0], parts[1]
+                home_score, away_score = g['home_score'], g['away_score']
+                pick_score = home_score if pick == home_team else away_score
+                opp_score = away_score if pick == home_team else home_score
+                lead = pick_score - opp_score
+                
+                if is_final:
+                    won = pick_score > opp_score
+                    if won:
+                        status_label, status_color = "✅ WON!", "#00ff00"
+                        pnl_display, pnl_color = f"+${potential_win:.2f}", "#00ff00"
+                    else:
+                        status_label, status_color = "❌ LOST", "#ff0000"
+                        pnl_display, pnl_color = f"-${potential_loss:.2f}", "#ff0000"
+                elif mins > 0:
+                    if lead >= 15: status_label, status_color = "🟢 CRUISING", "#00ff00"
+                    elif lead >= 8: status_label, status_color = "🟢 LEADING", "#00ff00"
+                    elif lead >= 1: status_label, status_color = "🟡 AHEAD", "#ffff00"
+                    elif lead >= -5: status_label, status_color = "🟠 CLOSE", "#ff8800"
+                    else: status_label, status_color = "🔴 BEHIND", "#ff0000"
+                    pnl_display, pnl_color = f"Win: +${potential_win:.2f}", "#888888"
+                else:
+                    status_label, status_color = "⏳ WAITING", "#888888"
+                    lead = 0
+                    pnl_display, pnl_color = f"Win: +${potential_win:.2f}", "#888888"
+                
+                st.markdown(f"<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'><div style='display:flex;justify-content:space-between;align-items:center'><div><span style='color:#fff;font-size:1.2em;font-weight:bold'>{game_key.replace('@', ' @ ')}</span><span style='color:#888;margin-left:10px'>{game_status}</span><span style='color:#00aaff;margin-left:10px;font-size:0.85em'>{live_badge}</span></div><span style='color:{status_color};font-size:1.3em;font-weight:bold'>{status_label}</span></div><div style='margin-top:10px;display:flex;gap:30px;flex-wrap:wrap'><span style='color:#aaa'>🎯 <b style=\"color:#fff\">ML: {pick}</b></span><span style='color:#aaa'>💵 <b style=\"color:#fff\">{contracts}x @ {price}¢</b> (${cost:.2f})</span><span style='color:#aaa'>📊 Score: <b style=\"color:#fff\">{pick_score}-{opp_score}</b></span><span style='color:#aaa'>📈 Lead: <b style=\"color:{status_color}\">{lead:+d}</b></span><span style='color:{pnl_color}'>{pnl_display}</span></div></div>", unsafe_allow_html=True)
+            else:
+                projected = round((total / mins) * 48) if mins > 0 else None
+                cushion = (pos['threshold'] - projected) if pos.get('side') == "NO" and projected else ((projected - pos['threshold']) if projected else 0)
+                
+                if is_final:
+                    won = (total < pos['threshold']) if pos.get('side') == "NO" else (total > pos['threshold'])
+                    if won:
+                        status_label, status_color = "✅ WON!", "#00ff00"
+                        pnl_display, pnl_color = f"+${potential_win:.2f}", "#00ff00"
+                    else:
+                        status_label, status_color = "❌ LOST", "#ff0000"
+                        pnl_display, pnl_color = f"-${potential_loss:.2f}", "#ff0000"
+                elif projected:
+                    if cushion >= 15: status_label, status_color = "🟢 VERY SAFE", "#00ff00"
+                    elif cushion >= 8: status_label, status_color = "🟢 LOOKING GOOD", "#00ff00"
+                    elif cushion >= 3: status_label, status_color = "🟡 ON TRACK", "#ffff00"
+                    elif cushion >= -3: status_label, status_color = "🟠 WARNING", "#ff8800"
+                    else: status_label, status_color = "🔴 AT RISK", "#ff0000"
+                    pnl_display, pnl_color = f"Win: +${potential_win:.2f}", "#888888"
+                else:
+                    status_label, status_color = "⏳ WAITING", "#888888"
+                    pnl_display, pnl_color = f"Win: +${potential_win:.2f}", "#888888"
+                
+                st.markdown(f"<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'><div style='display:flex;justify-content:space-between;align-items:center'><div><span style='color:#fff;font-size:1.2em;font-weight:bold'>{game_key.replace('@', ' @ ')}</span><span style='color:#888;margin-left:10px'>{game_status}</span><span style='color:#00aaff;margin-left:10px;font-size:0.85em'>{live_badge}</span></div><span style='color:{status_color};font-size:1.3em;font-weight:bold'>{status_label}</span></div><div style='margin-top:10px;display:flex;gap:30px;flex-wrap:wrap'><span style='color:#aaa'>📊 <b style=\"color:#fff\">{pos.get('side', 'NO')} {pos.get('threshold', 0)}</b></span><span style='color:#aaa'>💵 <b style=\"color:#fff\">{contracts}x @ {price}¢</b> (${cost:.2f})</span><span style='color:#aaa'>📈 Proj: <b style=\"color:#fff\">{projected if projected else '—'}</b></span><span style='color:#aaa'>🎯 Cushion: <b style=\"color:{status_color}\">{cushion:+.0f}</b></span><span style='color:{pnl_color}'>{pnl_display}</span></div></div>", unsafe_allow_html=True)
+            
+            btn1, btn2 = st.columns([3, 1])
+            parts = game_key.split("@")
+            if pos_type == 'ml': kalshi_url = build_kalshi_ml_url(parts[0], parts[1])
+            else: kalshi_url = build_kalshi_totals_url(parts[0], parts[1])
+            btn1.link_button(f"🔗 Trade on Kalshi", kalshi_url, use_container_width=True)
+            if btn2.button("🗑️ Remove", key=f"del_{idx}"):
+                st.session_state.positions.pop(idx)
+                save_positions(st.session_state.positions)
+                st.rerun()
+        else:
+            if pos_type == 'ml': display_text = f"ML: {pos.get('pick', '?')}"
+            else: display_text = f"{pos.get('side', 'NO')} {pos.get('threshold', 0)}"
+            st.markdown(f"<div style='background:#1a1a2e;padding:15px;border-radius:10px;border:1px solid #444;margin-bottom:10px'><span style='color:#888'>{game_key.replace('@', ' @ ')} — {display_text} — {contracts}x @ {price}¢</span><span style='color:#666;margin-left:15px'>⏳ Game not started</span></div>", unsafe_allow_html=True)
+            if st.button("🗑️ Remove", key=f"del_{idx}"):
+                st.session_state.positions.pop(idx)
+                save_positions(st.session_state.positions)
+                st.rerun()
+    
+    if st.button("🗑️ Clear All Positions", use_container_width=True):
+        st.session_state.positions = []
+        save_positions(st.session_state.positions)
+        st.rerun()
+else:
+    st.info("No positions tracked — use the form below to add your first position")
+
+st.divider()
+
 # ========== HEADER ==========
 st.title("🎯 NBA EDGE FINDER")
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.30")
+hdr1.caption(f"{auto_status} | Last update: {now.strftime('%I:%M:%S %p ET')} | v15.31")
 
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
@@ -942,8 +1049,6 @@ if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Sto
 
 if hdr3.button("🔄 Refresh", use_container_width=True):
     st.rerun()
-
-
 
 # ========== INJURY REPORT ==========
 st.subheader("🏥 INJURY REPORT - TODAY'S GAMES")
@@ -987,7 +1092,6 @@ st.divider()
 st.subheader("🎯 BIG SNAPSHOT – TODAY'S ML PICKS")
 st.caption(f"📅 Snapshot date: {st.session_state.get('snapshot_date', 'N/A')}")
 
-# Compute ML results fresh (no caching across days)
 ml_results = []
 
 for game_key, g in games.items():
@@ -1001,7 +1105,6 @@ for game_key, g in games.items():
 
         tier, color = get_signal_tier(score)
         
-        # Check if blowout risk (tired away @ fresh home)
         away_b2b = away in yesterday_teams
         home_b2b = home in yesterday_teams
         is_blowout_risk = away_b2b and not home_b2b and pick == home
@@ -1021,13 +1124,10 @@ for game_key, g in games.items():
     except:
         continue
 
-# Store in session state for this date
 st.session_state["big_snapshot"] = ml_results
 
-# Sort by score descending
 ml_results.sort(key=lambda x: x["score"], reverse=True)
 
-# Bucket by tier
 tiers = {
     "🟢 STRONG BUY": [],
     "🔵 BUY": [],
@@ -1080,8 +1180,7 @@ for label, rows in tiers.items():
             unsafe_allow_html=True
         )
 
-# Auto-add all strong picks button
-strong_picks = [r for r in ml_results if r["score"] >= 6.5]  # STRONG BUY + BUY
+strong_picks = [r for r in ml_results if r["score"] >= 6.5]
 if strong_picks:
     st.markdown("")
     col_add, col_price = st.columns([2, 1])
@@ -1090,7 +1189,6 @@ if strong_picks:
         added = 0
         for r in strong_picks:
             game_key = f"{r['away']}@{r['home']}"
-            # Skip if already tracked
             already_tracked = any(p.get('game') == game_key and p.get('type') == 'ml' and p.get('pick') == r['pick'] for p in st.session_state.positions)
             if not already_tracked:
                 st.session_state.positions.append({
@@ -1111,7 +1209,7 @@ if strong_picks:
 
 st.divider()
 
-# ========== BLOWOUT RISK - TIRED AWAY @ FRESH HOME ==========
+# ========== BLOWOUT RISK ==========
 st.subheader("🔥 BLOWOUT RISK — Tired Away @ Fresh Home")
 
 blowout_games = []
@@ -1242,110 +1340,6 @@ if st.button(btn_label, use_container_width=True, type=btn_type):
 
 st.divider()
 
-# ========== ACTIVE POSITIONS ==========
-st.subheader("📈 ACTIVE POSITIONS")
-
-if st.session_state.positions:
-    for idx, pos in enumerate(st.session_state.positions):
-        game_key = pos['game']
-        g = games.get(game_key)
-        price = pos.get('price', 50)
-        contracts = pos.get('contracts', 1)
-        cost = pos.get('cost', round(price * contracts / 100, 2))
-        pos_type = pos.get('type', 'totals')
-        is_live = pos.get('live', False)
-        potential_win = round((100 - price) * contracts / 100, 2)
-        potential_loss = cost
-        live_badge = "💰 LIVE" if is_live else "📝 Paper"
-        
-        if g:
-            total = g['total']
-            mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
-            is_final = g['status_type'] == "STATUS_FINAL"
-            game_status = "FINAL" if is_final else f"Q{g['period']} {g['clock']}"
-            
-            if pos_type == 'ml':
-                pick = pos.get('pick', '')
-                parts = game_key.split("@")
-                away_team, home_team = parts[0], parts[1]
-                home_score, away_score = g['home_score'], g['away_score']
-                pick_score = home_score if pick == home_team else away_score
-                opp_score = away_score if pick == home_team else home_score
-                lead = pick_score - opp_score
-                
-                if is_final:
-                    won = pick_score > opp_score
-                    if won:
-                        status_label, status_color = "✅ WON!", "#00ff00"
-                        pnl_display, pnl_color = f"+${potential_win:.2f}", "#00ff00"
-                    else:
-                        status_label, status_color = "❌ LOST", "#ff0000"
-                        pnl_display, pnl_color = f"-${potential_loss:.2f}", "#ff0000"
-                elif mins > 0:
-                    if lead >= 15: status_label, status_color = "🟢 CRUISING", "#00ff00"
-                    elif lead >= 8: status_label, status_color = "🟢 LEADING", "#00ff00"
-                    elif lead >= 1: status_label, status_color = "🟡 AHEAD", "#ffff00"
-                    elif lead >= -5: status_label, status_color = "🟠 CLOSE", "#ff8800"
-                    else: status_label, status_color = "🔴 BEHIND", "#ff0000"
-                    pnl_display, pnl_color = f"Win: +${potential_win:.2f}", "#888888"
-                else:
-                    status_label, status_color = "⏳ WAITING", "#888888"
-                    lead = 0
-                    pnl_display, pnl_color = f"Win: +${potential_win:.2f}", "#888888"
-                
-                st.markdown(f"<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'><div style='display:flex;justify-content:space-between;align-items:center'><div><span style='color:#fff;font-size:1.2em;font-weight:bold'>{game_key.replace('@', ' @ ')}</span><span style='color:#888;margin-left:10px'>{game_status}</span><span style='color:#00aaff;margin-left:10px;font-size:0.85em'>{live_badge}</span></div><span style='color:{status_color};font-size:1.3em;font-weight:bold'>{status_label}</span></div><div style='margin-top:10px;display:flex;gap:30px;flex-wrap:wrap'><span style='color:#aaa'>🎯 <b style=\"color:#fff\">ML: {pick}</b></span><span style='color:#aaa'>💵 <b style=\"color:#fff\">{contracts}x @ {price}¢</b> (${cost:.2f})</span><span style='color:#aaa'>📊 Score: <b style=\"color:#fff\">{pick_score}-{opp_score}</b></span><span style='color:#aaa'>📈 Lead: <b style=\"color:{status_color}\">{lead:+d}</b></span><span style='color:{pnl_color}'>{pnl_display}</span></div></div>", unsafe_allow_html=True)
-            else:
-                projected = round((total / mins) * 48) if mins > 0 else None
-                cushion = (pos['threshold'] - projected) if pos.get('side') == "NO" and projected else ((projected - pos['threshold']) if projected else 0)
-                
-                if is_final:
-                    won = (total < pos['threshold']) if pos.get('side') == "NO" else (total > pos['threshold'])
-                    if won:
-                        status_label, status_color = "✅ WON!", "#00ff00"
-                        pnl_display, pnl_color = f"+${potential_win:.2f}", "#00ff00"
-                    else:
-                        status_label, status_color = "❌ LOST", "#ff0000"
-                        pnl_display, pnl_color = f"-${potential_loss:.2f}", "#ff0000"
-                elif projected:
-                    if cushion >= 15: status_label, status_color = "🟢 VERY SAFE", "#00ff00"
-                    elif cushion >= 8: status_label, status_color = "🟢 LOOKING GOOD", "#00ff00"
-                    elif cushion >= 3: status_label, status_color = "🟡 ON TRACK", "#ffff00"
-                    elif cushion >= -3: status_label, status_color = "🟠 WARNING", "#ff8800"
-                    else: status_label, status_color = "🔴 AT RISK", "#ff0000"
-                    pnl_display, pnl_color = f"Win: +${potential_win:.2f}", "#888888"
-                else:
-                    status_label, status_color = "⏳ WAITING", "#888888"
-                    pnl_display, pnl_color = f"Win: +${potential_win:.2f}", "#888888"
-                
-                st.markdown(f"<div style='background:linear-gradient(135deg,#1a1a2e,#16213e);padding:15px;border-radius:10px;border:2px solid {status_color};margin-bottom:10px'><div style='display:flex;justify-content:space-between;align-items:center'><div><span style='color:#fff;font-size:1.2em;font-weight:bold'>{game_key.replace('@', ' @ ')}</span><span style='color:#888;margin-left:10px'>{game_status}</span><span style='color:#00aaff;margin-left:10px;font-size:0.85em'>{live_badge}</span></div><span style='color:{status_color};font-size:1.3em;font-weight:bold'>{status_label}</span></div><div style='margin-top:10px;display:flex;gap:30px;flex-wrap:wrap'><span style='color:#aaa'>📊 <b style=\"color:#fff\">{pos.get('side', 'NO')} {pos.get('threshold', 0)}</b></span><span style='color:#aaa'>💵 <b style=\"color:#fff\">{contracts}x @ {price}¢</b> (${cost:.2f})</span><span style='color:#aaa'>📈 Proj: <b style=\"color:#fff\">{projected if projected else '—'}</b></span><span style='color:#aaa'>🎯 Cushion: <b style=\"color:{status_color}\">{cushion:+.0f}</b></span><span style='color:{pnl_color}'>{pnl_display}</span></div></div>", unsafe_allow_html=True)
-            
-            btn1, btn2 = st.columns([3, 1])
-            parts = game_key.split("@")
-            if pos_type == 'ml': kalshi_url = build_kalshi_ml_url(parts[0], parts[1])
-            else: kalshi_url = build_kalshi_totals_url(parts[0], parts[1])
-            btn1.link_button(f"🔗 Trade on Kalshi", kalshi_url, use_container_width=True)
-            if btn2.button("🗑️ Remove", key=f"del_{idx}"):
-                st.session_state.positions.pop(idx)
-                save_positions(st.session_state.positions)
-                st.rerun()
-        else:
-            if pos_type == 'ml': display_text = f"ML: {pos.get('pick', '?')}"
-            else: display_text = f"{pos.get('side', 'NO')} {pos.get('threshold', 0)}"
-            st.markdown(f"<div style='background:#1a1a2e;padding:15px;border-radius:10px;border:1px solid #444;margin-bottom:10px'><span style='color:#888'>{game_key.replace('@', ' @ ')} — {display_text} — {contracts}x @ {price}¢</span><span style='color:#666;margin-left:15px'>⏳ Game not started</span></div>", unsafe_allow_html=True)
-            if st.button("🗑️ Remove", key=f"del_{idx}"):
-                st.session_state.positions.pop(idx)
-                save_positions(st.session_state.positions)
-                st.rerun()
-    
-    if st.button("🗑️ Clear All Positions", use_container_width=True):
-        st.session_state.positions = []
-        save_positions(st.session_state.positions)
-        st.rerun()
-else:
-    st.info("No positions tracked — use the form above to add your first position")
-
-st.divider()
-
 # ========== PACE SCANNER ==========
 st.subheader("🔥 PACE SCANNER")
 
@@ -1394,22 +1388,19 @@ for gk, g in games.items():
     pace = total / mins if mins > 0 else 0
     proj = round(pace * 48)
     
-    # Find recommended bet line
     if is_no_side:
-        # NO: find first threshold ABOVE projection, then go one higher
         candidates = [t for t in THRESHOLDS if t > proj]
         if len(candidates) >= 2:
-            bet_line = candidates[1]  # One level higher (safer)
+            bet_line = candidates[1]
         elif len(candidates) == 1:
             bet_line = candidates[0]
         else:
             continue
         cushion = bet_line - proj
     else:
-        # YES: find first threshold BELOW projection, then go one lower
         candidates = [t for t in THRESHOLDS if t < proj]
         if len(candidates) >= 2:
-            bet_line = candidates[-2]  # One level lower (safer)
+            bet_line = candidates[-2]
         elif len(candidates) == 1:
             bet_line = candidates[-1]
         else:
@@ -1419,7 +1410,6 @@ for gk, g in games.items():
     if cushion < 6:
         continue
     
-    # Pace alignment check
     if is_no_side:
         if pace < 4.5: pace_status = "✅ SLOW"
         elif pace < 4.8: pace_status = "⚠️ AVG"
@@ -1486,4 +1476,4 @@ else:
 
 st.divider()
 st.caption("⚠️ For entertainment only. Not financial advice.")
-st.caption("v15.28 - Paper track + link out (NBA API not supported)")
+st.caption("v15.31 - Auto-scroll to positions on refresh")
