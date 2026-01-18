@@ -103,10 +103,18 @@ if "selected_ml_pick" not in st.session_state:
 if "editing_position" not in st.session_state:
     st.session_state.editing_position = None
 
+# ========== LIVE SIGNAL FEED SESSION STATE ==========
+if "drought_tracker" not in st.session_state:
+    st.session_state.drought_tracker = {}  # {game_key: {"last_total": int, "last_change_time": datetime}}
+if "pace_history" not in st.session_state:
+    st.session_state.pace_history = {}  # {game_key: [{"time": datetime, "total": int, "mins": float}]}
+
 # ========== DATE INVALIDATION ==========
 if "snapshot_date" not in st.session_state or st.session_state["snapshot_date"] != today_str:
     st.session_state["snapshot_date"] = today_str
     st.session_state.pop("big_snapshot", None)
+    st.session_state.drought_tracker = {}
+    st.session_state.pace_history = {}
 
 if st.session_state.auto_refresh:
     cache_buster = int(time.time()) + 30
@@ -230,7 +238,21 @@ with st.sidebar:
 | SLOW pace | ❌ |
 """)
     st.divider()
-    st.caption("v15.42 MAIN")
+    
+    st.header("📡 SIGNAL LEGEND")
+    st.markdown("""
+**Drought:**
+- NORMAL: <60s
+- MODERATE: 60-120s  
+- HIGH: >120s
+
+**Momentum:**
+- COOLING: pace dropping
+- NEUTRAL: stable
+- HEATING: pace rising
+""")
+    st.divider()
+    st.caption("v15.43 SIGNAL")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -626,6 +648,129 @@ def get_signal_tier(score):
     elif score >= 4.5: return "⚪ TOSS-UP", "#888888"
     else: return "🔴 SKIP", "#ff0000"
 
+# ========== LIVE SIGNAL FEED FUNCTIONS ==========
+def update_drought_tracker(game_key, current_total):
+    """Track scoring droughts per game"""
+    now = datetime.now(pytz.timezone('US/Eastern'))
+    
+    if game_key not in st.session_state.drought_tracker:
+        st.session_state.drought_tracker[game_key] = {
+            "last_total": current_total,
+            "last_change_time": now
+        }
+        return 0, "NORMAL"
+    
+    tracker = st.session_state.drought_tracker[game_key]
+    
+    if current_total != tracker["last_total"]:
+        tracker["last_total"] = current_total
+        tracker["last_change_time"] = now
+        return 0, "NORMAL"
+    
+    seconds_since = (now - tracker["last_change_time"]).total_seconds()
+    
+    if seconds_since < 60:
+        return seconds_since, "NORMAL"
+    elif seconds_since < 120:
+        return seconds_since, "MODERATE"
+    else:
+        return seconds_since, "HIGH"
+
+def update_pace_history(game_key, current_total, current_mins):
+    """Track pace history for momentum detection"""
+    now = datetime.now(pytz.timezone('US/Eastern'))
+    
+    if game_key not in st.session_state.pace_history:
+        st.session_state.pace_history[game_key] = []
+    
+    history = st.session_state.pace_history[game_key]
+    
+    # Add current data point
+    history.append({
+        "time": now,
+        "total": current_total,
+        "mins": current_mins
+    })
+    
+    # Keep only last 10 data points (roughly 5 min at 30s refresh)
+    if len(history) > 10:
+        st.session_state.pace_history[game_key] = history[-10:]
+
+def get_momentum_signal(game_key, current_pace):
+    """Calculate momentum direction based on pace history"""
+    history = st.session_state.pace_history.get(game_key, [])
+    
+    if len(history) < 3:
+        return "NEUTRAL", "#888888"
+    
+    # Get recent pace (last 3 samples) vs earlier pace
+    recent_entries = history[-3:]
+    earlier_entries = history[:-3] if len(history) > 3 else []
+    
+    if not earlier_entries:
+        return "NEUTRAL", "#888888"
+    
+    # Calculate average pace for each window
+    def calc_window_pace(entries):
+        if len(entries) < 2:
+            return None
+        first, last = entries[0], entries[-1]
+        mins_diff = last["mins"] - first["mins"]
+        pts_diff = last["total"] - first["total"]
+        if mins_diff > 0:
+            return pts_diff / mins_diff
+        return None
+    
+    recent_pace = calc_window_pace(recent_entries)
+    earlier_pace = calc_window_pace(earlier_entries)
+    
+    if recent_pace is None or earlier_pace is None:
+        return "NEUTRAL", "#888888"
+    
+    pace_delta = recent_pace - earlier_pace
+    
+    # Thresholds for meaningful change
+    if pace_delta < -0.3:
+        return "COOLING", "#00aaff"
+    elif pace_delta > 0.3:
+        return "HEATING", "#ff6600"
+    else:
+        return "NEUTRAL", "#888888"
+
+def calc_required_pace(current_total, threshold, mins_played, side):
+    """Calculate required pace to break the line"""
+    remaining_mins = max(48 - mins_played, 0.1)
+    
+    if side == "NO":
+        # For NO bet: required pace for total to go OVER (bad for us)
+        points_needed = threshold - current_total + 0.5  # Need to exceed threshold
+        required = points_needed / remaining_mins
+        return max(required, 0), "OVER"
+    else:
+        # For YES bet: required pace for total to stay OVER (good for us)
+        points_needed = threshold - current_total + 0.5
+        required = points_needed / remaining_mins
+        return max(required, 0), "OVER"
+
+def format_drought_time(seconds):
+    """Format seconds into M:SS display"""
+    mins = int(seconds // 60)
+    secs = int(seconds % 60)
+    return f"{mins}:{secs:02d}"
+
+def get_cushion_status(cushion, side):
+    """Get cushion status label and color"""
+    if cushion >= 15:
+        return "VERY SAFE", "#00ff00"
+    elif cushion >= 8:
+        return "GOOD", "#00ff00"
+    elif cushion >= 3:
+        return "ON TRACK", "#ffff00"
+    elif cushion >= -3:
+        return "WARNING", "#ff8800"
+    else:
+        return "AT RISK", "#ff0000"
+
 # ========== FETCH DATA ==========
 games = fetch_espn_scores(date_key=today_str)
 game_list = sorted(list(games.keys()))
@@ -640,6 +785,13 @@ for game_key in games.keys():
     today_teams.add(parts[1])
 yesterday_teams = yesterday_teams_raw.intersection(today_teams)
 
+# ========== UPDATE SIGNAL TRACKERS ==========
+for game_key, g in games.items():
+    mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
+    if g['status_type'] not in ["STATUS_FINAL", "STATUS_SCHEDULED"] and mins > 0:
+        update_drought_tracker(game_key, g['total'])
+        update_pace_history(game_key, g['total'], mins)
+
 # ============================================================
 # ========== TITLE - TOP OF PAGE ==========
 # ============================================================
@@ -651,7 +803,7 @@ st.title("🎯 NBA EDGE FINDER")
 st.subheader("📈 ACTIVE POSITIONS")
 
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.42 MAIN")
+hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.43 SIGNAL")
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
     st.rerun()
@@ -804,6 +956,118 @@ else:
 
 st.divider()
 
+# ============================================================
+# ========== LIVE SIGNAL FEED ==========
+# ============================================================
+st.subheader("📡 LIVE SIGNAL FEED")
+
+live_games = []
+for game_key, g in games.items():
+    mins = get_minutes_played(g['period'], g['clock'], g['status_type'])
+    if g['status_type'] not in ["STATUS_FINAL", "STATUS_SCHEDULED"] and mins >= 6:
+        live_games.append((game_key, g, mins))
+
+if live_games:
+    for game_key, g, mins in live_games:
+        total = g['total']
+        current_pace = round(total / mins, 2) if mins > 0 else 0
+        projected = round(current_pace * 48) if mins > 0 else 0
+        
+        # Get signals
+        drought_secs, drought_level = update_drought_tracker(game_key, total)
+        momentum, momentum_color = get_momentum_signal(game_key, current_pace)
+        
+        # Drought color
+        if drought_level == "HIGH":
+            drought_color = "#ff0000"
+        elif drought_level == "MODERATE":
+            drought_color = "#ffaa00"
+        else:
+            drought_color = "#00ff00"
+        
+        # Find if user has position on this game
+        user_position = None
+        for pos in st.session_state.positions:
+            if pos.get('game') == game_key and pos.get('type') == 'totals':
+                user_position = pos
+                break
+        
+        # Build signal card
+        game_status = f"Q{g['period']} {g['clock']}"
+        
+        with st.expander(f"📡 {game_key.replace('@', ' @ ')} — {game_status}", expanded=False):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown(f"""
+                <div style='background:#0f172a;padding:12px;border-radius:8px;margin-bottom:8px'>
+                <div style='color:#888;font-size:0.85em'>CURRENT PACE</div>
+                <div style='color:#fff;font-size:1.4em;font-weight:bold'>{current_pace} pts/min</div>
+                <div style='color:#666;font-size:0.85em'>Projected: {projected} pts</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown(f"""
+                <div style='background:#0f172a;padding:12px;border-radius:8px'>
+                <div style='color:#888;font-size:0.85em'>SCORING DROUGHT</div>
+                <div style='color:{drought_color};font-size:1.4em;font-weight:bold'>{format_drought_time(drought_secs)}</div>
+                <div style='color:{drought_color};font-size:0.85em'>{drought_level}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown(f"""
+                <div style='background:#0f172a;padding:12px;border-radius:8px;margin-bottom:8px'>
+                <div style='color:#888;font-size:0.85em'>MOMENTUM</div>
+                <div style='color:{momentum_color};font-size:1.4em;font-weight:bold'>{momentum}</div>
+                <div style='color:#666;font-size:0.85em'>{'Offense slowing' if momentum == 'COOLING' else 'Offense heating up' if momentum == 'HEATING' else 'Stable pace'}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Required pace (if user has totals position)
+                if user_position:
+                    threshold = user_position.get('threshold', 225.5)
+                    side = user_position.get('side', 'NO')
+                    required_pace, direction = calc_required_pace(total, threshold, mins, side)
+                    
+                    # Color based on comparison to current pace
+                    if side == "NO":
+                        # For NO: lower required pace is better (harder for game to go over)
+                        if required_pace > current_pace + 0.5:
+                            req_color = "#00ff00"  # Safe
+                        elif required_pace > current_pace:
+                            req_color = "#ffff00"  # Caution
+                        else:
+                            req_color = "#ff0000"  # Danger
+                    else:
+                        # For YES: lower required pace is better (easier to stay over)
+                        if required_pace < current_pace - 0.5:
+                            req_color = "#00ff00"
+                        elif required_pace < current_pace:
+                            req_color = "#ffff00"
+                        else:
+                            req_color = "#ff0000"
+                    
+                    st.markdown(f"""
+                    <div style='background:#0f172a;padding:12px;border-radius:8px'>
+                    <div style='color:#888;font-size:0.85em'>REQUIRED PACE TO LOSE</div>
+                    <div style='color:{req_color};font-size:1.4em;font-weight:bold'>{required_pace:.2f} pts/min</div>
+                    <div style='color:#666;font-size:0.85em'>{side} {threshold} position</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div style='background:#0f172a;padding:12px;border-radius:8px'>
+                    <div style='color:#888;font-size:0.85em'>GAME TOTAL</div>
+                    <div style='color:#fff;font-size:1.4em;font-weight:bold'>{total} pts</div>
+                    <div style='color:#666;font-size:0.85em'>{mins:.1f} min played</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+else:
+    st.info("No live games with 6+ minutes played")
+
+st.divider()
+
 # ========== INJURY REPORT ==========
 st.subheader("🏥 INJURY REPORT")
 
@@ -861,7 +1125,6 @@ for r in ml_results:
     if r["score"] < 5.5: continue
     kalshi_url = build_kalshi_ml_url(r["away"], r["home"])
     reasons = " • ".join(r["reasons"])
-    # FIXED: BUY button now shows team name
     st.markdown(f"""<div style="display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#0f172a,#020617);padding:6px 12px;margin-bottom:4px;border-radius:6px;border-left:3px solid {r['color']}"><div><b style="color:#fff">{r['pick']}</b> <span style="color:#666">vs {r['away'] if r['pick']==r['home'] else r['home']}</span> <span style="color:#38bdf8">{r['score']}/10</span> <span style="color:#777;font-size:0.8em">{reasons}</span></div><a href="{kalshi_url}" target="_blank" style="background:#16a34a;color:#fff;padding:4px 10px;border-radius:5px;font-size:0.8em;text-decoration:none;font-weight:600">BUY {r['pick']}</a></div>""", unsafe_allow_html=True)
 
 strong_picks = [r for r in ml_results if r["score"] >= 6.5]
@@ -1067,4 +1330,4 @@ else:
     st.info("No games today")
 
 st.divider()
-st.caption("⚠️ Entertainment only. Not financial advice. v15.42 MAIN")
+st.caption("⚠️ Entertainment only. Not financial advice. v15.43 SIGNAL")
