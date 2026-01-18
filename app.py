@@ -252,7 +252,7 @@ with st.sidebar:
 - HEATING: pace rising
 """)
     st.divider()
-    st.caption("v15.43 SIGNAL")
+    st.caption("v15.44 SIGNAL")
 
 # ========== TEAM DATA ==========
 TEAM_ABBREVS = {
@@ -771,6 +771,57 @@ def get_cushion_status(cushion, side):
     else:
         return "AT RISK", "#ff0000"
 
+def get_signal_recommendation(current_pace, projected, momentum, drought_level):
+    """Generate actionable recommendation based on all signals"""
+    THRESHOLDS = [210.5, 215.5, 220.5, 225.5, 230.5, 235.5, 240.5, 245.5, 250.5, 255.5, 260.5, 265.5, 270.5]
+    
+    # Score the signals for NO vs YES
+    no_score = 0
+    yes_score = 0
+    
+    # Pace scoring
+    if current_pace < 4.5:
+        no_score += 2   # Very slow = NO (under) - low scoring game
+    elif current_pace < 4.8:
+        no_score += 1   # Slow-ish = lean NO
+    elif current_pace > 5.2:
+        yes_score += 2  # Very fast = YES (over) - high scoring game
+    elif current_pace > 4.9:
+        yes_score += 1  # Fast-ish = lean YES
+    
+    # Momentum scoring
+    if momentum == "COOLING":
+        no_score += 2   # Offense slowing = NO (under)
+    elif momentum == "HEATING":
+        yes_score += 2  # Offense heating = YES (over)
+    
+    # Drought scoring
+    if drought_level == "HIGH":
+        no_score += 1   # Long drought = NO (scoring stopped)
+    elif drought_level == "MODERATE":
+        no_score += 0.5
+    
+    # Determine recommendation
+    if no_score >= 3 and no_score > yes_score + 1:
+        # Strong NO signal - find threshold above projected
+        for t in THRESHOLDS:
+            if t > projected + 5:
+                cushion = t - projected
+                return "NO", t, cushion, "#00ff00"
+        return "NO", THRESHOLDS[-1], THRESHOLDS[-1] - projected, "#00ff00"
+    
+    elif yes_score >= 3 and yes_score > no_score + 1:
+        # Strong YES signal - find threshold below projected
+        for t in reversed(THRESHOLDS):
+            if t < projected - 5:
+                cushion = projected - t
+                return "YES", t, cushion, "#00aaff"
+        return "YES", THRESHOLDS[0], projected - THRESHOLDS[0], "#00aaff"
+    
+    else:
+        # Mixed signals - no clear edge
+        return "WAIT", None, 0, "#888888"
+
 # ========== FETCH DATA ==========
 games = fetch_espn_scores(date_key=today_str)
 game_list = sorted(list(games.keys()))
@@ -803,7 +854,7 @@ st.title("🎯 NBA EDGE FINDER")
 st.subheader("📈 ACTIVE POSITIONS")
 
 hdr1, hdr2, hdr3 = st.columns([3, 1, 1])
-hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.43 SIGNAL")
+hdr1.caption(f"{auto_status} | {now.strftime('%I:%M:%S %p ET')} | v15.44 SIGNAL")
 if hdr2.button("🔄 Auto" if not st.session_state.auto_refresh else "⏹️ Stop", use_container_width=True):
     st.session_state.auto_refresh = not st.session_state.auto_refresh
     st.rerun()
@@ -995,7 +1046,28 @@ if live_games:
         # Build signal card
         game_status = f"Q{g['period']} {g['clock']}"
         
+        # Get recommendation
+        rec_side, rec_threshold, rec_cushion, rec_color = get_signal_recommendation(current_pace, projected, momentum, drought_level)
+        
         with st.expander(f"📡 {game_key.replace('@', ' @ ')} — {game_status}", expanded=False):
+            # RECOMMENDATION BOX - TOP AND CENTER
+            if rec_side != "WAIT":
+                st.markdown(f"""
+                <div style='background:linear-gradient(135deg,#1a3a1a,#0f2a0f);padding:15px;border-radius:10px;border:2px solid {rec_color};margin-bottom:12px;text-align:center'>
+                <div style='color:#888;font-size:0.85em'>🎯 SIGNAL RECOMMENDATION</div>
+                <div style='color:{rec_color};font-size:1.8em;font-weight:bold'>BUY {rec_side} {rec_threshold}</div>
+                <div style='color:#888;font-size:0.9em'>Cushion: +{rec_cushion:.0f} pts</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div style='background:linear-gradient(135deg,#2a2a2a,#1a1a1a);padding:15px;border-radius:10px;border:2px solid #555;margin-bottom:12px;text-align:center'>
+                <div style='color:#888;font-size:0.85em'>🎯 SIGNAL RECOMMENDATION</div>
+                <div style='color:#888;font-size:1.5em;font-weight:bold'>⚠️ NO CLEAR EDGE</div>
+                <div style='color:#666;font-size:0.9em'>Mixed signals - wait for better setup</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
             col1, col2 = st.columns(2)
             
             with col1:
@@ -1032,15 +1104,13 @@ if live_games:
                     
                     # Color based on comparison to current pace
                     if side == "NO":
-                        # For NO: lower required pace is better (harder for game to go over)
                         if required_pace > current_pace + 0.5:
-                            req_color = "#00ff00"  # Safe
+                            req_color = "#00ff00"
                         elif required_pace > current_pace:
-                            req_color = "#ffff00"  # Caution
+                            req_color = "#ffff00"
                         else:
-                            req_color = "#ff0000"  # Danger
+                            req_color = "#ff0000"
                     else:
-                        # For YES: lower required pace is better (easier to stay over)
                         if required_pace < current_pace - 0.5:
                             req_color = "#00ff00"
                         elif required_pace < current_pace:
@@ -1330,4 +1400,4 @@ else:
     st.info("No games today")
 
 st.divider()
-st.caption("⚠️ Entertainment only. Not financial advice. v15.43 SIGNAL")
+st.caption("⚠️ Entertainment only. Not financial advice. v15.44 SIGNAL")
